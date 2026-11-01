@@ -30,8 +30,16 @@ async def test_pairing_returns_url_with_token_in_fragment_and_qr(settings: Setti
     body = response.json()
     assert response.status_code == 201
     assert body["url"].startswith("https://192.168.0.10:8443/cam#t=")
-    assert body["qrSvg"].startswith("<svg")
     assert body["expiresAt"].endswith("Z")
+
+
+async def test_pairing_qr_is_a_standalone_svg_document(settings: Settings) -> None:
+    async with console_client(console_app(settings)) as console:
+        response = await console.post("/api/pairing")
+
+    svg = response.json()["qrSvg"]
+    assert svg.startswith('<svg xmlns="http://www.w3.org/2000/svg"')
+    assert "<?xml" not in svg
 
 
 async def test_status_without_pairing_or_session_is_all_null(settings: Settings) -> None:

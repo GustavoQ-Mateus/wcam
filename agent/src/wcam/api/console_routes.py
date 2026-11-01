@@ -1,3 +1,5 @@
+import io
+
 import segno
 from fastapi import APIRouter, Response, status
 
@@ -16,7 +18,17 @@ def pairing_url(phone_page_url: str, token: str) -> str:
 
 
 def qr_svg(url: str) -> str:
-    return segno.make(url, error=QR_ERROR_LEVEL).svg_inline(omitsize=True, dark=QR_DARK, light=QR_LIGHT)
+    document = io.BytesIO()
+    segno.make(url, error=QR_ERROR_LEVEL).save(
+        document,
+        kind="svg",
+        xmldecl=False,
+        svgns=True,
+        omitsize=True,
+        dark=QR_DARK,
+        light=QR_LIGHT,
+    )
+    return document.getvalue().decode("utf-8")
 
 
 def create_console_router(manager: SessionManager, phone_page_url: str) -> APIRouter:
