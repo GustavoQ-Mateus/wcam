@@ -28,6 +28,8 @@ export interface Video {
   height: number;
   fps: number;
   bitrateKbps: number;
+  codec: string;
+  framesScaled: number;
 }
 
 export interface Session {
@@ -40,10 +42,29 @@ export interface Session {
   video: Video | null;
 }
 
+export type VirtualCameraUnavailableReason = "driver_missing" | "device_in_use" | "error";
+
+export interface VirtualCamera {
+  state: "active" | "unavailable";
+  backend: "obs" | "fake";
+  reason: VirtualCameraUnavailableReason | null;
+  output: { width: number; height: number; fps: number };
+  source: "phone" | "placeholder";
+}
+
+export interface Quality {
+  ssim: number | null;
+  minimum: number | null;
+  frames: number;
+}
+
 export interface Status {
   pairing: { expiresAt: string } | null;
   session: Session | null;
   lastEnded: { reason: EndReason; at: string } | null;
+  virtualCamera: VirtualCamera;
+  process: { cpuPercent: number };
+  quality: Quality | null;
 }
 
 export interface CreateSessionRequest {

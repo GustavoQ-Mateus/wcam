@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { secondsUntil, svgDataUrl, videoFormatValues } from "./console-format";
+import { cpuPercentValue, secondsUntil, svgDataUrl, videoFormatValues } from "./console-format";
 
 const NOW = Date.parse("2026-11-01T18:00:00Z");
 
@@ -13,12 +13,13 @@ describe("console format", () => {
   });
 
   it("video values show fps with one decimal and bitrate in megabits", () => {
-    expect(videoFormatValues({ width: 1920, height: 1080, fps: 29.94, bitrateKbps: 9800 })).toEqual({
-      width: "1920",
-      height: "1080",
-      fps: "29.9",
-      bitrate: "9.8",
-    });
+    const video = { width: 1920, height: 1080, fps: 29.94, bitrateKbps: 9800, codec: "H264", framesScaled: 0 };
+
+    expect(videoFormatValues(video)).toEqual({ width: "1920", height: "1080", fps: "29.9", bitrate: "9.8" });
+  });
+
+  it("agent cpu is shown as a whole percent", () => {
+    expect([cpuPercentValue(12.5), cpuPercentValue(0), cpuPercentValue(99.4)]).toEqual(["13", "0", "99"]);
   });
 
   it("qr svg becomes an image data url", () => {
