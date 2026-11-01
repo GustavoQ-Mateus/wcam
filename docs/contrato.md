@@ -91,12 +91,13 @@ Nos dois servidores.
     "startedAt": "2026-11-01T18:00:10Z",
     "confirmationCode": "92Q-M2H",
     "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800}
-  }
+  },
+  "lastEnded": {"reason": "rejected", "at": "2026-11-01T17:55:40Z"}
 }
 ```
 
 - `pairing` é `null` com a janela fechada; `session` é `null` sem sessão.
-- `state`: `connecting`, `awaiting_confirmation`, `live`. Sessão encerrada vira `null`, e o motivo do último encerramento fica em `lastEnded: {"reason", "at"}` (`rejected`, `disconnected_by_pc`, `disconnected_by_phone`, `connection_failed`, `confirmation_timeout`).
+- `state`: `connecting`, `awaiting_confirmation`, `live`. Sessão encerrada vira `null`, e o motivo do último encerramento fica em `lastEnded: {"reason", "at"}`, campo sempre presente no primeiro nível (`null` se nenhuma sessão terminou desde que o agente subiu) (`rejected`, `disconnected_by_pc`, `disconnected_by_phone`, `connection_failed`, `confirmation_timeout`).
 - `confirmationCode` aparece a partir de `awaiting_confirmation`.
 - `video` é `null` até o primeiro quadro; `fps` e `bitrateKbps` são a média da última janela de 1 s, medidos pelo agente (quadros decodificados e bytes RTP recebidos), não o que o celular declara.
 - `deviceName` vem do `User-Agent`: sistema e navegador (`Android · Chrome`, `iPhone · Safari`), nunca o texto bruto. Parte não reconhecida é omitida (`Android`, `Chrome`); sem nenhuma reconhecida, `null`, e o console mostra `console.device_unknown`.
