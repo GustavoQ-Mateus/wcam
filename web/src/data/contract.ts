@@ -53,8 +53,8 @@ export interface VirtualCamera {
 }
 
 export interface Quality {
-  ssim: number;
-  minimum: number;
+  ssim: number | null;
+  minimum: number | null;
   frames: number;
 }
 
