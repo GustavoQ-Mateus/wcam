@@ -33,6 +33,8 @@ O cliente decide pelo `code`, nunca pela `message`. O texto mostrado ao usuário
 | `invalid_request` | 422 | corpo ou parâmetros inválidos |
 | `internal_error` | 500 | erro inesperado; a mensagem nunca traz detalhe interno |
 
+Qualquer outro status de erro do framework vira `invalid_request` (4xx) ou `internal_error` (5xx). Não existe código genérico fora desta tabela.
+
 Erro de rede no cliente (agente fora do ar) usa o código local `network_error`, que não vem do servidor.
 
 ## Hosts permitidos
