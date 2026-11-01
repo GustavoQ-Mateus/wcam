@@ -1,6 +1,6 @@
 # Spec v0.1.0, Fundação
 
-Status: Aprovada (2026-10-31)
+Status: Entregue (2026-11-01)
 Branch: `feature/fundacao`
 Referências: `docs/planejamento.md`, ADRs 0001 a 0010
 
@@ -143,4 +143,23 @@ WebRTC, pareamento por token, código de confirmação, câmera virtual, banco, 
 4. Exceção única: o primeiro commit (CLAUDE.md e docs) vai direto na `main`, para que a `main` exista. Todo o resto segue o git flow.
 
 ## Changelog
-Vazio até a entrega.
+
+### 0.1.0, 2026-11-01
+
+Entregue pelas sessões `agent` (`feature/fundacao-agent`) e `web` (`feature/fundacao-web`), integradas em `feature/fundacao`. Relatórios em `docs/relatorio-v0.1.0-agent.md` e `docs/relatorio-v0.1.0-web.md`.
+
+| CA | Resultado | Evidência |
+|---|---|---|
+| 1 | Verificado | `uv run wcam` no Windows 11 imprimiu console, `https://192.168.100.24:8443/cam`, impressão digital e QR em pt-BR. Encerramento verificado por SIGINT e SIGTERM disparados no processo; Ctrl+C num terminal interativo não foi exercitado pelas sessões. |
+| 2 | Verificado | Usuário abriu a `/cam` pelo celular na mesma rede, aceitou o aviso de certificado e viu a instrução de pareamento. Aparelho e navegador não registrados. |
+| 3 | Verificado | Usuário confirmou pelo celular que `http://192.168.100.24:8080` não conecta; pelo PC, conexão recusada no IP da LAN. |
+| 4 | Verificado | Testes `test_request_from_other_subnet_is_rejected_with_not_same_network` e `test_unknown_host_header_is_rejected_with_invalid_host`; `X-Forwarded-For` ignorado (`proxy_headers=False`). |
+| 5 | Verificado | Testes de certificado (reuso, troca de IP, vencimento, arquivo corrompido) e mesma impressão digital entre execuções reais. |
+| 6 | Verificado | Build com `cam-page-*.js` e `console-page-*.js` separados; e2e no compose contra o agente real, 3 de 3. |
+| 7 | Verificado | Teste de paridade de chaves; textos só em `locales/`. |
+| 8 | Verificado | `docker compose --profile e2e up --build --exit-code-from e2e` com saída 0. |
+| 9 | Verificado | Agente: ruff, pyright strict sem erros, 29 testes. Web: lint, build sem avisos, 6 testes. |
+| 10 | Verificado | CI verde em `agent` (Windows e Linux), `web` e `e2e`; CodeQL sem alertas abertos. |
+| 11 | Verificado | `docs/contrato.md` atualizado com a tabela de códigos e o mapeamento de status fora da tabela. |
+
+Mudanças em relação ao texto aprovado: ver "Decisões registradas na aprovação", item 3. Dependência extra de desenvolvimento: `types-psutil`.
