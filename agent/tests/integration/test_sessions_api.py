@@ -46,7 +46,8 @@ async def test_status_without_pairing_or_session_is_all_null(settings: Settings)
     async with console_client(console_app(settings)) as console:
         response = await console.get("/api/status")
 
-    assert response.json() == {"pairing": None, "session": None, "lastEnded": None}
+    body = response.json()
+    assert (body["pairing"], body["session"], body["lastEnded"], body["quality"]) == (None, None, None, None)
 
 
 async def test_session_is_created_and_shown_in_status(settings: Settings) -> None:

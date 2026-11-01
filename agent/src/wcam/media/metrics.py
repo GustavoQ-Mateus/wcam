@@ -11,6 +11,8 @@ class VideoStats:
     height: int
     fps: float
     bitrate_kbps: int
+    codec: str | None = None
+    frames_scaled: int = 0
 
 
 class VideoMeter:

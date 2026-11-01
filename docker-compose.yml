@@ -6,6 +6,13 @@ services:
     environment:
       WCAM_CONSOLE_BIND: 0.0.0.0
       WCAM_EXTRA_ALLOWED_HOSTS: '["agent:8080","agent:8443"]'
+      WCAM_VIRTUAL_CAMERA: fake
+      WCAM_QUALITY_REFERENCE: /reference/reference.y4m
+    volumes:
+      - reference:/reference:ro
+    depends_on:
+      reference:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:8080:8080"
       - "127.0.0.1:8443:8443"
@@ -14,6 +21,14 @@ services:
       interval: 5s
       timeout: 3s
       retries: 12
+
+  reference:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    command: ["/app/agent/.venv/bin/python", "-m", "wcam.tools.make_reference", "/reference/reference.y4m"]
+    volumes:
+      - reference:/reference
 
   web:
     build:
@@ -39,6 +54,14 @@ services:
     environment:
       E2E_CONSOLE_URL: http://agent:8080
       E2E_PHONE_URL: https://agent:8443
+      E2E_QUALITY_REFERENCE: /reference/reference.y4m
+    volumes:
+      - reference:/reference:ro
     depends_on:
       agent:
         condition: service_healthy
+      reference:
+        condition: service_completed_successfully
+
+volumes:
+  reference:
