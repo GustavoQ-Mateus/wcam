@@ -125,7 +125,7 @@ Envio de vídeo, pareamento real, código de confirmação, pausa, console, band
 ## Critérios de aceitação
 
 1. Fase 1 aprovada pelo usuário antes do código de tela, com `docs/design-v0.2.0-cam.md` registrando a skill de cada decisão.
-2. Num Android com Chrome, em paisagem, a câmera traseira e a frontal entregam 1920x1080 a pelo menos 29 fps, mostrado no estado `ready`. Repetir num iPhone com Safari se houver um disponível; senão, registrar como não testado.
+2. Num Android com Chrome, em paisagem, a câmera traseira e a frontal ficam configuradas em 1920x1080 a 30 fps, mostrado no estado `ready`. Repetir num iPhone com Safari se houver um disponível; senão, registrar como não testado.
 3. Em retrato, a página mostra `rotate` e não mostra `ready`.
 4. A troca de câmera funciona nos dois sentidos sem recarregar a página.
 5. Com a prévia desligada, a tela fica preta e a câmera continua ativa (indicador de câmera do sistema aceso).
@@ -140,6 +140,10 @@ Envio de vídeo, pareamento real, código de confirmação, pausa, console, band
 ## Decisões registradas na aprovação
 
 1. Aparelhos de teste do CA 2: escolhidos pelo usuário no momento do teste e registrados no changelog.
+2. Fase 1 aprovada pelo usuário em 2026-11-01: `docs/design-v0.2.0-cam.md` (skills taste-skill, impeccable shape, mobile-native e emil-design-eng). A fase 2 também usa taste-skill (`lint.mjs` e `inspect.mjs --app`), impeccable (`audit` e `polish`) e emil-design-eng, com o resultado de cada uma no relatório.
+3. Textos: os quatro ajustes da §8 do design entraram em `locales/` (`cam.requesting`, `cam.rotate_title`, `cam.rotate_body`, `cam.preview_hidden`), e `cam.pair_instruction` saiu.
+4. A API de tela cheia fica fora desta versão (o Safari do iPhone não a oferece para páginas).
+5. O fps mostrado é o configurado na faixa (`getSettings().frameRate`), arredondado para inteiro. O fps entregue de fato é medido pelo agente a partir da v0.3.0. Nesta versão, o CA 2 confere a configuração: 1920x1080 a 30 fps.
 
 ## Changelog
 Vazio até a entrega.
