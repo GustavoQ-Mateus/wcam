@@ -3,7 +3,8 @@ import json
 import logging
 import socket
 import ssl
-from collections.abc import Callable
+import time
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -13,21 +14,25 @@ import pytest
 from aiortc import RTCConfiguration, RTCDataChannel, RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 from av import VideoFrame
 
-from tests.conftest import console_app, console_client, phone_app, phone_client
+from tests.conftest import console_app, console_client, opened_pipeline, phone_app, phone_client, services
 from wcam.app import create_servers, serve
 from wcam.config import Settings
 from wcam.media import peer as peer_module
 from wcam.media.peer import AiortcPeer, aiortc_peer_factory
+from wcam.media.pipeline import FramePipeline, FrameSource
 from wcam.media.sdp_filter import candidate_addresses, sha256_fingerprint
 from wcam.network.certificates import load_or_create_certificate
 from wcam.network.lan import LanInterface, detect_lan_interface, is_in_network
 from wcam.pairing.confirmation_code import confirmation_code
 from wcam.sessions.manager import MediaPeer, PeerEvents, SessionManager
+from wcam.virtualcam.fake_sink import FakeSink
 
 WIDTH = 1920
 HEIGHT = 1080
 WAIT_SECONDS = 20.0
 POLL_SECONDS = 0.05
+I420_SHAPE = (HEIGHT * 3 // 2, WIDTH)
+PLACEHOLDER_DEADLINE_SECONDS = 1.0
 UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
 
 
@@ -41,8 +46,8 @@ class SyntheticVideo(VideoStreamTrack):
 
 
 class RecordingPeerFactory:
-    def __init__(self, network: LanInterface) -> None:
-        self._create = aiortc_peer_factory(network.network)
+    def __init__(self, network: LanInterface, pipeline: FramePipeline) -> None:
+        self._create = aiortc_peer_factory(network.network, pipeline)
         self.peers: list[AiortcPeer] = []
 
     async def __call__(self, offer_sdp: str, events: PeerEvents) -> MediaPeer:
@@ -75,11 +80,28 @@ class FlowResult:
     video_before_confirmation: object
     states: list[str]
     video_after_confirmation: dict[str, Any]
+    source_before_confirmation: FrameSource
+    live_frame_shape: tuple[int, ...] | None
+    seconds_to_placeholder: float
 
 
 @pytest.fixture
 def lan() -> LanInterface:
     return detect_lan_interface(None)
+
+
+@pytest.fixture
+def sink() -> FakeSink:
+    return FakeSink()
+
+
+@pytest.fixture
+async def pipeline(sink: FakeSink) -> AsyncIterator[FramePipeline]:
+    running = opened_pipeline(sink)
+    task = asyncio.create_task(running.run())
+    yield running
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
 
 
 def phone_client_peer() -> PhoneClient:
@@ -111,6 +133,7 @@ async def run_pairing_flow(
     console: httpx.AsyncClient,
     phone: httpx.AsyncClient,
     factory: RecordingPeerFactory,
+    pipeline: FramePipeline,
 ) -> FlowResult:
     client = phone_client_peer()
     try:
@@ -129,10 +152,17 @@ async def run_pairing_flow(
         await wait_until(lambda: gate.received > 0)
         received, released = gate.received, gate.released
         video_before = (await current_status(console))["session"]["video"]
+        source_before = pipeline.source
         await console.post("/api/sessions/current/confirm")
         states.append((await client.next_state())["state"])
         video = await wait_for_video(console)
+        await wait_until(lambda: pipeline.source is FrameSource.PHONE)
+        sink = pipeline.sink
+        live_shape = sink.last_frame.shape if isinstance(sink, FakeSink) and sink.last_frame is not None else None
+        disconnected_at = time.monotonic()
         await console.delete("/api/sessions/current")
+        await wait_until(lambda: pipeline.source is FrameSource.PLACEHOLDER)
+        seconds_to_placeholder = time.monotonic() - disconnected_at
         states.append((await client.next_state())["state"])
         return FlowResult(
             token,
@@ -143,6 +173,9 @@ async def run_pairing_flow(
             video_before,
             states,
             video,
+            source_before,
+            live_shape,
+            seconds_to_placeholder,
         )
     finally:
         await client.connection.close()
@@ -157,15 +190,19 @@ async def wait_for_video(console: httpx.AsyncClient) -> dict[str, Any]:
     return video
 
 
-async def test_aiortc_phone_goes_live_only_after_confirmation(settings: Settings, lan: LanInterface) -> None:
-    factory = RecordingPeerFactory(lan)
+async def test_aiortc_phone_goes_live_only_after_confirmation(
+    settings: Settings,
+    lan: LanInterface,
+    pipeline: FramePipeline,
+) -> None:
+    factory = RecordingPeerFactory(lan, pipeline)
     manager = SessionManager(factory)
 
     async with (
-        console_client(console_app(settings, manager)) as console,
+        console_client(console_app(settings, manager, pipeline)) as console,
         phone_client(phone_app(settings, manager)) as phone,
     ):
-        result = await run_pairing_flow(console, phone, factory)
+        result = await run_pairing_flow(console, phone, factory, pipeline)
 
     assert result.codes_match
     assert result.received_before_confirmation > 0
@@ -174,17 +211,24 @@ async def test_aiortc_phone_goes_live_only_after_confirmation(settings: Settings
     assert result.states == ["awaiting_confirmation", "live", "ended"]
     assert (result.video_after_confirmation["width"], result.video_after_confirmation["height"]) == (WIDTH, HEIGHT)
     assert factory.peers[0].gate.released > 0
+    assert result.source_before_confirmation is FrameSource.PLACEHOLDER
+    assert result.live_frame_shape == I420_SHAPE
+    assert result.seconds_to_placeholder < PLACEHOLDER_DEADLINE_SECONDS
 
 
-async def test_answer_has_only_lan_candidates(settings: Settings, lan: LanInterface) -> None:
-    factory = RecordingPeerFactory(lan)
+async def test_answer_has_only_lan_candidates(
+    settings: Settings,
+    lan: LanInterface,
+    pipeline: FramePipeline,
+) -> None:
+    factory = RecordingPeerFactory(lan, pipeline)
     manager = SessionManager(factory)
 
     async with (
-        console_client(console_app(settings, manager)) as console,
+        console_client(console_app(settings, manager, pipeline)) as console,
         phone_client(phone_app(settings, manager)) as phone,
     ):
-        result = await run_pairing_flow(console, phone, factory)
+        result = await run_pairing_flow(console, phone, factory, pipeline)
 
     addresses = candidate_addresses(result.answer_sdp)
     assert addresses
@@ -203,7 +247,8 @@ async def test_peer_connection_has_no_ice_servers(lan: LanInterface, monkeypatch
 
     monkeypatch.setattr(peer_module, "RTCPeerConnection", RecordingConnection)
     client = phone_client_peer()
-    peer = await aiortc_peer_factory(lan.network)(await client.offer(), PeerEvents(lambda: None, lambda _: None))
+    create = aiortc_peer_factory(lan.network, opened_pipeline())
+    peer = await create(await client.offer(), PeerEvents(lambda: None, lambda _: None))
     await peer.close()
     await client.connection.close()
 
@@ -216,13 +261,14 @@ async def test_pairing_token_never_appears_in_logs(
     tmp_path: Path,
     web_dist: Path,
     lan: LanInterface,
+    pipeline: FramePipeline,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     settings = Settings(data_dir=tmp_path, web_dist=web_dist, console_port=free_port(), phone_port=free_port())
-    factory = RecordingPeerFactory(lan)
+    factory = RecordingPeerFactory(lan, pipeline)
     manager = SessionManager(factory)
     certificate = load_or_create_certificate(tmp_path, lan.ip)
-    servers = create_servers(settings, lan, certificate, manager)
+    servers = create_servers(settings, lan, certificate, services(manager, pipeline))
     capture_all_logs(caplog)
     serving = asyncio.create_task(serve(servers))
     try:
@@ -233,7 +279,7 @@ async def test_pairing_token_never_appears_in_logs(
                 base_url=f"https://{lan.ip}:{settings.phone_port}", verify=trusting(certificate.certificate_path)
             ) as phone,
         ):
-            result = await run_pairing_flow(console, phone, factory)
+            result = await run_pairing_flow(console, phone, factory, pipeline)
     finally:
         for server in servers:
             server.should_exit = True

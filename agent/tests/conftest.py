@@ -8,8 +8,12 @@ from fastapi import FastAPI
 from tests.fakes import FakePeerFactory
 from wcam.app import create_console_app, create_phone_app, phone_page_url
 from wcam.config import Settings
+from wcam.media.pipeline import FramePipeline
 from wcam.network.lan import LanInterface
+from wcam.process_monitor import CpuMonitor
+from wcam.services import AgentServices
 from wcam.sessions.manager import SessionManager
+from wcam.virtualcam.fake_sink import FakeSink
 
 LAN = LanInterface(IPv4Address("192.168.0.10"), IPv4Network("192.168.0.0/24"))
 PHONE_IN_LAN = "192.168.0.23"
@@ -39,13 +43,27 @@ def phone_client(app: FastAPI, client_ip: str = PHONE_IN_LAN) -> httpx.AsyncClie
     return httpx.AsyncClient(transport=transport, base_url=f"https://{LAN.ip}:8443")
 
 
-def console_app(settings: Settings, manager: SessionManager | None = None) -> FastAPI:
-    return create_console_app(settings, manager or fake_manager(), phone_page_url(settings, LAN))
+def console_app(
+    settings: Settings,
+    manager: SessionManager | None = None,
+    pipeline: FramePipeline | None = None,
+) -> FastAPI:
+    return create_console_app(settings, services(manager, pipeline), phone_page_url(settings, LAN))
 
 
 def phone_app(settings: Settings, manager: SessionManager | None = None) -> FastAPI:
-    return create_phone_app(settings, LAN, manager or fake_manager())
+    return create_phone_app(settings, LAN, services(manager))
+
+
+def services(manager: SessionManager | None = None, pipeline: FramePipeline | None = None) -> AgentServices:
+    return AgentServices(manager or fake_manager(), pipeline or opened_pipeline(), CpuMonitor())
 
 
 def fake_manager() -> SessionManager:
     return SessionManager(FakePeerFactory())
+
+
+def opened_pipeline(sink: FakeSink | None = None) -> FramePipeline:
+    pipeline = FramePipeline(sink or FakeSink())
+    pipeline.open()
+    return pipeline
