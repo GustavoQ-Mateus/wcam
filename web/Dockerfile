@@ -1,4 +1,4 @@
-FROM node:24-slim
+FROM node:26-slim
 WORKDIR /app/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
