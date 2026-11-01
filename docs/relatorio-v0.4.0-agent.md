@@ -34,7 +34,7 @@ Branch: `feature/camera-virtual-agent`
 - `agent/typings/pyvirtualcam/__init__.pyi`: stub mínimo, porque o pyvirtualcam não traz `py.typed` e o pyright strict exige tipos.
 - Versão 0.4.0 no `pyproject.toml` e no `uv.lock`.
 
-Commits: `52cb4c5`, `611afda`, `debf4d6`, `1f01c4e` e o deste relatório.
+Commits: `52cb4c5`, `611afda`, `debf4d6`, `1f01c4e`, `689df30` (relatório) e a atualização deste relatório depois da revisão.
 
 ### Formato I420 do pyvirtualcam
 
@@ -66,6 +66,9 @@ Compose, do lado do agent:
 4. CA 3, risco para a sessão web. A medição está certa: codificando a referência com libvpx em tempo real, a 10 Mbit/s o SSIM dá 0,996 a 0,997, e a 2,5 Mbit/s fica entre 0,971 e 0,993. Mas um cliente aiortc enviando a referência no compose deu 0,855, porque o encoder do aiortc trabalha a cerca de 0,3 a 3 Mbit/s. O Chromium do e2e deve passar se o estimador de banda do aiortc (o receptor) deixar o bitrate subir. Se o e2e ficar abaixo de 0,98, olhar `session.video.bitrateKbps`: abaixo de alguns Mbit/s, o gargalo é o estimador, e não a referência. Isso vira decisão de spec.
 5. No Windows, um cliente aiortc enviando a referência para o IP da LAN da própria máquina não entrega nenhum quadro: rajadas de 120 a 150 pacotes por quadro-chave, sem controle de envio, se perdem. Com quadro liso funciona, e no Linux (compose) a referência funciona. É limite da ferramenta de teste, não do agente; o celular real da v0.3.0 entregou 1080p.
 6. Quadro de espera com Y=16 (preto em faixa limitada), não Y=0. No consumidor DirectShow ele aparece como luma 0.
+   - Conferido a pedido da revisão. Um script publicou pelo pyvirtualcam I420 com Y constante, e o leitor DirectShow leu os bytes crus do plano Y do NV12, sem conversão. Enviado 120, 16, 0, 235 e 255; lido 120, 16, 0, 235 e 255 (mínimo, média e máximo iguais), com U e V em 128,0.
+   - Conclusão: nem o pyvirtualcam nem o driver do OBS mexem na faixa; os bytes passam intactos.
+   - A expansão (120 virando 121,0, e 16 e 235 virando 0 e 255) acontece só quando o PyAV converte NV12 para `gray`, tratando o quadro como faixa limitada (`color_range` não especificado). É a convenção do NV12 em DirectShow e Media Foundation, então Y=16 é o preto que os apps devem mostrar.
 7. `cpuPercent` dividido pelo número de CPUs. Sem a divisão, um núcleo inteiro daria 100% e o valor poderia passar de 100.
 8. `quality` com referência definida e nenhum quadro medido: `{"ssim": null, "minimum": null, "frames": 0}`, como você aprovou.
 9. O terminal usa as chaves `console.virtual_camera_<motivo>` para o `{reason}` de `terminal.virtual_camera_unavailable`, sem chave nova.
@@ -77,5 +80,9 @@ Compose, do lado do agent:
 
 ## 5. Perguntas para o orquestrador
 
-1. Se o e2e de qualidade ficar abaixo de 0,98 por bitrate (§3, item 4), o caminho é ajustar a referência ou ajustar o estimador de banda do aiortc (o que pode virar trabalho de agent)? Hoje nada indica que seja preciso; registro para não decidir sozinho.
-2. O teste com driver ausente de verdade (desinstalar ou renomear o OBS) não foi feito, porque mexeria na máquina do usuário. Basta o teste automático e a mensagem nativa confirmada no binário?
+Respondidas na revisão:
+- Se o e2e de qualidade falhar por bitrate, o ajuste é no agente (estimador de banda e REMB do aiortc), sem mudar a referência nem o limite.
+- Para driver ausente, basta o teste automático.
+- A faixa de cor foi conferida em bytes crus (§3, item 6).
+
+Nenhuma pergunta aberta.
