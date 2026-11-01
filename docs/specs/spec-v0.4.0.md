@@ -73,7 +73,7 @@ Nesta versão o quadro de espera é preto puro, sem texto: é o que os apps já 
 Medição automática:
 - Com `WCAM_QUALITY_REFERENCE` definido, o agente lê o arquivo `.y4m` de referência (1920x1080, um quadro estático de alto detalhe) e compara cada quadro entregue ao sink com ele: SSIM no plano Y, janela de 8x8, implementado com numpy. Os quadros dos primeiros 3 s da sessão `live` são ignorados, enquanto o codificador estabiliza.
 - `quality` no status: `{"ssim": <média>, "minimum": <menor>, "frames": <quantos>}`.
-- O arquivo de referência é gerado por um script do agente (`python -m wcam.tools.make_reference <saida.y4m>`), deterministicamente, com padrão de alto detalhe (texto fino, linhas de 1 px, gradientes, ruído). Ele não é commitado.
+- O arquivo de referência é gerado por um script do agente (`python -m wcam.tools.make_reference <saida.y4m>`), deterministicamente, com padrão de alto detalhe representativo de imagem de câmera: texto fino, linhas de 1 px, gradientes e uma textura fina estruturada, estática, com detalhe de 2 a 4 px (trama, como tecido). Sem ruído aleatório pixel a pixel, que nenhuma câmera entrega (o celular remove o ruído do sensor) e que o codificador de câmera do Chromium descarta por definição. Ele não é commitado.
 - No e2e, o Chromium recebe a referência como câmera falsa (`--use-file-for-fake-video-capture`), faz o fluxo completo até `live`, e o teste confere `quality.ssim >= 0.98` depois de pelo menos 30 quadros medidos.
 
 Medição real: ver CA 4 e 5.
@@ -147,6 +147,9 @@ Quadros de espera com texto, espelhar a saída, pausa, troca de câmera pelo PC 
 
 1. Quadro de espera preto puro, sem texto.
 2. Apps do CA 1 no teste do usuário: Microsoft Teams (o mais usado, peso principal), OBS Studio (instalado em `G:\obs`), um site com `getUserMedia` no Chrome e no Edge, e o Google Meet se houver conta. Zoom e Discord não estão instalados e ficam registrados como não testados.
+
+3. Durante a implementação (2026-11-01), decisão do usuário: o ruído aleatório da referência foi trocado por textura fina estruturada (opção b). Medido no e2e: linhas de 1 px, gradientes e texto ficavam entre 0,984 e 1,0000 de SSIM, e só o ruído (0,545 a 0,775) segurava a média em cerca de 0,93. O limite de 0,98 e a janela de 3 s não mudaram.
+4. Jitter buffer de vídeo do aiortc aumentado de 128 para 2048 pacotes (keyframes grandes não eram montados) e estimador de banda iniciado em 10 Mbit/s. `x-google-start-bitrate` testado e descartado (sem efeito); `x-google-min-bitrate` proibido.
 
 ## Changelog
 Vazio até a entrega.
