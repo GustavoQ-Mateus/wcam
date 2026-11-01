@@ -1,0 +1,29 @@
+.icon {
+  width: var(--illustration-size);
+  height: var(--illustration-size);
+  color: var(--ink);
+  stroke-width: var(--icon-stroke);
+}
+
+.phone {
+  transform-box: view-box;
+  transform-origin: center;
+  rotate: 90deg;
+  animation: turn var(--duration-explain) var(--ease-in-out) var(--delay-explain) both;
+}
+
+@keyframes turn {
+  from {
+    rotate: 0deg;
+  }
+
+  to {
+    rotate: 90deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phone {
+    animation: none;
+  }
+}

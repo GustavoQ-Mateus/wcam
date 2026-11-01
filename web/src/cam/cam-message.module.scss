@@ -1,0 +1,74 @@
+.message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+  max-width: var(--measure);
+  opacity: 1;
+  transition: opacity var(--duration-state) var(--ease-out);
+
+  @starting-style {
+    opacity: 0;
+  }
+
+  @media (orientation: portrait) {
+    align-items: stretch;
+  }
+}
+
+.title {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  font-size: var(--text-title);
+  font-weight: var(--weight-strong);
+  line-height: var(--line-tight);
+  letter-spacing: var(--tracking-title);
+  text-wrap: balance;
+
+  &[data-mark="failed"] {
+    color: var(--negative);
+  }
+}
+
+.mark {
+  flex: none;
+  width: var(--indicator-size);
+  height: var(--indicator-size);
+  margin-top: calc((var(--line-tight) * 1em - var(--indicator-size)) / 2);
+
+  &[data-mark="waiting"] {
+    border: var(--indicator-stroke) solid var(--muted);
+    border-radius: 50%;
+    animation: pulse var(--duration-pulse) ease-in-out infinite alternate;
+  }
+
+  &[data-mark="failed"] {
+    background: var(--negative);
+  }
+}
+
+.body {
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.actionSlot {
+  height: var(--button-height);
+}
+
+.message > :last-child:is(button, .actionSlot) {
+  margin-top: var(--space-2);
+}
+
+@keyframes pulse {
+  to {
+    opacity: var(--opacity-dimmed);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark[data-mark="waiting"] {
+    animation: none;
+  }
+}
