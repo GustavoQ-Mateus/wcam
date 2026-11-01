@@ -1,0 +1,28 @@
+.mark {
+  flex: none;
+  width: var(--indicator-size);
+  height: var(--indicator-size);
+  margin-top: calc((var(--line-tight) * 1em - var(--indicator-size)) / 2);
+
+  &[data-mark="waiting"] {
+    border: var(--indicator-stroke) solid var(--muted);
+    border-radius: 50%;
+    animation: pulse var(--duration-pulse) ease-in-out infinite alternate;
+  }
+
+  &[data-mark="failed"] {
+    background: var(--negative);
+  }
+}
+
+@keyframes pulse {
+  to {
+    opacity: var(--opacity-dimmed);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark[data-mark="waiting"] {
+    animation: none;
+  }
+}

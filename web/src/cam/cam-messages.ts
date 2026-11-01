@@ -1,12 +1,9 @@
-import type { CamState, UnavailableReason } from "../data/cam-state";
+import type { BlockedReason, CamState, EndedReason, LiveCamState, UnavailableReason } from "../data/cam-state";
 import type { MessageKey } from "../data/i18n";
 import { t } from "../data/language";
+import type { StateMarkKind } from "./state-mark";
 
-export type MessageState = Extract<
-  CamState,
-  { kind: "missing_pairing" | "intro" | "requesting" | "denied" | "unavailable" }
->;
-export type StateMark = "waiting" | "failed";
+export type MessageState = Exclude<CamState, LiveCamState>;
 
 export interface MessageAction {
   label: string;
@@ -16,27 +13,26 @@ export interface MessageAction {
 export interface MessageContent {
   title: string;
   body?: string;
-  mark?: StateMark;
+  mark?: StateMarkKind;
   action?: MessageAction;
   reserveAction: boolean;
 }
 
-const MESSAGE_KINDS: ReadonlySet<CamState["kind"]> = new Set([
-  "missing_pairing",
-  "intro",
-  "requesting",
-  "denied",
-  "unavailable",
-]);
 const UNAVAILABLE_KEYS: Readonly<Record<UnavailableReason, MessageKey>> = {
   unsupported: "cam.unavailable_unsupported",
   no_camera: "cam.unavailable_no_camera",
   in_use: "cam.unavailable_in_use",
 };
-
-export function isMessageState(state: CamState): state is MessageState {
-  return MESSAGE_KINDS.has(state.kind);
-}
+const BLOCKED_KEYS: Readonly<Record<BlockedReason, MessageKey>> = {
+  network: "cam.blocked_network",
+  attempts: "cam.blocked_attempts",
+};
+const ENDED_KEYS: Readonly<Record<EndedReason, MessageKey>> = {
+  rejected: "cam.ended_rejected",
+  disconnected: "cam.ended_disconnected",
+  lost: "cam.ended_lost",
+  timeout: "cam.ended_timeout",
+};
 
 export function messageFor(state: MessageState, onStart: () => void): MessageContent {
   const retry: MessageAction = { label: t("cam.retry"), onClick: onStart };
@@ -62,7 +58,21 @@ export function messageFor(state: MessageState, onStart: () => void): MessageCon
       };
     case "unavailable":
       return unavailableMessage(state.reason, retry);
+    case "pairing_failed":
+      return failedMessage("cam.pairing_failed");
+    case "blocked":
+      return failedMessage(BLOCKED_KEYS[state.reason]);
+    case "busy":
+      return failedMessage("cam.busy");
+    case "ended":
+      return state.reason === "disconnected"
+        ? { title: t(ENDED_KEYS[state.reason]), reserveAction: false }
+        : failedMessage(ENDED_KEYS[state.reason]);
   }
+}
+
+function failedMessage(key: MessageKey): MessageContent {
+  return { title: t(key), mark: "failed", reserveAction: false };
 }
 
 function unavailableMessage(reason: UnavailableReason, retry: MessageAction): MessageContent {

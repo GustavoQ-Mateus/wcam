@@ -3,7 +3,6 @@ import { isLive } from "../data/cam-state";
 import { storePairingTokenFromLocation } from "../data/pairing";
 import { isMirrored } from "../media/capture";
 import styles from "./cam-page.module.scss";
-import { isMessageState } from "./cam-messages";
 import { LiveLayer } from "./live-layer";
 import { MessageLayer } from "./message-layer";
 import { useCam } from "./use-cam";
@@ -30,7 +29,7 @@ export default function CamPage() {
           onTogglePreview={cam.togglePreview}
         />
       ) : (
-        isMessageState(state) && <MessageLayer state={state} onStart={cam.start} />
+        <MessageLayer state={state} onStart={cam.start} />
       )}
     </main>
   );

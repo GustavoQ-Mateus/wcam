@@ -9,7 +9,7 @@ interface MessageLayerProps {
 }
 
 export function MessageLayer({ state, onStart }: MessageLayerProps) {
-  const key = state.kind === "unavailable" ? `${state.kind}-${state.reason}` : state.kind;
+  const key = "reason" in state ? `${state.kind}-${state.reason}` : state.kind;
   return (
     <div className={styles.layer} aria-live="polite">
       <h1 className={styles.brand}>{t("app.name")}</h1>
