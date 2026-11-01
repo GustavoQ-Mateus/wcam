@@ -1,0 +1,21 @@
+{
+  "app.name": "WCam",
+  "terminal.title": "WCam {version}",
+  "terminal.console_address": "Console neste computador: {url}",
+  "terminal.phone_address": "Página do celular: {url}",
+  "terminal.fingerprint": "Impressão digital do certificado (SHA-256): {fingerprint}",
+  "terminal.scan_hint": "Leia este QR code com a câmera do celular. Na primeira vez, o navegador avisa sobre o certificado: confira se a impressão digital é a mesma e continue.",
+  "terminal.stop_hint": "Pressione Ctrl+C para parar.",
+  "terminal.stopped": "WCam parado.",
+  "terminal.no_lan": "Nenhuma rede local encontrada. Conecte este computador ao Wi-Fi e tente de novo.",
+  "console.status_checking": "Verificando o agente",
+  "console.status_running": "Agente ativo, versão {version}",
+  "cam.pair_instruction": "Abra o WCam no computador e leia o QR code com a câmera deste celular.",
+  "errors.network_error": "O agente não está respondendo. Confira se o WCam está aberto.",
+  "errors.not_same_network": "Este aparelho não está na mesma rede que o computador.",
+  "errors.invalid_host": "Este endereço não é permitido. Abra o WCam pelo link que ele mostra.",
+  "errors.web_not_built": "A interface ainda não foi gerada.",
+  "errors.not_found": "Esta página não existe.",
+  "errors.internal_error": "Algo deu errado no agente.",
+  "errors.unknown": "Algo deu errado."
+}
