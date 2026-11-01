@@ -1,6 +1,8 @@
 import argparse
 import asyncio
+import io
 import sys
+from typing import TextIO
 
 import segno
 
@@ -18,6 +20,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="wcam")
     parser.add_argument("--version", action="version", version=f"wcam {__version__}")
     parser.parse_args()
+    use_utf8_output(sys.stdout)
     settings = Settings()
     messages = load_messages(settings.locales_dir, resolve_language(system_language_tag()))
     try:
@@ -31,6 +34,11 @@ def main() -> None:
     print_banner(messages, console_url, phone_url, certificate)
     asyncio.run(serve(create_servers(settings, lan, certificate)))
     print(messages.text("terminal.stopped"))
+
+
+def use_utf8_output(stream: TextIO) -> None:
+    if isinstance(stream, io.TextIOWrapper):
+        stream.reconfigure(encoding="utf-8")
 
 
 def print_banner(messages: Messages, console_url: str, phone_url: str, certificate: TlsCertificate) -> None:
