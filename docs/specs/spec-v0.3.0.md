@@ -1,6 +1,6 @@
 # Spec v0.3.0, Pareamento e WebRTC
 
-Status: Draft
+Status: Aprovada (2026-11-01)
 Branch de integração: `feature/pareamento`
 Sessões: `agent` e `web`, em paralelo
 Referências: `docs/planejamento.md` §1 (CA-2, CA-4), §4 (fluxo e segurança), §5.2 a §5.4; ADRs 0003, 0004, 0009 e 0010
