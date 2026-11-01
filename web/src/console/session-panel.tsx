@@ -12,6 +12,7 @@ interface SessionPanelProps {
   onDisconnect: () => void;
 }
 
+const CODE_SEPARATOR = "-";
 const TITLE_KEYS: Readonly<Record<Session["state"], MessageKey>> = {
   connecting: "console.state_connecting",
   awaiting_confirmation: "console.confirm_title",
@@ -30,7 +31,16 @@ export function SessionPanel({ session, onConfirm, onReject, onDisconnect }: Ses
         <span>{session.deviceName ?? t("console.device_unknown")}</span>
         <span>{session.remoteIp}</span>
       </p>
-      {awaiting && session.confirmationCode && <p className={styles.code}>{session.confirmationCode}</p>}
+      {awaiting && session.confirmationCode && (
+        <p className={styles.code}>
+          <span className="visually-hidden">{session.confirmationCode}</span>
+          {session.confirmationCode.split(CODE_SEPARATOR).map((group, index) => (
+            <span key={index} aria-hidden="true">
+              {group}
+            </span>
+          ))}
+        </p>
+      )}
       {session.video && <p className={styles.video}>{t("console.video_format", videoFormatValues(session.video))}</p>}
       <div className={styles.actions}>
         {awaiting ? (

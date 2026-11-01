@@ -42,6 +42,8 @@
 }
 
 .code {
+  display: flex;
+  gap: var(--space-3);
   font-size: var(--text-code-console);
   font-weight: var(--weight-strong);
   line-height: var(--line-tight);
