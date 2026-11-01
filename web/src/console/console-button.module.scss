@@ -1,0 +1,21 @@
+.button {
+  min-height: var(--hit-min);
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-pill);
+  font-weight: var(--weight-strong);
+  transition: transform var(--duration-press) var(--ease-out);
+
+  &[data-variant="primary"] {
+    background: var(--ink);
+    color: var(--ground);
+  }
+
+  &[data-variant="secondary"] {
+    background: var(--raised);
+    color: var(--ink);
+  }
+
+  &:active {
+    transform: scale(var(--scale-press));
+  }
+}

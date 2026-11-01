@@ -45,3 +45,8 @@
     background: var(--negative);
   }
 }
+
+.error {
+  max-width: var(--measure);
+  color: var(--negative);
+}

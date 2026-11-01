@@ -1,4 +1,4 @@
-import type { CreateSessionRequest, CreateSessionResponse, ErrorBody, Health } from "./contract";
+import type { CreateSessionRequest, CreateSessionResponse, ErrorBody, Health, PairingWindow, Status } from "./contract";
 
 export interface RequestOptions {
   method?: "GET" | "POST" | "DELETE";
@@ -28,6 +28,26 @@ export function fetchHealth(signal?: AbortSignal): Promise<Health> {
 
 export function createSession(request: CreateSessionRequest): Promise<CreateSessionResponse> {
   return requestJson<CreateSessionResponse>("/api/sessions", { method: "POST", body: request });
+}
+
+export function fetchStatus(signal: AbortSignal): Promise<Status> {
+  return requestJson<Status>("/api/status", { signal });
+}
+
+export function openPairing(): Promise<PairingWindow> {
+  return requestJson<PairingWindow>("/api/pairing", { method: "POST" });
+}
+
+export function confirmSession(): Promise<null> {
+  return requestJson<null>("/api/sessions/current/confirm", { method: "POST" });
+}
+
+export function rejectSession(): Promise<null> {
+  return requestJson<null>("/api/sessions/current/reject", { method: "POST" });
+}
+
+export function disconnectSession(): Promise<null> {
+  return requestJson<null>("/api/sessions/current", { method: "DELETE" });
 }
 
 export async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
