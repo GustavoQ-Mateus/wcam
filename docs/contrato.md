@@ -183,6 +183,14 @@ Variáveis de ambiente (somam-se à tabela abaixo):
 | `WCAM_VIRTUAL_CAMERA` | `auto` | `auto` (Windows usa `obs`, o resto usa `fake`), `obs` ou `fake` |
 | `WCAM_QUALITY_REFERENCE` | vazio | caminho de um arquivo `.y4m` de referência; liga a medição de SSIM |
 
+## Qualidade (`quality`)
+
+Medição automática:
+- Com `WCAM_QUALITY_REFERENCE` definido, o agente lê o arquivo `.y4m` de referência (1920x1080, um quadro estático de alto detalhe) e compara cada quadro entregue ao sink com ele: SSIM no plano Y, janela de 8x8, implementado com numpy. Os quadros dos primeiros 3 s da sessão `live` são ignorados, enquanto o codificador estabiliza.
+- `quality` no status: `{"ssim": <média>, "minimum": <menor>, "frames": <quantos>}`.
+- O arquivo de referência é gerado por um script do agente (`python -m wcam.tools.make_reference <saida.y4m>`), deterministicamente, com padrão de alto detalhe (texto fino, linhas de 1 px, gradientes, ruído). Ele não é commitado.
+- No e2e, o Chromium recebe a referência como câmera falsa (`--use-file-for-fake-video-capture`), faz o fluxo completo até `live`, e o teste confere `quality.ssim >= 0.98` depois de pelo menos 30 quadros medidos.
+
 ## Variáveis de ambiente do agente
 
 | Variável | Padrão | Uso |
@@ -202,3 +210,4 @@ Variáveis de ambiente (somam-se à tabela abaixo):
 |---|---|
 | `E2E_CONSOLE_URL` | `http://agent:8080` |
 | `E2E_PHONE_URL` | `https://agent:8443` |
+| `E2E_QUALITY_REFERENCE` | caminho do `.y4m` de referência dentro do container `e2e`, o mesmo arquivo de `WCAM_QUALITY_REFERENCE` no `agent` |
