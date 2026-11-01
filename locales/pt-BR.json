@@ -4,7 +4,7 @@
   "terminal.console_address": "Console neste computador: {url}",
   "terminal.phone_address": "Página do celular: {url}",
   "terminal.fingerprint": "Impressão digital do certificado (SHA-256): {fingerprint}",
-  "terminal.scan_hint": "Leia este QR code com a câmera do celular. Na primeira vez, o navegador avisa sobre o certificado: confira se a impressão digital é a mesma e continue.",
+  "terminal.scan_hint": "Na primeira vez, o navegador avisa sobre o certificado: confira se a impressão digital é a mesma e continue.",
   "terminal.stop_hint": "Pressione Ctrl+C para parar.",
   "terminal.stopped": "WCam parado.",
   "terminal.no_lan": "Nenhuma rede local encontrada. Conecte este computador ao Wi-Fi e tente de novo.",

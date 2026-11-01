@@ -4,7 +4,7 @@
   "terminal.console_address": "Console on this computer: {url}",
   "terminal.phone_address": "Phone page: {url}",
   "terminal.fingerprint": "Certificate fingerprint (SHA-256): {fingerprint}",
-  "terminal.scan_hint": "Scan this QR code with your phone camera. The first time, the browser warns about the certificate: check that the fingerprint matches and continue.",
+  "terminal.scan_hint": "The first time, the browser warns about the certificate: check that the fingerprint matches and continue.",
   "terminal.stop_hint": "Press Ctrl+C to stop.",
   "terminal.stopped": "WCam stopped.",
   "terminal.no_lan": "No local network found. Connect this computer to Wi-Fi and try again.",
