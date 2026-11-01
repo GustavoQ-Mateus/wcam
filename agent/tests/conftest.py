@@ -5,8 +5,11 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from tests.fakes import FakePeerFactory
+from wcam.app import create_console_app, create_phone_app, phone_page_url
 from wcam.config import Settings
 from wcam.network.lan import LanInterface
+from wcam.sessions.manager import SessionManager
 
 LAN = LanInterface(IPv4Address("192.168.0.10"), IPv4Network("192.168.0.0/24"))
 PHONE_IN_LAN = "192.168.0.23"
@@ -34,3 +37,15 @@ def console_client(app: FastAPI) -> httpx.AsyncClient:
 def phone_client(app: FastAPI, client_ip: str = PHONE_IN_LAN) -> httpx.AsyncClient:
     transport = httpx.ASGITransport(app=app, client=(client_ip, CLIENT_PORT))
     return httpx.AsyncClient(transport=transport, base_url=f"https://{LAN.ip}:8443")
+
+
+def console_app(settings: Settings, manager: SessionManager | None = None) -> FastAPI:
+    return create_console_app(settings, manager or fake_manager(), phone_page_url(settings, LAN))
+
+
+def phone_app(settings: Settings, manager: SessionManager | None = None) -> FastAPI:
+    return create_phone_app(settings, LAN, manager or fake_manager())
+
+
+def fake_manager() -> SessionManager:
+    return SessionManager(FakePeerFactory())

@@ -1,6 +1,7 @@
 import type { MessageContent } from "./cam-messages";
 import styles from "./cam-message.module.scss";
 import { PrimaryButton } from "./primary-button";
+import { StateMark } from "./state-mark";
 
 interface CamMessageProps {
   content: MessageContent;
@@ -12,7 +13,7 @@ export function CamMessage({ content }: CamMessageProps) {
   return (
     <section className={styles.message}>
       <Title className={styles.title} data-mark={mark}>
-        {mark && <span className={styles.mark} data-mark={mark} aria-hidden="true" />}
+        {mark && <StateMark kind={mark} />}
         {title}
       </Title>
       {body && <p className={styles.body}>{body}</p>}

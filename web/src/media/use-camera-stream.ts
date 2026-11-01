@@ -5,8 +5,10 @@ import { captureConstraints, captureFormat, oppositeFacing } from "./capture";
 export interface CameraStream {
   facing: Facing;
   opening: boolean;
+  track: MediaStreamTrack | null;
   open: () => void;
   switchCamera: () => void;
+  stop: () => void;
 }
 
 const INITIAL_FACING: Facing = "user";
@@ -17,6 +19,7 @@ export function useCameraStream(
 ): CameraStream {
   const [facing, setFacing] = useState<Facing>(INITIAL_FACING);
   const [opening, setOpening] = useState(false);
+  const [track, setTrack] = useState<MediaStreamTrack | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const facingRef = useRef<Facing>(INITIAL_FACING);
   const requestRef = useRef(0);
@@ -43,6 +46,7 @@ export function useCameraStream(
         facingRef.current = nextFacing;
         setFacing(nextFacing);
         setOpening(false);
+        setTrack(videoTrack(stream) ?? null);
         onEvent({ type: "granted", capture: captureFormat(videoTrack(stream)?.getSettings() ?? {}, frame), frame });
         videoTrack(stream)?.addEventListener("ended", () => {
           reopenRef.current();
@@ -71,6 +75,14 @@ export function useCameraStream(
     };
   }, [reopenWhenVisible]);
 
+  const stop = useCallback(() => {
+    requestRef.current++;
+    stopStream(streamRef.current);
+    streamRef.current = null;
+    setTrack(null);
+    setOpening(false);
+  }, []);
+
   useEffect(
     () => () => {
       requestRef.current++;
@@ -82,8 +94,10 @@ export function useCameraStream(
   return {
     facing,
     opening,
+    track,
     open: () => void openCamera(facingRef.current),
     switchCamera: () => void openCamera(oppositeFacing(facingRef.current)),
+    stop,
   };
 }
 
