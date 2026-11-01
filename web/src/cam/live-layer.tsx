@@ -1,4 +1,5 @@
 import type { LiveCamState } from "../data/cam-state";
+import { t } from "../data/language";
 import { CaptureControls } from "./capture-controls";
 import { CaptureReadout } from "./capture-readout";
 import { PreviewCover } from "./preview-cover";
@@ -20,6 +21,7 @@ export function LiveLayer({ state, showNotice, onDismissNotice, onSwitchCamera, 
   const previewOff = state.kind === "preview_off";
   return (
     <>
+      <h1 className="visually-hidden">{t("app.name")}</h1>
       <PreviewCover visible={previewOff} onShow={onTogglePreview} />
       <CaptureReadout capture={state.capture} dimmed={previewOff} />
       <CaptureControls dimmed={previewOff} onPreviewOff={onTogglePreview} onSwitchCamera={onSwitchCamera} />

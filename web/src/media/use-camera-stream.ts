@@ -99,10 +99,10 @@ async function attachStream(video: HTMLVideoElement | null, stream: MediaStream)
     throw new TypeError("Viewfinder video is not mounted");
   }
   video.srcObject = stream;
-  if (video.readyState < HTMLMediaElement.HAVE_METADATA) {
-    await new Promise((resolve) => video.addEventListener("loadedmetadata", resolve, { once: true }));
+  if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    await new Promise((resolve) => video.addEventListener("loadeddata", resolve, { once: true }));
   }
-  await video.play();
+  await video.play().catch(() => undefined);
   return { width: video.videoWidth, height: video.videoHeight };
 }
 
