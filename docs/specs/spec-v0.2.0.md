@@ -1,6 +1,6 @@
 # Spec v0.2.0, Captura no celular
 
-Status: Draft
+Status: Aprovada (2026-11-01)
 Branch de integração: `feature/captura`
 Sessões: `web` (implementa). A sessão `agent` não tem trabalho nesta versão.
 Referências: `docs/planejamento.md` §1 (CA-2, CA-3), §5.1, §5.3 e §5.6; ADR 0007
@@ -137,6 +137,9 @@ Envio de vídeo, pareamento real, código de confirmação, pausa, console, band
 11. Verificação completa do web sem erros nem avisos, e2e verde no compose, CI verde.
 12. `impeccable audit` da `/cam` sem pendência crítica, registrado no relatório.
 
-## Decisões em aberto para o usuário
+## Decisões registradas na aprovação
 
-1. Aparelhos de teste: qual celular Android (e iPhone, se houver) entram no CA 2.
+1. Aparelhos de teste do CA 2: escolhidos pelo usuário no momento do teste e registrados no changelog.
+
+## Changelog
+Vazio até a entrega.
