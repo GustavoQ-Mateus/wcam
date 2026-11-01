@@ -4,6 +4,7 @@ import httpx
 from fastapi import HTTPException
 
 from tests.conftest import LAN, console_client, phone_client
+from wcam import __version__
 from wcam.app import create_console_app, create_phone_app, create_servers
 from wcam.config import Settings
 from wcam.network.certificates import load_or_create_certificate
@@ -14,7 +15,7 @@ async def test_console_health_reports_console_surface(settings: Settings) -> Non
         response = await client.get("/api/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": "0.1.0", "surface": "console"}
+    assert response.json() == {"status": "ok", "version": __version__, "surface": "console"}
 
 
 async def test_phone_health_reports_phone_surface(settings: Settings) -> None:
