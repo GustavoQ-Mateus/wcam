@@ -1,0 +1,44 @@
+services:
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    environment:
+      WCAM_CONSOLE_BIND: 0.0.0.0
+      WCAM_EXTRA_ALLOWED_HOSTS: '["agent:8080","agent:8443"]'
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8443:8443"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    environment:
+      VITE_AGENT_URL: http://agent:8080
+    volumes:
+      - ./web:/app/web
+      - ./locales:/app/locales
+      - /app/web/node_modules
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      agent:
+        condition: service_healthy
+
+  e2e:
+    profiles: [e2e]
+    build:
+      context: .
+      dockerfile: web/e2e.Dockerfile
+    environment:
+      E2E_CONSOLE_URL: http://agent:8080
+      E2E_PHONE_URL: https://agent:8443
+    depends_on:
+      agent:
+        condition: service_healthy
