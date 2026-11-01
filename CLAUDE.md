@@ -57,6 +57,7 @@ Geral
 - Métodos curtos, uma responsabilidade. Trecho que pediria comentário vira método com nome.
 - Sem número mágico: constante com nome ou configuração.
 - Nomes descritivos, sem abreviação. Código em inglês.
+- Texto de interface fala a língua de quem usa, não a da arquitetura. Para o usuário existem "o WCam no computador" e "o celular"; nunca "agente", "servidor", "sessão", "token", "pareamento", "requisição", "interface" ou nomes de protocolo. Métricas técnicas (fps, bitrate, codec, CPU) só numa área de detalhes, nunca na mensagem principal. Glossário em `docs/planejamento.md` §5.7.
 - Interface em inglês e português do Brasil. Nenhum texto de interface escrito no código: tudo em `locales/en.json` e `locales/pt-BR.json`, usados pelo web e pela bandeja. Chave nova entra nos dois arquivos no mesmo commit.
 
 Python
