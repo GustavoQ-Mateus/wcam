@@ -1,0 +1,22 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 100dvh;
+  padding: max(var(--space-6), env(safe-area-inset-top)) max(var(--space-6), env(safe-area-inset-right))
+    max(var(--space-12), env(safe-area-inset-bottom)) max(var(--space-6), env(safe-area-inset-left));
+  user-select: none;
+}
+
+.name {
+  font-size: var(--text-body);
+  font-weight: var(--weight-strong);
+  color: var(--muted);
+}
+
+.instruction {
+  max-width: var(--measure);
+  font-size: var(--text-lead);
+  line-height: var(--line-tight);
+  text-wrap: balance;
+}

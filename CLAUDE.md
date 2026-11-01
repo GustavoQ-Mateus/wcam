@@ -22,6 +22,11 @@ Monorepo único, conta `GustavoQ-Mateus` no GitHub.
 | `installer` | Inno Setup | Instalador Windows e regra de firewall |
 | raiz | Docker Compose | Ambiente de desenvolvimento e CI |
 
+## Papéis das sessões
+- A sessão aberta na raiz é o **orquestrador**: define escopo e contrato, escreve planejamento, specs, ADRs e handoffs, revisa diffs contra a spec e contra este arquivo e roda a revisão antes do PR. Não implementa código.
+- As sessões **implementadoras** são abertas pelo usuário, cada uma no seu escopo, e só mexem nele. O orquestrador envia o trabalho por `docs/handoff-*.md` e recebe o fechamento por `docs/relatorio-*.md`.
+- Mudança que atravessa escopos (contrato, chave de idioma compartilhada, porta, variável de ambiente) é decidida pelo orquestrador e registrada na spec e no handoff antes do código.
+
 ## Specs e ADRs (Specification-Driven Development)
 - A fonte da verdade de cada trabalho é a spec aprovada em `docs/specs/spec-vX.Y.Z.md`, mais as ADRs em `docs/adr/`. Só implemente o que a spec pede; escopo novo vira nova versão da spec antes de virar código. Se a spec for ambígua ou contradizer o código, pergunte antes de implementar.
 - Versionamento SemVer: MAJOR muda contrato ou arquitetura de forma incompatível, MINOR adiciona escopo compatível, PATCH corrige detalhe. Cada versão é um arquivo novo; nunca reescreva uma spec já entregue.
@@ -94,7 +99,9 @@ Testes
 - No estado final da branch (depois de `git merge origin/main`), rodar a verificação completa acima, `npm run test:e2e` (Playwright com câmera falsa do Chromium) e o fluxo real: `uv run wcam`, escanear o QR com o celular, ver a imagem no console e conferir a câmera virtual nos apps do CA-1 que a spec tocar. Registrar o resultado no changelog da spec. Falhou um CA, não abre PR.
 
 ## Git flow
-- `main` é a linha estável. Cada spec tem sua branch `feature/<nome-curto>` criada a partir de `origin/main`, com PR para `main`. Nunca commit ou push direto na `main`, nunca force push.
+- `main` é a linha estável. Cada spec tem sua branch de integração `feature/<nome-curto>` criada a partir de `origin/main`, com PR para `main`. Nunca commit ou push direto na `main`, nunca force push.
+- Na branch de integração o orquestrador coloca o que é compartilhado (handoffs, `docs/contrato.md`, `locales/`). Cada sessão implementadora trabalha em `feature/<nome-curto>-<sessão>` (`-agent`, `-web`), criada a partir da integração, num worktree próprio em `.worktrees/<sessão>`, com PR para a branch de integração. Só a sessão dona mexe no seu worktree.
+- `.worktrees/` fica fora do git, do contexto Docker e da busca do editor.
 - Ao entregar uma versão da spec, tag `vX.Y.Z` no merge.
 - PR: título no padrão do commit. Corpo:
   ```
@@ -105,7 +112,7 @@ Testes
   <frase curta por mudança, dizendo o que mudou e como era antes>
   ```
   Sem a linha "Generated with Claude Code" e sem referência a Claude ou Anthropic.
-- O `gh` local está logado em `Gustavo-QMateus`, mas o remote é da `GustavoQ-Mateus`. Confira a conta antes de push ou PR.
+- O `gh` local tem duas contas, `GustavoQ-Mateus` e `Gustavo-QMateus`. O remote é da `GustavoQ-Mateus`; confira com `gh auth status` que ela é a ativa antes de push ou PR.
 
 ## Commits
 - Curtos, uma linha, Conventional Commits: `tipo(escopo): descrição`. Escopos: `agent`, `web`, `docs`, `ci`.
