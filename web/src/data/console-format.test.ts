@@ -21,7 +21,17 @@ describe("console format", () => {
     });
   });
 
-  it("qr svg becomes an image data url", () => {
-    expect(svgDataUrl('<svg a="1"/>')).toBe("data:image/svg+xml;charset=utf-8,%3Csvg%20a%3D%221%22%2F%3E");
+  it("qr svg without namespace becomes a standalone image data url", () => {
+    const url = svgDataUrl('<svg viewBox="0 0 1 1"/>');
+
+    expect(decodeURIComponent(url)).toBe(
+      'data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>',
+    );
+  });
+
+  it("qr svg that already has a namespace is kept as it is", () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"/>';
+
+    expect(decodeURIComponent(svgDataUrl(svg))).toBe(`data:image/svg+xml;charset=utf-8,${svg}`);
   });
 });
