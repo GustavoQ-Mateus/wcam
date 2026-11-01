@@ -45,7 +45,7 @@ test("phone and computer show the same code and the phone goes live after confir
 
   expect((await request.post(consoleUrl("/api/sessions/current/confirm"))).status()).toBe(NO_CONTENT_STATUS);
 
-  await expect(page.getByText(translate("en", "cam.live"))).toBeVisible();
+  await expect(page.getByText(translate("en", "cam.live")).first()).toBeVisible();
   const settings = await trackSettings(page);
   const format = translate("en", "cam.capture_format", {
     width: String(settings.width),
@@ -61,12 +61,12 @@ test("phone and computer show the same code and the phone goes live after confir
 test("turning the preview off while live keeps the track live and the tally on", async ({ page, request }) => {
   await reachConfirmation(page, request);
   await request.post(consoleUrl("/api/sessions/current/confirm"));
-  await expect(page.getByText(translate("en", "cam.live"))).toBeVisible();
+  await expect(page.getByText(translate("en", "cam.live")).first()).toBeVisible();
 
   await page.getByRole("button", { name: translate("en", "cam.preview_off") }).click();
 
   await expect(page.getByText(translate("en", "cam.preview_hidden"))).toBeVisible();
-  await expect(page.getByText(translate("en", "cam.live"))).toBeVisible();
+  await expect(page.getByText(translate("en", "cam.live")).first()).toBeVisible();
   expect((await trackSettings(page)).readyState).toBe("live");
 });
 

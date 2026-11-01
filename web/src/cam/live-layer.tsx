@@ -30,7 +30,7 @@ export function LiveLayer({ state, showNotice, onDismissNotice, onSwitchCamera, 
   return (
     <>
       <ScrimLayer visible={prompt !== null} contentKey={prompt?.key ?? "none"}>
-        {prompt?.content}
+        {prompt?.content ?? (state.kind === "live" && <p className="visually-hidden">{t("cam.live")}</p>)}
       </ScrimLayer>
       {prompt === null && (
         <>

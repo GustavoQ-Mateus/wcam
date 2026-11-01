@@ -10,6 +10,12 @@
   font-size: var(--text-meta);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
+  opacity: 1;
+  transition: opacity var(--duration-state) var(--ease-out);
+
+  @starting-style {
+    opacity: 0;
+  }
 
   &[data-dimmed="true"] {
     color: var(--faint);
