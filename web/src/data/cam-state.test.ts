@@ -4,6 +4,8 @@ import { cameraFailureFromError, camReducer, initialCamState, type CamEvent, typ
 const CAPTURE = { width: 1920, height: 1080, frameRate: 30 };
 const LANDSCAPE = { width: 1920, height: 1080 };
 const PORTRAIT = { width: 1080, height: 1920 };
+const CONNECTING: CamState = { kind: "connecting", capture: CAPTURE, portrait: false };
+const LIVE: CamState = { kind: "live", capture: CAPTURE, portrait: false, previewOff: false };
 
 function run(state: CamState, ...events: CamEvent[]): CamState {
   return events.reduce(camReducer, state);
@@ -78,5 +80,79 @@ describe("cam state", () => {
     );
 
     expect(state).toEqual({ kind: "missing_pairing" });
+  });
+
+  it("cam state goes from ready to connecting when the session starts", () => {
+    const state = camReducer({ kind: "ready", capture: CAPTURE }, { type: "session_started" });
+
+    expect(state).toEqual({ kind: "connecting", capture: CAPTURE, portrait: false });
+  });
+
+  it("cam state shows the confirmation code and then goes live after confirmation", () => {
+    const awaiting = camReducer(CONNECTING, { type: "session_awaiting_confirmation", code: "92Q-M2H" });
+    const live = camReducer(awaiting, { type: "session_live" });
+
+    expect([awaiting, live]).toEqual([
+      { kind: "awaiting_confirmation", capture: CAPTURE, portrait: false, code: "92Q-M2H" },
+      { kind: "live", capture: CAPTURE, portrait: false, previewOff: false },
+    ]);
+  });
+
+  it("cam state maps each session error to its final state", () => {
+    const states = [
+      "pairing_token_invalid",
+      "pairing_token_expired",
+      "pairing_window_closed",
+      "not_same_network",
+      "too_many_attempts",
+      "session_already_active",
+      "invalid_request",
+    ].map((code) => camReducer(CONNECTING, { type: "session_failed", code }));
+
+    expect(states).toEqual([
+      { kind: "pairing_failed" },
+      { kind: "pairing_failed" },
+      { kind: "pairing_failed" },
+      { kind: "blocked", reason: "network" },
+      { kind: "blocked", reason: "attempts" },
+      { kind: "busy" },
+      { kind: "ended", reason: "lost" },
+    ]);
+  });
+
+  it("cam state ends with the reason sent by the agent", () => {
+    const states = [
+      "rejected",
+      "disconnected_by_pc",
+      "confirmation_timeout",
+      "connection_failed",
+      "disconnected_by_phone",
+    ].map((reason) => camReducer(LIVE, { type: "session_ended", reason }));
+
+    expect(states).toEqual([
+      { kind: "ended", reason: "rejected" },
+      { kind: "ended", reason: "disconnected" },
+      { kind: "ended", reason: "timeout" },
+      { kind: "ended", reason: "lost" },
+      { kind: "ended", reason: "lost" },
+    ]);
+  });
+
+  it("portrait frame during the session keeps the session and marks it portrait", () => {
+    const portrait = camReducer(LIVE, { type: "frame_changed", frame: PORTRAIT });
+    const landscape = camReducer(portrait, { type: "frame_changed", frame: LANDSCAPE });
+
+    expect([portrait, landscape]).toEqual([{ ...LIVE, portrait: true }, LIVE]);
+  });
+
+  it("live preview toggles without leaving the session", () => {
+    expect(camReducer(LIVE, { type: "preview_toggled" })).toEqual({ ...LIVE, previewOff: true });
+  });
+
+  it("final states ignore every later event", () => {
+    const ended: CamState = { kind: "ended", reason: "rejected" };
+    const state = run(ended, { type: "start" }, { type: "granted", capture: CAPTURE, frame: LANDSCAPE });
+
+    expect(state).toBe(ended);
   });
 });

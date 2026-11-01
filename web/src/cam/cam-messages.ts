@@ -1,8 +1,11 @@
-import type { CamState, LiveCamState, UnavailableReason } from "../data/cam-state";
+import type { CamState, UnavailableReason } from "../data/cam-state";
 import type { MessageKey } from "../data/i18n";
 import { t } from "../data/language";
 
-export type MessageState = Exclude<CamState, LiveCamState>;
+export type MessageState = Extract<
+  CamState,
+  { kind: "missing_pairing" | "intro" | "requesting" | "denied" | "unavailable" }
+>;
 export type StateMark = "waiting" | "failed";
 
 export interface MessageAction {
@@ -18,11 +21,22 @@ export interface MessageContent {
   reserveAction: boolean;
 }
 
+const MESSAGE_KINDS: ReadonlySet<CamState["kind"]> = new Set([
+  "missing_pairing",
+  "intro",
+  "requesting",
+  "denied",
+  "unavailable",
+]);
 const UNAVAILABLE_KEYS: Readonly<Record<UnavailableReason, MessageKey>> = {
   unsupported: "cam.unavailable_unsupported",
   no_camera: "cam.unavailable_no_camera",
   in_use: "cam.unavailable_in_use",
 };
+
+export function isMessageState(state: CamState): state is MessageState {
+  return MESSAGE_KINDS.has(state.kind);
+}
 
 export function messageFor(state: MessageState, onStart: () => void): MessageContent {
   const retry: MessageAction = { label: t("cam.retry"), onClick: onStart };
