@@ -5,8 +5,10 @@ from ipaddress import IPv4Network
 from typing import Protocol, cast
 
 from aiortc import MediaStreamTrack, RTCConfiguration, RTCDataChannel, RTCPeerConnection, RTCSessionDescription
+from aiortc.clock import current_ms
 from aiortc.jitterbuffer import JitterBuffer
 from aiortc.mediastreams import MediaStreamError
+from aiortc.rate import RemoteBitrateEstimator
 from aiortc.rtcrtpreceiver import RTCRtpReceiver
 from aiortc.stats import RTCTransportStats
 from av import VideoFrame
@@ -21,6 +23,8 @@ CONTROL_CHANNEL = "control"
 CLOSE_FLUSH_SECONDS = 0.2
 VIDEO_JITTER_BUFFER_PACKETS = 2048
 AIORTC_JITTER_BUFFER_ATTRIBUTE = "_RTCRtpReceiver__jitter_buffer"
+AIORTC_BITRATE_ESTIMATOR_ATTRIBUTE = "_RTCRtpReceiver__remote_bitrate_estimator"
+PHONE_MAX_BITRATE_BPS = 10_000_000
 
 
 class FrameSource(Protocol):
@@ -71,6 +75,7 @@ class AiortcPeer:
         offer = RTCSessionDescription(keep_candidates_in_network(offer_sdp, self._network), "offer")
         await self._connection.setRemoteDescription(offer)
         enlarge_video_jitter_buffers(self._connection)
+        start_video_estimate_at_max_bitrate(self._connection)
         await self._connection.setLocalDescription(await self._connection.createAnswer())
         self._answer_sdp = keep_candidates_in_network(self._connection.localDescription.sdp, self._network)
 
@@ -132,6 +137,19 @@ def enlarge_video_jitter_buffers(connection: RTCPeerConnection) -> None:
         if transceiver.kind == "video":
             buffer = JitterBuffer(capacity=VIDEO_JITTER_BUFFER_PACKETS, is_video=True)
             setattr(transceiver.receiver, AIORTC_JITTER_BUFFER_ATTRIBUTE, buffer)
+
+
+def start_video_estimate_at_max_bitrate(connection: RTCPeerConnection) -> None:
+    # aiortc starts its REMB from the first measured throughput and grows it 8% per second, which keeps the
+    # phone near 0.5 Mbit/s for the first minute; congestion still lowers it from here.
+    for transceiver in connection.getTransceivers():
+        if transceiver.kind == "video":
+            video_bitrate_estimator(transceiver.receiver).rate_control.set_estimate(PHONE_MAX_BITRATE_BPS, current_ms())
+
+
+def video_bitrate_estimator(receiver: RTCRtpReceiver) -> RemoteBitrateEstimator:
+    estimator: RemoteBitrateEstimator = getattr(receiver, AIORTC_BITRATE_ESTIMATOR_ATTRIBUTE)
+    return estimator
 
 
 def video_jitter_buffer_capacity(receiver: RTCRtpReceiver) -> int:

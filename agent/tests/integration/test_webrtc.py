@@ -13,13 +13,21 @@ import httpx
 import numpy as np
 import pytest
 from aiortc import RTCConfiguration, RTCDataChannel, RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
+from aiortc.rate import RemoteBitrateEstimator
 from av import VideoFrame
 
 from tests.conftest import console_app, console_client, opened_pipeline, phone_app, phone_client, services
 from wcam.app import create_servers, serve
 from wcam.config import Settings
 from wcam.media import peer as peer_module
-from wcam.media.peer import VIDEO_JITTER_BUFFER_PACKETS, AiortcPeer, aiortc_peer_factory, video_jitter_buffer_capacity
+from wcam.media.peer import (
+    PHONE_MAX_BITRATE_BPS,
+    VIDEO_JITTER_BUFFER_PACKETS,
+    AiortcPeer,
+    aiortc_peer_factory,
+    video_bitrate_estimator,
+    video_jitter_buffer_capacity,
+)
 from wcam.media.pipeline import FramePipeline, FrameSource
 from wcam.media.sdp_filter import candidate_addresses, sha256_fingerprint
 from wcam.network.certificates import load_or_create_certificate
@@ -36,6 +44,13 @@ I420_SHAPE = (HEIGHT * 3 // 2, WIDTH)
 PLACEHOLDER_DEADLINE_SECONDS = 1.0
 DETAILED_FRAME_SEED = 3
 AIORTC_DEFAULT_VIDEO_JITTER_PACKETS = 128
+ABS_SEND_TIME_FRACTION_BITS = 18
+ABS_SEND_TIME_MASK = 0xFFFFFF
+SIMULATED_PACKET_BYTES = 1200
+SIMULATED_PACKET_INTERVAL_MS = 2
+SIMULATED_DURATION_MS = 3000
+SIMULATED_SSRC = 1
+FIRST_REMB_MINIMUM_SHARE = 0.9
 UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
 
 
@@ -290,6 +305,30 @@ async def test_video_receiver_jitter_buffer_holds_large_frames(lan: LanInterface
 
     assert capacities == [VIDEO_JITTER_BUFFER_PACKETS]
     assert VIDEO_JITTER_BUFFER_PACKETS > AIORTC_DEFAULT_VIDEO_JITTER_PACKETS
+
+
+async def test_first_remb_already_announces_the_maximum_bitrate(lan: LanInterface, pipeline: FramePipeline) -> None:
+    client = phone_client_peer()
+    factory = RecordingPeerFactory(lan, pipeline)
+    await factory(await client.offer(), PeerEvents(lambda: None, lambda _: None))
+    peer = factory.peers[0]
+    receiver = next(t.receiver for t in peer.connection.getTransceivers() if t.kind == "video")
+
+    first_remb = first_remb_for_steady_stream(video_bitrate_estimator(receiver))
+    await peer.close()
+    await client.connection.close()
+
+    assert first_remb is not None
+    assert first_remb >= FIRST_REMB_MINIMUM_SHARE * PHONE_MAX_BITRATE_BPS
+
+
+def first_remb_for_steady_stream(estimator: RemoteBitrateEstimator) -> int | None:
+    for arrival_ms in range(0, SIMULATED_DURATION_MS, SIMULATED_PACKET_INTERVAL_MS):
+        abs_send_time = (arrival_ms << ABS_SEND_TIME_FRACTION_BITS) // 1000 & ABS_SEND_TIME_MASK
+        remb = estimator.add(arrival_ms, abs_send_time, SIMULATED_PACKET_BYTES, SIMULATED_SSRC)
+        if remb is not None:
+            return remb[0]
+    return None
 
 
 async def test_keyframe_larger_than_aiortc_default_buffer_is_decoded(
