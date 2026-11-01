@@ -21,6 +21,7 @@
   "console.state_connecting": "Conectando",
   "console.state_live": "Ao vivo",
   "console.video_format": "{width} × {height} · {fps} fps · {bitrate} Mbit/s",
+  "console.device_unknown": "Aparelho desconhecido",
   "cam.missing_pairing": "Leia o QR code que o WCam mostra no computador.",
   "cam.intro_title": "Use este celular como webcam",
   "cam.intro_body": "O WCam precisa da câmera. O vídeo vai só para o seu computador nesta rede e nunca é gravado.",

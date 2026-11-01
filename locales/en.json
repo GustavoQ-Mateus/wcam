@@ -21,6 +21,7 @@
   "console.state_connecting": "Connecting",
   "console.state_live": "Live",
   "console.video_format": "{width} × {height} · {fps} fps · {bitrate} Mbit/s",
+  "console.device_unknown": "Unknown device",
   "cam.missing_pairing": "Scan the QR code WCam shows on your computer.",
   "cam.intro_title": "Use this phone as your webcam",
   "cam.intro_body": "WCam needs the camera. Video only goes to your computer on this network and is never recorded.",

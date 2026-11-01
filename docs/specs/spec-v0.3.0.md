@@ -50,13 +50,17 @@ Esta seção substitui as partes correspondentes de `docs/contrato.md` na aprova
 - `state`: `connecting`, `awaiting_confirmation`, `live`. Sessão encerrada vira `null`, e o motivo do último encerramento fica em `lastEnded: {"reason", "at"}` (`rejected`, `disconnected_by_pc`, `disconnected_by_phone`, `connection_failed`, `confirmation_timeout`).
 - `confirmationCode` aparece a partir de `awaiting_confirmation`.
 - `video` é `null` até o primeiro quadro; `fps` e `bitrateKbps` são a média da última janela de 1 s, medidos pelo agente (quadros decodificados e bytes RTP recebidos), não o que o celular declara.
-- `deviceName` vem do `User-Agent`: sistema e navegador (`Android · Chrome`, `iPhone · Safari`), nunca o texto bruto.
+- `deviceName` vem do `User-Agent`: sistema e navegador (`Android · Chrome`, `iPhone · Safari`), nunca o texto bruto. Parte não reconhecida é omitida (`Android`, `Chrome`); sem nenhuma reconhecida, `null`, e o console mostra `console.device_unknown`.
+- `video` só aparece depois do Confirmar: o agente mede depois do portão. Em `connecting` e `awaiting_confirmation` é `null`.
+- `connecting` vira `awaiting_confirmation` quando o DataChannel `control` abre do lado do agente.
 
 ### Celular (`<ip-da-lan>:8443`)
 
 `POST /api/sessions` com `{"token": "...", "sdp": "<oferta completa, sem trickle>"}`:
 
 - `201 {"sessionId", "sdp": "<resposta>", "confirmationNonce": "<32 hex>"}`.
+- Ordem das checagens: bloqueio (`429`), sessão ativa (`409`), SDP (`422`) e por fim o token. Uma SDP ruim não consome o token.
+- Só `pairing_token_invalid`, `pairing_token_expired` e `pairing_window_closed` contam para o limite de tentativas.
 - Erros: `401 pairing_token_invalid` (token desconhecido, já usado ou substituído), `401 pairing_token_expired`, `403 pairing_window_closed`, `403 not_same_network`, `429 too_many_attempts`, `409 session_already_active`, `422 invalid_request` (SDP sem vídeo, sem DataChannel ou ilegível).
 
 ### DataChannel `control` (criado pelo celular)
