@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import numpy as np
 import pytest
 from aiortc import RTCConfiguration, RTCDataChannel, RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 from av import VideoFrame
@@ -18,7 +19,7 @@ from tests.conftest import console_app, console_client, opened_pipeline, phone_a
 from wcam.app import create_servers, serve
 from wcam.config import Settings
 from wcam.media import peer as peer_module
-from wcam.media.peer import AiortcPeer, aiortc_peer_factory
+from wcam.media.peer import VIDEO_JITTER_BUFFER_PACKETS, AiortcPeer, aiortc_peer_factory, video_jitter_buffer_capacity
 from wcam.media.pipeline import FramePipeline, FrameSource
 from wcam.media.sdp_filter import candidate_addresses, sha256_fingerprint
 from wcam.network.certificates import load_or_create_certificate
@@ -33,6 +34,8 @@ WAIT_SECONDS = 20.0
 POLL_SECONDS = 0.05
 I420_SHAPE = (HEIGHT * 3 // 2, WIDTH)
 PLACEHOLDER_DEADLINE_SECONDS = 1.0
+DETAILED_FRAME_SEED = 3
+AIORTC_DEFAULT_VIDEO_JITTER_PACKETS = 128
 UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
 
 
@@ -40,6 +43,20 @@ class SyntheticVideo(VideoStreamTrack):
     async def recv(self) -> VideoFrame:
         pts, time_base = await self.next_timestamp()
         frame = VideoFrame(width=WIDTH, height=HEIGHT, format="yuv420p")
+        frame.pts = pts
+        frame.time_base = time_base
+        return frame
+
+
+class DetailedVideo(VideoStreamTrack):
+    def __init__(self) -> None:
+        super().__init__()
+        generator = np.random.default_rng(DETAILED_FRAME_SEED)
+        self._image = generator.integers(0, 256, size=(HEIGHT * 3 // 2, WIDTH), dtype=np.uint8)
+
+    async def recv(self) -> VideoFrame:
+        pts, time_base = await self.next_timestamp()
+        frame = VideoFrame.from_ndarray(self._image, format="yuv420p")
         frame.pts = pts
         frame.time_base = time_base
         return frame
@@ -104,7 +121,7 @@ async def pipeline(sink: FakeSink) -> AsyncIterator[FramePipeline]:
     await asyncio.gather(task, return_exceptions=True)
 
 
-def phone_client_peer() -> PhoneClient:
+def phone_client_peer(track: VideoStreamTrack | None = None) -> PhoneClient:
     connection = RTCPeerConnection(RTCConfiguration(iceServers=[]))
     messages: asyncio.Queue[dict[str, str]] = asyncio.Queue()
     channel: RTCDataChannel = connection.createDataChannel("control")
@@ -113,7 +130,7 @@ def phone_client_peer() -> PhoneClient:
         messages.put_nowait(json.loads(data))
 
     channel.on("message", receive)
-    connection.addTrack(SyntheticVideo())
+    connection.addTrack(track or SyntheticVideo())
     return PhoneClient(connection, messages)
 
 
@@ -255,6 +272,42 @@ async def test_peer_connection_has_no_ice_servers(lan: LanInterface, monkeypatch
     assert len(configurations) == 1
     assert configurations[0] is not None
     assert configurations[0].iceServers == []
+
+
+async def test_video_receiver_jitter_buffer_holds_large_frames(lan: LanInterface, pipeline: FramePipeline) -> None:
+    client = phone_client_peer()
+    factory = RecordingPeerFactory(lan, pipeline)
+    await factory(await client.offer(), PeerEvents(lambda: None, lambda _: None))
+    peer = factory.peers[0]
+
+    capacities = [
+        video_jitter_buffer_capacity(transceiver.receiver)
+        for transceiver in peer.connection.getTransceivers()
+        if transceiver.kind == "video"
+    ]
+    await peer.close()
+    await client.connection.close()
+
+    assert capacities == [VIDEO_JITTER_BUFFER_PACKETS]
+    assert VIDEO_JITTER_BUFFER_PACKETS > AIORTC_DEFAULT_VIDEO_JITTER_PACKETS
+
+
+async def test_keyframe_larger_than_aiortc_default_buffer_is_decoded(
+    lan: LanInterface, pipeline: FramePipeline
+) -> None:
+    client = phone_client_peer(DetailedVideo())
+    factory = RecordingPeerFactory(lan, pipeline)
+    await factory(await client.offer(), PeerEvents(lambda: None, lambda _: None))
+    peer = factory.peers[0]
+    await client.connection.setRemoteDescription(RTCSessionDescription(peer.answer_sdp, "answer"))
+
+    try:
+        await wait_until(lambda: peer.gate.received > 0)
+    finally:
+        await peer.close()
+        await client.connection.close()
+
+    assert peer.gate.received > 0
 
 
 async def test_pairing_token_never_appears_in_logs(
