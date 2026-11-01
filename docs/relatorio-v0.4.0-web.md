@@ -27,8 +27,8 @@ Commits: 801e79a, 4f6c89a, c43376c, 0927e97.
 | CA | Situação | Evidência |
 |---|---|---|
 | e2e do fluxo com `virtualCamera.source` | Verificado | compose: `placeholder` antes do Confirmar, `phone` depois, `placeholder` depois de Desconectar (§6) |
-| e2e de qualidade, `quality.ssim >= 0.98` | Falhou | nenhum quadro da referência chegou a ser decodificado pelo agente; `quality.frames` ficou em 0 (§6) |
-| Console com câmera virtual, origem, codec, CPU e `framesScaled` | Verificado no build e nos tipos; não visto na tela | o status real do agente tem a forma do tipo (§6); o aviso de `framesScaled` não apareceu porque o valor ficou em 0 |
+| e2e de qualidade, `quality.ssim >= 0.98` | Verificado | compose depois da correção do agente: SSIM médio 0,9851, mínimo 0,9834, 44 quadros (§6) |
+| Console com câmera virtual, origem, codec, CPU e `framesScaled` | Verificado no build e nos tipos; não visto na tela | o status real do agente tem a forma do tipo (§6); o aviso de `framesScaled` não aparece porque o valor ficou em 0 em todas as execuções |
 | Textos só em `locales/` | Verificado | todos os textos novos usam `t()`; paridade de chaves verde |
 | Verificação do web | Verificado | `npm run build` sem avisos, `npm run lint` limpo, `npm test` 34 passando |
 | Versão 0.4.0 | Verificado | `web/package.json` e `package-lock.json` |
@@ -48,7 +48,20 @@ Nenhuma.
 
 ## 6. E2E no compose
 
-`docker compose --profile e2e up --build --exit-code-from e2e`, depois da correção do serviço de referência: 9 passaram e 1 falhou, saída 1.
+Resultado final, depois da correção do agente (jitter buffer de 2048 pacotes, estimador começando em 10 Mbit/s e referência com textura de sarja): `docker compose --profile e2e up --build --exit-code-from e2e`, 10 passaram, saída 0.
+
+| Medida no teste de qualidade | Valor |
+|---|---|
+| SSIM médio | 0,9851 |
+| SSIM mínimo | 0,9834 |
+| `quality.frames` | 44 |
+| `session.video` no momento da leitura | 1920x1080, 25,9 fps, 7305 kbps, VP8, `framesScaled` 0 |
+
+A sessão agent mediu, numa execução dela: SSIM médio 0,9854, mínimo 0,9828, 52 quadros, 5 a 8,4 Mbit/s e 26 a 31 fps.
+
+### Execução anterior, antes da correção do agente
+
+9 passaram e 1 falhou, saída 1.
 
 - Projeto `chromium`: 9 de 9, incluindo o fluxo completo com `virtualCamera.source` de `placeholder` a `phone` e de volta.
 - Projeto `quality`: falhou. `quality.frames` ficou em 0 por 60 s com a sessão em `live`. `ssim` e `minimum` ficaram `null`, então não há SSIM médio nem mínimo para registrar.
@@ -68,6 +81,6 @@ O arquivo está certo no container (`/reference/reference.y4m`, legível, cabeç
 
 O teste de qualidade passa a registrar `quality` e `session.video` juntos (0927e97), para o próximo resultado já trazer o bitrate.
 
-## 7. Pendência
+## 7. Perguntas
 
-O CA de qualidade (SSIM de pelo menos 0,98) depende da correção do agente. Quando ela entrar em `feature/camera-virtual`, rodo o compose de novo e atualizo este relatório com o SSIM médio, o mínimo, `quality.frames` e o bitrate.
+Nenhuma.
