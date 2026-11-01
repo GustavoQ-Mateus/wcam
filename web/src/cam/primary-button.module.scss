@@ -1,0 +1,13 @@
+.button {
+  min-height: var(--button-height);
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: var(--ground);
+  font-weight: var(--weight-strong);
+  transition: transform var(--duration-press) var(--ease-out);
+
+  &:active {
+    transform: scale(var(--scale-press));
+  }
+}

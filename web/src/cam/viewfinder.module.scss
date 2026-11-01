@@ -1,0 +1,18 @@
+.video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity var(--duration-press) var(--ease-out);
+
+  &[data-visible="true"] {
+    opacity: 1;
+    transition-duration: var(--duration-state);
+  }
+
+  &[data-mirrored="true"] {
+    transform: scaleX(-1);
+  }
+}

@@ -1,0 +1,25 @@
+.cover {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: var(--margin-top) calc(var(--margin-right) + var(--control-size) + var(--space-4)) var(--margin-bottom)
+    var(--margin-left);
+  background: var(--ground);
+  text-align: left;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-state) var(--ease-out);
+
+  &[data-visible="true"] {
+    opacity: 1;
+    pointer-events: auto;
+    transition-duration: var(--duration-cover);
+  }
+}
+
+.text {
+  max-width: var(--measure);
+  color: var(--faint);
+}

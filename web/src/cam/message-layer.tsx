@@ -1,0 +1,19 @@
+import { t } from "../data/language";
+import { CamMessage } from "./cam-message";
+import { messageFor, type MessageState } from "./cam-messages";
+import styles from "./message-layer.module.scss";
+
+interface MessageLayerProps {
+  state: MessageState;
+  onStart: () => void;
+}
+
+export function MessageLayer({ state, onStart }: MessageLayerProps) {
+  const key = state.kind === "unavailable" ? `${state.kind}-${state.reason}` : state.kind;
+  return (
+    <div className={styles.layer}>
+      <p className={styles.brand}>{t("app.name")}</p>
+      <CamMessage key={key} content={messageFor(state, onStart)} />
+    </div>
+  );
+}

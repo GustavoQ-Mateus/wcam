@@ -1,0 +1,17 @@
+.readout {
+  position: absolute;
+  z-index: 2;
+  top: var(--margin-top);
+  left: var(--margin-left);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-box);
+  background: var(--scrim);
+  color: var(--muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+
+  &[data-dimmed="true"] {
+    color: var(--faint);
+  }
+}

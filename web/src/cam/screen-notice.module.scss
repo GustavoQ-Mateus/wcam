@@ -1,0 +1,22 @@
+.notice {
+  position: absolute;
+  z-index: 2;
+  bottom: var(--margin-bottom);
+  left: var(--margin-left);
+  max-width: min(
+    var(--measure),
+    calc(100% - var(--margin-left) - var(--margin-right) - var(--control-size) - var(--space-4))
+  );
+  min-height: var(--hit-min);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-box);
+  background: var(--scrim);
+  color: var(--ink);
+  font-size: var(--text-meta);
+  text-align: left;
+  transition: transform var(--duration-press) var(--ease-out);
+
+  &:active {
+    transform: scale(var(--scale-press));
+  }
+}
