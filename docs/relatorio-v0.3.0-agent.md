@@ -30,7 +30,7 @@ Branch: `feature/pareamento-agent`
 - `.github/dependabot.yml`: npm ignora versão maior de `@types/node` e `typescript`; docker ignora versão maior e menor de `python` e versão maior de `node`.
 - Versão 0.3.0 em `agent/pyproject.toml` e no `uv.lock`.
 
-Commits: `1f32c31`, `c8928f5`, `c5f8c01`, `aa6ea1f` e o deste relatório.
+Commits: `1f32c31`, `c8928f5`, `c5f8c01`, `aa6ea1f`, `11360bc` (relatório) e, depois da revisão, o merge `e8df1d1` de `origin/feature/pareamento`, `ba44c83` (dica de certificado de volta) e a atualização deste relatório.
 
 ## 2. Critérios de aceitação
 
@@ -42,16 +42,16 @@ Commits: `1f32c31`, `c8928f5`, `c5f8c01`, `aa6ea1f` e o deste relatório.
 | 4 | Verificado | `test_aiortc_phone_goes_live_only_after_confirmation`. Cliente aiortc com faixa sintética 1920x1080 via HTTP: o código do cliente é igual ao de `GET /api/status`; antes do Confirmar o portão recebeu quadros e liberou 0, e `video` é `null`; os estados no DataChannel são `awaiting_confirmation`, `live` e `ended`; depois do Confirmar o status mostra 1920x1080. Medição conferida à parte: 29,0 a 31,0 fps por janela, com o emissor em 30. |
 | 9 | Parcial (lado agent) | O e2e é da sessão web. Do lado do agent, no compose: imagem construída com o web desta branch, `agent` saudável, e um cliente aiortc num segundo container da rede do compose fez o fluxo completo por `http://agent:8080` e `https://agent:8443`. Respostas: `create 201`, candidatos da resposta só `172.24.0.2`, `awaiting_confirmation`, `confirm 204`, `live`, `video` 1920x1080, `disconnect 204` e `ended` com `disconnected_by_pc`. Não precisou mudar o `docker-compose.yml`. |
 | 10 | Verificado, com um ponto | As rotas, códigos e status batem com o contrato. Falta deixar explícita a posição de `lastEnded`: ver §3, item 1. |
-| 11 | Parcial | Em `agent/`: `ruff check` e `ruff format --check` limpos, `pyright` com 0 erros, `pytest` com 80 passed e `wcam --version` mostrando 0.3.0. `pip-audit`: No known vulnerabilities found. CI e CodeQL não verificados (rodam no PR). |
+| 11 | Parcial | Em `agent/`: `ruff check` e `ruff format --check` limpos, `pyright` com 0 erros, `pytest` com 81 passed e `wcam --version` mostrando 0.3.0. `pip-audit`: No known vulnerabilities found. CI e CodeQL não verificados (rodam no PR). |
 | 13 | Verificado | `dependabot.yml` acima, YAML válido. |
 | 5 a 8 | Não verificados | Celular real, com o usuário, depois da integração. Execução real no Windows feita: o banner tem só a URL sem token, o QR leva a URL com token, `GET /api/status` sai com o formato do contrato, e `POST /api/pairing` devolve `url` com `#t=`, `qrSvg` e `expiresAt`. |
 
 ## 3. Divergências e pontos para registrar
 
-1. `GET /api/status` traz `lastEnded` como campo de primeiro nível, ao lado de `pairing` e `session`, sempre presente e `null` sem encerramento anterior. O exemplo JSON do contrato não mostra o campo; peço que entre no exemplo para a web não ter dúvida.
+1. Resolvido: `lastEnded` entrou no exemplo de `GET /api/status` do contrato (`a27eacc`), como campo de primeiro nível sempre presente.
 2. Datas (`expiresAt`, `startedAt`, `at`) saem em ISO 8601 UTC com `Z` e sem fração de segundo, como no exemplo.
 3. `qrSvg` é preto sobre branco (`dark #000`, `light #fff`) e só com `viewBox`, sem `width` nem `height`, para a web escalar. Com o fundo transparente padrão do segno, o QR seria ilegível sobre o fundo preto do console.
-4. O terminal não imprime mais `terminal.scan_hint`, que trazia a dica de conferir a impressão digital no aviso de certificado; ele foi trocado por `terminal.scan_with_token`, como a spec pede. A linha da impressão digital continua. Se a dica do certificado deve voltar, é decisão de texto (pergunta 1).
+4. Resolvido (`ba44c83`): o terminal imprime `terminal.scan_with_token` e depois `terminal.scan_hint`, antes do QR. Teste `test_pairing_qr_is_announced_with_token_and_certificate_hints`.
 5. Depois de enviar `ended`, o agente espera 0,2 s antes de fechar a conexão, para a mensagem sair pelo SCTP; sem isso o `close` do aiortc aborta a associação e a mensagem se perde. Verificado no teste aiortc e no compose.
 6. `connectionState` `failed` vira `connection_failed`. `closed` (o celular fechou o DTLS) e o fechamento do DataChannel viram `disconnected_by_phone`. Eventos de uma sessão que já terminou são ignorados.
 7. Pacote novo `sessions/`, previsto na spec, que o CLAUDE.md ainda não lista entre os domínios. `media/peer.py` importa de `sessions/manager.py` os tipos `MediaPeer`, `PeerEvents` e `EndReason`; o manager não importa o peer.
@@ -66,6 +66,4 @@ Commits: `1f32c31`, `c8928f5`, `c5f8c01`, `aa6ea1f` e o deste relatório.
 
 ## 5. Perguntas para o orquestrador
 
-1. A dica do certificado (`terminal.scan_hint`) volta ao terminal junto com `terminal.scan_with_token`? Hoje, na primeira vez, o usuário não é avisado de que vai ver o aviso de certificado.
-2. Pode acrescentar `lastEnded` ao exemplo de `GET /api/status` no contrato (§3, item 1)?
-3. Para a sessão web: o agente descarta candidatos `.local`. No e2e, o Chromium precisa expor o IP real; com a permissão de câmera concedida e a câmera falsa, ele expõe. Se o e2e falhar em `connection_failed`, a causa provável é essa.
+Respondidas na revisão: a dica de certificado voltou, `lastEnded` está no contrato e o aviso sobre `.local` foi repassado à sessão web. Nenhuma pergunta aberta.
