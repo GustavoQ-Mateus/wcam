@@ -224,3 +224,13 @@ Câmera virtual (v0.4.0), reconexão após queda (v0.7.0), pausa e troca de câm
 - O navegador pode descartar o fragmento `#t=` ao aceitar o aviso de certificado (planejamento §8). Testar no CA 5; se acontecer, a `/cam` mostra `missing_pairing` e o usuário lê o QR de novo, já com o certificado aceito.
 - Candidatos `.local`: com a permissão de câmera concedida, Chrome e Safari mostram o IP real. Se o aparelho real só mandar `.local`, a conexão falha no filtro; registrar e decidir em correção.
 - O estimador de banda do aiortc pode segurar o bitrate abaixo de 10 Mbit/s e o navegador reduzir a qualidade. O CA 5 mede; se ficar abaixo do esperado, vira item da v0.4.0, que é onde a qualidade da saída é medida (SSIM).
+
+## Decisões registradas durante a implementação
+
+1. Fase 1 de design aprovada pelo usuário em 2026-11-01: `docs/design-v0.3.0-cam.md` (taste-skill, impeccable shape, mobile-native, emil-design-eng). Código sobre o visor esmaecido, tally como pílula no canto superior direito, câmera desligada nos estados finais.
+2. Cinco textos encurtados para caber em duas linhas: `cam.confirm_body`, `cam.pairing_failed`, `cam.blocked_network`, `cam.blocked_attempts`, `cam.ended_lost`.
+3. `invalid_request` e erros desconhecidos do `POST /api/sessions` levam a `ended` com `cam.ended_lost`.
+4. `qrSvg` é um documento SVG completo, com `xmlns` e sem declaração XML.
+
+## Changelog
+Vazio até a entrega.
