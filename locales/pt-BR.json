@@ -16,6 +16,8 @@
   "errors.invalid_host": "Este endereço não é permitido. Abra o WCam pelo link que ele mostra.",
   "errors.web_not_built": "A interface ainda não foi gerada.",
   "errors.not_found": "Esta página não existe.",
+  "errors.method_not_allowed": "Esta ação não é suportada aqui.",
+  "errors.invalid_request": "A requisição não é válida.",
   "errors.internal_error": "Algo deu errado no agente.",
   "errors.unknown": "Algo deu errado."
 }

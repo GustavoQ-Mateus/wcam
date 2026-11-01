@@ -44,7 +44,7 @@ Módulos:
   - `console_port` (8080), `phone_port` (8443), `console_bind` (`127.0.0.1`), `lan_ip` (opcional, sobrepõe a detecção), `data_dir` (padrão `%LOCALAPPDATA%\wcam` no Windows, `$XDG_DATA_HOME/wcam` ou `~/.local/share/wcam` no resto), `web_dist` (padrão `web/dist`), `extra_allowed_hosts` (lista, vazia por padrão; usada só no compose).
 - `network/lan.py`: escolhe a interface da LAN. Regra: a interface IPv4 ativa usada pela rota padrão (descoberta por um socket UDP conectado a um endereço de documentação, sem enviar pacote), com IP privado (RFC 1918). Devolve `LanInterface(ip, network)`. Com `lan_ip` configurado, usa a interface que tem esse IP. Sem interface válida, o agente encerra com mensagem clara e código de saída diferente de zero.
 - `network/certificates.py`: `load_or_create_certificate(data_dir, lan_ip)`. ECDSA P-256, SAN com o IP da LAN, validade de 825 dias, arquivos `tls/cert.pem` e `tls/key.pem` no diretório de dados. Reaproveita o certificado existente se o IP estiver no SAN e ele não estiver vencido; senão, gera outro. Devolve o caminho dos arquivos e a impressão digital SHA-256.
-- `network/subnet_guard.py`: middleware ASGI do servidor da LAN. IP de origem fora de `LanInterface.network` recebe `403` com `{"error":{"code":"not_same_network","message":...}}`.
+- `api/subnet_guard.py`: middleware ASGI do servidor da LAN, usando a checagem pura de sub-rede de `network/lan.py`. IP de origem fora de `LanInterface.network` recebe `403` com `{"error":{"code":"not_same_network","message":...}}`.
 - `api/host_guard.py`: middleware nos dois servidores. `Host` fora da lista recebe `400` com código `invalid_host`. Lista do console: `127.0.0.1:<porta>` e `localhost:<porta>`. Lista da LAN: `<ip-da-lan>:<porta>`. Mais `extra_allowed_hosts`.
 - `api/errors.py`: formato único de erro e handler para exceções não tratadas (`internal_error`, sem detalhe interno na resposta).
 - `api/console_routes.py` e `api/phone_routes.py`: `GET /api/health` em cada um, `{"status":"ok","version":"0.1.0","surface":"console"|"phone"}`.
@@ -139,7 +139,8 @@ WebRTC, pareamento por token, código de confirmação, câmera virtual, banco, 
 ## Decisões registradas na aprovação
 1. `LICENSE` MIT com titular Gustavo Queiroz (identidade do git do usuário).
 2. Repositório `GustavoQ-Mateus/wcam`, público, criado com `gh` na conta `GustavoQ-Mateus`.
-3. Exceção única: o primeiro commit (CLAUDE.md e docs) vai direto na `main`, para que a `main` exista. Todo o resto segue o git flow.
+3. Durante a implementação (2026-11-01): o middleware de sub-rede ficou em `api/` e não em `network/`, pela regra do CLAUDE.md de que domínio não importa framework; status de erro fora da tabela do contrato viram `invalid_request` (4xx) ou `internal_error` (5xx); `errors.method_not_allowed` e `errors.invalid_request` entraram em `locales/`.
+4. Exceção única: o primeiro commit (CLAUDE.md e docs) vai direto na `main`, para que a `main` exista. Todo o resto segue o git flow.
 
 ## Changelog
 Vazio até a entrega.

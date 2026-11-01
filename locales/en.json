@@ -16,6 +16,8 @@
   "errors.invalid_host": "This address is not allowed. Open WCam from the link it shows.",
   "errors.web_not_built": "The interface has not been built yet.",
   "errors.not_found": "This page does not exist.",
+  "errors.method_not_allowed": "This action is not supported here.",
+  "errors.invalid_request": "The request is not valid.",
   "errors.internal_error": "Something went wrong in the agent.",
   "errors.unknown": "Something went wrong."
 }
