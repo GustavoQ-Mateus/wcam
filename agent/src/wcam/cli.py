@@ -56,5 +56,6 @@ def print_banner(messages: Messages, console_url: str, phone_url: str, certifica
 
 def print_pairing_qr(messages: Messages, url: str) -> None:
     print(messages.text("terminal.scan_with_token"))
+    print(messages.text("terminal.scan_hint"))
     segno.make(url, error="m").terminal(compact=True)
     print(messages.text("terminal.stop_hint"))
