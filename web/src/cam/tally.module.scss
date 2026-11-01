@@ -1,0 +1,30 @@
+.tally {
+  position: absolute;
+  z-index: 2;
+  top: var(--margin-top);
+  right: var(--margin-right);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--tally-height);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--positive-tint);
+  color: var(--data);
+  font-weight: var(--weight-strong);
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity var(--duration-state) var(--ease-out);
+
+  @starting-style {
+    opacity: 0;
+  }
+}
+
+.lamp {
+  flex: none;
+  width: var(--indicator-size);
+  height: var(--indicator-size);
+  border-radius: 50%;
+  background: var(--data);
+}

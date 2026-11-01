@@ -9,6 +9,10 @@
   transform: translateY(-50%);
   transition: opacity var(--duration-state) var(--ease-out);
 
+  @starting-style {
+    opacity: 0;
+  }
+
   &[data-dimmed="true"] {
     opacity: var(--opacity-dimmed);
     pointer-events: none;

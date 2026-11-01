@@ -1,32 +1,34 @@
-.prompt {
+.scrim {
   position: absolute;
   z-index: 1;
   inset: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: var(--space-4);
-  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
   background: var(--scrim);
-  opacity: 1;
+  opacity: 0;
+  pointer-events: none;
   transition: opacity var(--duration-state) var(--ease-out);
+
+  &[data-visible="true"] {
+    opacity: 1;
+    pointer-events: auto;
+  }
 
   @starting-style {
     opacity: 0;
   }
 }
 
-.title {
-  max-width: var(--measure);
-  font-size: var(--text-title);
-  font-weight: var(--weight-strong);
-  line-height: var(--line-tight);
-  letter-spacing: var(--tracking-title);
-  text-wrap: balance;
-}
+.content {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: var(--space-4);
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
+  opacity: 1;
+  transition: opacity var(--duration-state) var(--ease-out);
 
-.body {
-  max-width: var(--measure);
-  color: var(--muted);
-  text-wrap: pretty;
+  @starting-style {
+    opacity: 0;
+  }
 }
