@@ -25,9 +25,10 @@ test("frames delivered to the virtual camera keep an ssim of at least 0.98 again
   await expect
     .poll(async () => (await status(request)).quality?.frames ?? 0, { timeout: QUALITY_TIMEOUT_MS })
     .toBeGreaterThanOrEqual(MINIMUM_FRAMES);
-  const quality = (await status(request)).quality;
-  test.info().annotations.push({ type: "quality", description: JSON.stringify(quality) });
-  console.log(`quality ${JSON.stringify(quality)}`);
+  const { quality, session } = await status(request);
+  const measured = JSON.stringify({ quality, video: session?.video ?? null });
+  test.info().annotations.push({ type: "quality", description: measured });
+  console.log(`quality ${measured}`);
 
   expect(quality?.ssim ?? 0).toBeGreaterThanOrEqual(MINIMUM_SSIM);
 });
