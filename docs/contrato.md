@@ -188,7 +188,7 @@ Variáveis de ambiente (somam-se à tabela abaixo):
 Medição automática:
 - Com `WCAM_QUALITY_REFERENCE` definido, o agente lê o arquivo `.y4m` de referência (1920x1080, um quadro estático de alto detalhe) e compara cada quadro entregue ao sink com ele: SSIM no plano Y, janela de 8x8, implementado com numpy. Os quadros dos primeiros 3 s da sessão `live` são ignorados, enquanto o codificador estabiliza.
 - `quality` no status: `{"ssim": <média>, "minimum": <menor>, "frames": <quantos>}`. Com a referência definida e nenhum quadro medido ainda, vem `{"ssim": null, "minimum": null, "frames": 0}`; o cliente espera `frames >= 30` antes de ler `ssim`.
-- O arquivo de referência é gerado por um script do agente (`python -m wcam.tools.make_reference <saida.y4m>`), deterministicamente, com padrão de alto detalhe (texto fino, linhas de 1 px, gradientes, ruído). Ele não é commitado.
+- O arquivo de referência é gerado por um script do agente (`python -m wcam.tools.make_reference <saida.y4m>`), deterministicamente, com padrão de alto detalhe representativo de imagem de câmera: texto fino, linhas de 1 px, gradientes e uma textura fina estruturada, estática, com detalhe de 2 a 4 px (trama, como tecido). Sem ruído aleatório pixel a pixel, que nenhuma câmera entrega (o celular remove o ruído do sensor) e que o codificador de câmera do Chromium descarta por definição. Ele não é commitado.
 - No e2e, o Chromium recebe a referência como câmera falsa (`--use-file-for-fake-video-capture`), faz o fluxo completo até `live`, e o teste confere `quality.ssim >= 0.98` depois de pelo menos 30 quadros medidos.
 
 ## Variáveis de ambiente do agente
