@@ -1,6 +1,6 @@
 # Spec v0.4.0, Câmera virtual
 
-Status: Draft
+Status: Aprovada (2026-11-01)
 Branch de integração: `feature/camera-virtual`
 Sessões: `agent` (principal) e `web` (console e e2e), em paralelo
 Referências: `docs/planejamento.md` §1 (CA-1, CA-2), §4 (fluxo, passo 5), §8 (riscos); ADRs 0002 e 0005
@@ -66,7 +66,7 @@ O orquestrador atualiza `docs/contrato.md` na aprovação.
 
 Quando não há quadro do celular para mostrar (sem sessão, aguardando confirmação, celular em retrato, mais de 1 s sem quadro numa sessão `live`), a câmera virtual recebe um quadro de espera, no ritmo de 30 fps.
 
-Nesta versão o quadro de espera é preto puro, sem texto: é o que os apps já mostram com a câmera desligada, não exige fonte nem dependência de desenho, e nunca congela a reunião numa imagem parada. Quadros com texto ("Aguardando celular", "Sem sinal") ficam para depois, se o usuário quiser (ver "Decisões em aberto").
+Nesta versão o quadro de espera é preto puro, sem texto: é o que os apps já mostram com a câmera desligada, não exige fonte nem dependência de desenho, e nunca congela a reunião numa imagem parada. Quadros com texto ficam fora; decisão do usuário na aprovação.
 
 ## Qualidade (CA-2)
 
@@ -143,7 +143,10 @@ Quadros de espera com texto, espelhar a saída, pausa, troca de câmera pelo PC 
 7. Depois de Desconectar, a câmera volta ao quadro preto em menos de 1 s.
 8. Verificação completa dos dois lados, CI e CodeQL verdes, versão 0.4.0 nos dois lados, contrato e textos atualizados.
 
-## Decisões em aberto para o usuário
+## Decisões registradas na aprovação
 
-1. Quadro de espera preto (proposta, sem dependência nova) ou com texto curto como "WCam: aguardando celular" (exige desenhar texto: Pillow e um arquivo de fonte)?
-2. Quais apps do CA-1 você tem instalados para o teste.
+1. Quadro de espera preto puro, sem texto.
+2. Apps do CA 1 no teste do usuário: Microsoft Teams (o mais usado, peso principal), OBS Studio (instalado em `G:\obs`), um site com `getUserMedia` no Chrome e no Edge, e o Google Meet se houver conta. Zoom e Discord não estão instalados e ficam registrados como não testados.
+
+## Changelog
+Vazio até a entrega.

@@ -1,6 +1,6 @@
 # Contrato entre web e agent
 
-Versão: 0.3.0
+Versão: 0.4.0
 
 Fonte da verdade da comunicação entre `web` e `agent`. Mudou aqui, muda na spec da versão antes do código.
 
@@ -149,6 +149,39 @@ Vetores de teste (os dois lados testam os três):
 | `ffeeddccbbaa99887766554433221100` | 32 vezes `AB` | 32 vezes `CD` | `8VG-KBV` |
 
 Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford base32), sem mudar a decisão.
+
+## Câmera virtual, CPU e qualidade em `GET /api/status`
+
+```json
+{
+  "virtualCamera": {
+    "state": "active",
+    "backend": "obs",
+    "reason": null,
+    "output": {"width": 1920, "height": 1080, "fps": 30},
+    "source": "phone"
+  },
+  "session": {
+    "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800, "codec": "H264", "framesScaled": 0}
+  },
+  "process": {"cpuPercent": 12.5},
+  "quality": null
+}
+```
+
+- `virtualCamera.state`: `active` ou `unavailable`. `reason` (só com `unavailable`): `driver_missing`, `device_in_use` ou `error`.
+- `backend`: `obs` ou `fake`.
+- `source`: `phone` quando os quadros vêm do celular; `placeholder` em qualquer outro momento.
+- `session.video.codec`: o codec negociado (`H264` ou `VP8`). `framesScaled`: quantos quadros precisaram ser redimensionados na sessão (o esperado é 0; ver "Formato de saída").
+- `process.cpuPercent`: uso de CPU do processo do agente, média da última janela de 1 s, via psutil.
+- `quality`: só existe com `WCAM_QUALITY_REFERENCE` definido (desenvolvimento e e2e); fora disso é sempre `null`. Ver "Qualidade".
+
+Variáveis de ambiente (somam-se à tabela abaixo):
+
+| Variável | Padrão | Uso |
+|---|---|---|
+| `WCAM_VIRTUAL_CAMERA` | `auto` | `auto` (Windows usa `obs`, o resto usa `fake`), `obs` ou `fake` |
+| `WCAM_QUALITY_REFERENCE` | vazio | caminho de um arquivo `.y4m` de referência; liga a medição de SSIM |
 
 ## Variáveis de ambiente do agente
 
