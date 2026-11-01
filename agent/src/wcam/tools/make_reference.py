@@ -12,7 +12,11 @@ GLYPH_HEIGHT = 5
 GLYPH_COUNT = 64
 TEXT_LINE_SPACING = 3
 TEXT_COLUMN_SPACING = 1
-NOISE_AMPLITUDE = 12
+THREAD_PIXELS = 3
+TWILL_REPEAT = 4
+TEXTURE_CONTRAST = 40
+CONTRAST_FLOOR = 0.6
+CONTRAST_SWING = 0.4
 HEADER = f"YUV4MPEG2 W{WIDTH} H{HEIGHT} F30:1 Ip A1:1 C420jpeg\n".encode()
 FRAME_MARKER = b"FRAME\n"
 EXIT_USAGE = 2
@@ -36,9 +40,21 @@ def reference_luma(generator: np.random.Generator) -> Plane:
     luma[:third, :quarter] = np.where(columns[:quarter] % 2 == 0, 235, 16)
     luma[:third, quarter : 2 * quarter] = np.where(rows[:third, None] % 2 == 0, 235, 16)
     luma[third : 2 * third, :] = draw_text(generator, (third, WIDTH))
-    noise = generator.integers(-NOISE_AMPLITUDE, NOISE_AMPLITUDE + 1, size=(HEIGHT - 2 * third, WIDTH))
-    luma[2 * third :, :] = np.clip(luma[2 * third :, :] + noise, 16, 235)
+    luma[2 * third :, :] = np.clip(luma[2 * third :, :] + weave((HEIGHT - 2 * third, WIDTH)), 16, 235)
     return luma.astype(np.uint8)
+
+
+def weave(shape: tuple[int, int]) -> NDArray[np.int32]:
+    rows = np.arange(shape[0])[:, None]
+    columns = np.arange(shape[1])[None, :]
+    warp_on_top = (columns // THREAD_PIXELS - rows // THREAD_PIXELS) % TWILL_REPEAT < TWILL_REPEAT // 2
+    warp_shading = np.sin(np.pi * (columns % THREAD_PIXELS + 0.5) / THREAD_PIXELS)
+    weft_shading = np.sin(np.pi * (rows % THREAD_PIXELS + 0.5) / THREAD_PIXELS)
+    contrast = CONTRAST_FLOOR + CONTRAST_SWING * np.sin(2 * np.pi * columns / shape[1]) * np.cos(
+        np.pi * rows / shape[0]
+    )
+    relief = np.where(warp_on_top, warp_shading, -weft_shading)
+    return np.round(TEXTURE_CONTRAST * contrast * relief).astype(np.int32)
 
 
 def draw_text(generator: np.random.Generator, shape: tuple[int, int]) -> NDArray[np.int32]:
