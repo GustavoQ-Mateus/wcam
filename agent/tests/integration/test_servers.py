@@ -3,7 +3,7 @@ from pathlib import Path
 import httpx
 from fastapi import HTTPException
 
-from tests.conftest import LAN, console_app, console_client, fake_manager, phone_app, phone_client
+from tests.conftest import LAN, console_app, console_client, phone_app, phone_client, services
 from wcam import __version__
 from wcam.app import create_servers
 from wcam.config import Settings
@@ -102,7 +102,7 @@ async def test_unhandled_error_returns_internal_error_without_details(settings: 
 def test_servers_ignore_forwarded_client_address(settings: Settings) -> None:
     certificate = load_or_create_certificate(settings.data_dir, LAN.ip)
 
-    servers = create_servers(settings, LAN, certificate, fake_manager())
+    servers = create_servers(settings, LAN, certificate, services())
 
     assert [server.config.proxy_headers for server in servers] == [False, False]
 

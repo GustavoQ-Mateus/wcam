@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,3 +29,5 @@ class Settings(BaseSettings):
     web_dist: Path = REPOSITORY_ROOT / "web" / "dist"
     locales_dir: Path = REPOSITORY_ROOT / "locales"
     extra_allowed_hosts: list[str] = Field(default_factory=list[str])
+    virtual_camera: Literal["auto", "obs", "fake"] = "auto"
+    quality_reference: Path | None = None

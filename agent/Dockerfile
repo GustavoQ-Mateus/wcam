@@ -16,7 +16,7 @@ COPY agent/src/ ./src/
 RUN uv sync --frozen --no-dev
 COPY locales/ /app/locales/
 COPY --from=web /app/web/dist/ /app/web/dist/
-RUN useradd --create-home wcam
+RUN useradd --create-home wcam && mkdir /reference && chown wcam /reference
 USER wcam
 EXPOSE 8080 8443
 CMD ["/app/agent/.venv/bin/wcam"]

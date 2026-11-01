@@ -5,7 +5,7 @@ from fastapi import APIRouter, Response, status
 
 from wcam.api.health import create_health_router
 from wcam.api.schemas import PairingResponse, StatusResponse, iso_utc, status_response
-from wcam.sessions.manager import SessionManager
+from wcam.services import AgentServices
 
 QR_ERROR_LEVEL = "m"
 QR_DARK = "#000"
@@ -31,7 +31,8 @@ def qr_svg(url: str) -> str:
     return document.getvalue().decode("utf-8")
 
 
-def create_console_router(manager: SessionManager, phone_page_url: str) -> APIRouter:
+def create_console_router(services: AgentServices, phone_page_url: str) -> APIRouter:
+    manager = services.manager
     router = APIRouter()
     router.include_router(create_health_router("console"))
 
@@ -60,11 +61,11 @@ def create_console_router(manager: SessionManager, phone_page_url: str) -> APIRo
     @router.get(
         "/api/status",
         summary="Agent status",
-        description="Pairing window, current session with its confirmation code and measured video, and the reason "
-        "the last session ended.",
+        description="Pairing window, current session with its confirmation code and measured video, why the last "
+        "session ended, the virtual camera, the agent CPU and, with a reference file, the measured quality.",
     )
     async def get_status() -> StatusResponse:
-        return status_response(manager.status())
+        return status_response(manager.status(), services.pipeline, services.cpu.percent)
 
     @router.post(
         "/api/sessions/current/confirm",
