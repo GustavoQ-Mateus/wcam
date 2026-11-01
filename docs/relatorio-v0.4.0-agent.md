@@ -33,8 +33,12 @@ Branch: `feature/camera-virtual-agent`
   - o Dockerfile cria `/reference` com dono `wcam`, para o volume herdar a permissão.
 - `agent/typings/pyvirtualcam/__init__.pyi`: stub mínimo, porque o pyvirtualcam não traz `py.typed` e o pyright strict exige tipos.
 - Versão 0.4.0 no `pyproject.toml` e no `uv.lock`.
+- Correções depois da revisão:
+  - `docker-compose.yml`: o serviço `reference` saiu, porque o `--exit-code-from e2e` derruba todo o compose quando qualquer serviço termina. O `agent` gera a referência antes de iniciar (`make_reference ... && exec wcam`), com o volume gravável no `agent` e só leitura no `e2e`.
+  - `media/peer.py`, `enlarge_video_jitter_buffers`: troca o jitter buffer de vídeo de cada receiver, que o aiortc 1.15 fixa em 128 pacotes, por um de 2048, pelo atributo interno do receiver. Antes, um keyframe com mais de 128 pacotes (a referência no Chromium, ou uma cena detalhada a 10 Mbit/s) nunca era montado: `video` ficava `null` e `source` ficava `placeholder` durante o `live`.
+  - `media/peer.py`, `start_video_estimate_at_max_bitrate`: inicia o estimador de banda do receiver de vídeo em 10 Mbit/s (o `maxBitrate` do contrato), com `set_estimate`. A reação a congestionamento continua. Antes, o aiortc não enviava REMB nos primeiros 3 s e depois anunciava só a vazão medida, subindo 8% por segundo: o Chromium ficava perto de 0,5 Mbit/s no primeiro minuto.
 
-Commits: `52cb4c5`, `611afda`, `debf4d6`, `1f01c4e`, `689df30` (relatório) e a atualização deste relatório depois da revisão.
+Commits: `52cb4c5`, `611afda`, `debf4d6`, `1f01c4e`, `689df30` (relatório), `8a5ccc5` (faixa de cor), `78691a7` (referência gerada no próprio agent), `4935e5d` (jitter buffer), `6786bb3` (estimativa de banda) e a atualização deste relatório.
 
 ### Formato I420 do pyvirtualcam
 
@@ -46,7 +50,7 @@ O pyvirtualcam 0.15.0, em `PixelFormat.I420`, aceita qualquer array `uint8` com 
 |---|---|---|
 | 1 | Parcial (agent) | Windows real, `uv run wcam` com backend `obs`: o terminal mostra "Câmera virtual: OBS Virtual Camera, 1920 × 1080 a 30 fps" e o status traz `virtualCamera` `active`. Um consumidor DirectShow (PyAV, já presente no ambiente; nada foi instalado) abriu a "OBS Virtual Camera" em 1920x1080, NV12, 30 fps. Com um cliente aiortc no fluxo completo, a câmera mostrou a imagem enviada em `live`. Teams, Meet, OBS e sites ficam com o usuário. |
 | 2 | Verificado | No Windows, pela câmera real: média de luma 0,0 sem sessão e também em `awaiting_confirmation`. Testes: `test_sink_receives_placeholder_without_session`, `..._while_awaiting_confirmation`, `test_portrait_frame_is_replaced_by_placeholder`, `test_sink_receives_placeholder_after_one_second_without_frames` e `test_running_pipeline_feeds_placeholders_continuously` (quadros contínuos sem sessão). |
-| 3 | Não verificado (e2e da web) | A medição foi validada; ver §3, item 4. |
+| 3 | Falhou | e2e do compose com o comando do CI: 9 passed e 1 failed (`quality.spec.ts`). A medição chega (30 a 57 quadros), mas o SSIM fica em cerca de 0,93; ver §3, item 4. |
 | 4 | Não verificado | Teste real de 10 min com celular, com o usuário. |
 | 5 | Verificado | `test_phone_frame_reaches_sink_unchanged_when_size_matches`: bytes iguais de entrada e saída, 0 redimensionados. No Windows, o cinza Y=120 enviado pelo cliente chegou à câmera com média 121,0, exatamente o esperado na conversão para escala cheia, (120-16)×255/219 = 121,1. |
 | 6 | Verificado | Testes `test_unavailable_driver_keeps_agent_running_and_reports_reason[driver_missing]` e `[device_in_use]`: o status traz o motivo e a sessão é criada normalmente. Real: uma segunda instância com outra porta imprimiu "Câmera virtual indisponível: Desligue a câmera virtual do OBS e reinicie o WCam." e seguiu com o QR. `test_obs_errors_map_to_reasons` cobre as duas mensagens nativas, confirmadas no binário do pyvirtualcam e reproduzidas. Driver ausente de verdade não foi testado (o OBS está instalado). |
@@ -63,8 +67,21 @@ Compose, do lado do agent:
 1. A medição de qualidade fica no pipeline, não no sink falso. O pipeline é quem sabe se o quadro veio do celular, e só esses quadros entram no SSIM (o preto derrubaria a média). Funciona com qualquer backend quando `WCAM_QUALITY_REFERENCE` está definido. A spec dizia que o sink falso "alimenta a medição".
 2. O SSIM roda num worker separado, que pula o quadro se ainda estiver ocupado. A saída da câmera nunca espera pela medição. Medido: cerca de 29 dos 30 quadros por segundo entram no SSIM, com a saída mantida em 30 fps. Com SSIM no mesmo worker, a saída caía para cerca de 10 fps. `frames` no status conta os quadros medidos de fato.
 3. Ruído da referência em ±12, e não mais forte. O que pesa na compressão são o texto e as linhas de 1 px. Medi o quadro-chave VP8 do aiortc com ruído ±48 e ±12: 194 KB contra 160 KB.
-4. CA 3, risco para a sessão web. A medição está certa: codificando a referência com libvpx em tempo real, a 10 Mbit/s o SSIM dá 0,996 a 0,997, e a 2,5 Mbit/s fica entre 0,971 e 0,993. Mas um cliente aiortc enviando a referência no compose deu 0,855, porque o encoder do aiortc trabalha a cerca de 0,3 a 3 Mbit/s. O Chromium do e2e deve passar se o estimador de banda do aiortc (o receptor) deixar o bitrate subir. Se o e2e ficar abaixo de 0,98, olhar `session.video.bitrateKbps`: abaixo de alguns Mbit/s, o gargalo é o estimador, e não a referência. Isso vira decisão de spec.
-5. No Windows, um cliente aiortc enviando a referência para o IP da LAN da própria máquina não entrega nenhum quadro: rajadas de 120 a 150 pacotes por quadro-chave, sem controle de envio, se perdem. Com quadro liso funciona, e no Linux (compose) a referência funciona. É limite da ferramenta de teste, não do agente; o celular real da v0.3.0 entregou 1080p.
+4. CA 3: o teto é a região de ruído da referência. Medições no e2e do compose, todas com o comando do CI:
+
+   | Etapa | SSIM médio | Mínimo | Quadros | bitrateKbps | fps |
+   |---|---|---|---|---|---|
+   | Só o jitter buffer | 0,8460 | 0,8395 | 30 | 471 a 561 | 1,4 a 12,4 |
+   | Mais o estimador em 10 Mbit/s | 0,9281 | 0,9250 | 52 | 6.749 a 9.445 | 27 a 31 |
+   | Mais `x-google-start-bitrate=10000` | 0,9286 | 0,9258 | 57 | 7.524 a 9.902 | 29 a 32 |
+   | Estimador, com o código commitado | 0,9255 | 0,9208 | 32 | 3.840 a 4.991 | 17 a 20 |
+   | Experimento: ruído ±4 em vez de ±12 | 0,9726 | 0,9718 | 38 | 1.476 | 19,6 |
+
+   - O `x-google-start-bitrate` não mudou nada e foi desfeito, como combinado: só entraria se fosse necessário. O experimento com ruído ±4 não foi commitado.
+   - Análise por região de quadros reais do sink no e2e, gravados por instrumentação temporária que não foi commitada. Nos quadros 450 e 600: linhas de 1 px de 0,9998 a 1,0000; gradiente de 0,994 a 0,996; texto de 0,984 a 0,9995; ruído sobre gradiente de 0,545 a 0,775.
+   - Média de luma igual à referência (153,8 contra 153,8) e alinhamento de pixel 0,0: o `C420jpeg` não causa conversão de faixa nem deslocamento.
+   - Leitura: o encoder VP8 de câmera do Chromium apaga ruído fino. Mesmo a 9 ou 10 Mbit/s a região de ruído só converge devagar, e com ruído menor o próprio Chromium gasta menos bitrate (1,5 Mbit/s com ±4). O libvpx puro, sem as configurações de câmera do Chromium, chega a 0,997 a 10 Mbit/s. Sem a região de ruído, as outras regiões ficam acima de 0,99.
+5. Correção: o "no Windows, o cliente aiortc com a referência não entrega nenhum quadro" não era perda de pacotes, como eu tinha escrito. Era o jitter buffer de 128 pacotes do aiortc, corrigido no `4935e5d`. O keyframe da referência passava de 128 pacotes.
 6. Quadro de espera com Y=16 (preto em faixa limitada), não Y=0. No consumidor DirectShow ele aparece como luma 0.
    - Conferido a pedido da revisão. Um script publicou pelo pyvirtualcam I420 com Y constante, e o leitor DirectShow leu os bytes crus do plano Y do NV12, sem conversão. Enviado 120, 16, 0, 235 e 255; lido 120, 16, 0, 235 e 255 (mínimo, média e máximo iguais), com U e V em 128,0.
    - Conclusão: nem o pyvirtualcam nem o driver do OBS mexem na faixa; os bytes passam intactos.
@@ -80,9 +97,9 @@ Compose, do lado do agent:
 
 ## 5. Perguntas para o orquestrador
 
-Respondidas na revisão:
-- Se o e2e de qualidade falhar por bitrate, o ajuste é no agente (estimador de banda e REMB do aiortc), sem mudar a referência nem o limite.
-- Para driver ausente, basta o teste automático.
-- A faixa de cor foi conferida em bytes crus (§3, item 6).
+1. CA 3: o limite de 0,98 com a referência atual depende de uma mudança de spec na referência, porque o agente não controla o encoder do celular. Opções que vejo, a decisão é sua:
+   - (a) tirar o ruído da referência, mantendo texto fino, linhas de 1 px e gradientes;
+   - (b) trocar o ruído por uma textura fina e estática que o codificador consiga representar;
+   - (c) manter a referência e rever o limite de SSIM.
 
-Nenhuma pergunta aberta.
+   Respondidas na revisão anterior: o ajuste de bitrate é no agente (feito, `6786bb3`), driver ausente pelo teste automático, faixa de cor conferida.
