@@ -1,6 +1,6 @@
 # Spec v0.2.0, Captura no celular
 
-Status: Aprovada (2026-11-01)
+Status: Entregue (2026-11-01)
 Branch de integração: `feature/captura`
 Sessões: `web` (implementa). A sessão `agent` não tem trabalho nesta versão.
 Referências: `docs/planejamento.md` §1 (CA-2, CA-3), §5.1, §5.3 e §5.6; ADR 0007
@@ -146,4 +146,28 @@ Envio de vídeo, pareamento real, código de confirmação, pausa, console, band
 5. O fps mostrado é o configurado na faixa (`getSettings().frameRate`), arredondado para inteiro. O fps entregue de fato é medido pelo agente a partir da v0.3.0. Nesta versão, o CA 2 confere a configuração: 1920x1080 a 30 fps.
 
 ## Changelog
-Vazio até a entrega.
+
+### 0.2.0, 2026-11-01
+
+Entregue pela sessão `web` (`feature/captura-web`), integrada em `feature/captura`. Design em `docs/design-v0.2.0-cam.md`, relatório em `docs/relatorio-v0.2.0-web.md`. A sessão `agent` só subiu a versão.
+
+| CA | Resultado | Evidência |
+|---|---|---|
+| 1 | Verificado | Fase 1 aprovada pelo usuário antes do código; o design registra a skill de cada decisão. |
+| 2 | Verificado | Usuário validou no celular real: 1920 × 1080 · 30 fps configurado, nas câmeras frontal e traseira. Aparelho e navegador não registrados. |
+| 3 | Verificado | e2e `cam with a portrait frame shows rotate` e celular real. |
+| 4 | Verificado | Celular real: troca nos dois sentidos sem recarregar. |
+| 5 | Verificado | e2e (faixa `live` com a prévia desligada) e celular real. |
+| 6 | Verificado | Celular real: tela acesa por 2 minutos parada no `ready`. |
+| 7 | Verificado | e2e `denied` e celular real: "Tentar de novo" volta a pedir depois de liberar. |
+| 8 | Verificado | Teste Vitest e e2e: a barra de endereço fica sem o fragmento. |
+| 9 | Verificado | Textos só em `locales/`; teste de paridade de chaves. |
+| 10 | Verificado | e2e `cam page does not load the console chunk`. |
+| 11 | Verificado | Build sem avisos, lint, 18 testes Vitest; compose e2e 7 de 7; CI e CodeQL verdes. |
+| 12 | Verificado | `impeccable audit` de 16/20 para 18/20, sem P0. |
+
+Skills na fase 2: taste-skill (`lint.mjs` 0/0; `inspect.mjs --app` com 2 FAIL de título corrigidos e 0 FAIL no fim), impeccable (`detect` sem achados, `audit` e `polish`), emil-design-eng (vídeo só no primeiro quadro).
+
+Divergências aceitas: formato da captura em uma linha sobre `--scrim`; a marca é o `h1` e os títulos dos estados são `h2` ou `<p>`; Wake Lock também em `preview_off`; tokens extras para não deixar número solto; título do console provisório de 32 para 24px; textos de `cam.missing_pairing`, `cam.unavailable_unsupported` e `cam.unavailable_in_use` encurtados para caber em duas linhas.
+
+Pendências para a spec de polimento do front: anel de foco sobre imagem clara, disco do trilho encostado na borda da imagem em telas 20:9, anúncio do `rotate` por leitor de tela.

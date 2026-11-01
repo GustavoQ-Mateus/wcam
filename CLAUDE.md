@@ -102,7 +102,7 @@ Testes
 - `main` é a linha estável. Cada spec tem sua branch de integração `feature/<nome-curto>` criada a partir de `origin/main`, com PR para `main`. Nunca commit ou push direto na `main`, nunca force push.
 - Na branch de integração o orquestrador coloca o que é compartilhado (handoffs, `docs/contrato.md`, `locales/`). Cada sessão implementadora trabalha em `feature/<nome-curto>-<sessão>` (`-agent`, `-web`), criada a partir da integração, num worktree próprio em `.worktrees/<sessão>`, com PR para a branch de integração. Só a sessão dona mexe no seu worktree.
 - `.worktrees/` fica fora do git, do contexto Docker e da busca do editor.
-- Ao entregar uma versão da spec, tag `vX.Y.Z` no merge.
+- Ao entregar uma versão da spec, tag `vX.Y.Z` no merge. Antes do PR, `version` em `agent/pyproject.toml` e em `web/package.json` fica igual à versão da spec, mesmo que um dos lados não tenha outro trabalho nela.
 - PR: título no padrão do commit. Corpo:
   ```
   Spec: docs/specs/spec-vX.Y.Z.md
