@@ -26,7 +26,7 @@ Esta seção substitui as partes correspondentes de `docs/contrato.md` na aprova
 | `POST /api/sessions/current/reject` | nenhum | `204` | `409 no_session_awaiting_confirmation` |
 | `DELETE /api/sessions/current` | nenhum | `204` | `404 no_active_session` |
 
-- `POST /api/pairing` abre a janela de pareamento por 120 s, gera um token novo e invalida o anterior. `url` é `https://<ip-da-lan>:8443/cam#t=<token>`; `qrSvg` é o QR dessa URL em SVG (segno); `expiresAt` em ISO 8601 UTC.
+- `POST /api/pairing` abre a janela de pareamento por 120 s, gera um token novo e invalida o anterior. `url` é `https://<ip-da-lan>:8443/cam#t=<token>`; `qrSvg` é o QR dessa URL como documento SVG completo e independente (com `xmlns="http://www.w3.org/2000/svg"`, sem declaração XML), pronto para virar uma imagem `data:`; `expiresAt` em ISO 8601 UTC.
 - A janela fecha quando expira, quando uma sessão é criada (o token é consumido) ou no `DELETE`.
 
 `GET /api/status`:

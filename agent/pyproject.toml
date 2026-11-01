@@ -1,11 +1,12 @@
 [project]
 name = "wcam"
-version = "0.2.0"
+version = "0.3.0"
 description = "Use your phone camera as a wireless webcam over local Wi-Fi"
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
 dependencies = [
+    "aiortc>=1.15.0",
     "cryptography>=50.0.2",
     "fastapi>=0.162.0",
     "psutil>=7.2.2",
