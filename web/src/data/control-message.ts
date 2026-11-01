@@ -13,8 +13,11 @@ export function parseControlMessage(data: unknown): ControlMessage | null {
   if (message.type !== SESSION_STATE_TYPE) {
     return null;
   }
-  if (message.state === "awaiting_confirmation" || message.state === "live") {
-    return { type: SESSION_STATE_TYPE, state: message.state };
+  if (message.state === "awaiting_confirmation") {
+    return { type: SESSION_STATE_TYPE, state: "awaiting_confirmation" };
+  }
+  if (message.state === "live") {
+    return { type: SESSION_STATE_TYPE, state: "live" };
   }
   if (message.state === "ended") {
     const reason = "reason" in message && typeof message.reason === "string" ? message.reason : "";

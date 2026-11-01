@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { isLive } from "../data/cam-state";
-import { takePairingTokenFromLocation } from "../data/pairing";
+import { storePairingTokenFromLocation } from "../data/pairing";
 import { isMirrored } from "../media/capture";
 import styles from "./cam-page.module.scss";
 import { isMessageState } from "./cam-messages";
@@ -9,10 +9,10 @@ import { MessageLayer } from "./message-layer";
 import { useCam } from "./use-cam";
 import { Viewfinder } from "./viewfinder";
 
-const PAIRING_TOKEN = takePairingTokenFromLocation();
+const HAS_PAIRING = storePairingTokenFromLocation();
 
 export default function CamPage() {
-  const cam = useCam(PAIRING_TOKEN !== null);
+  const cam = useCam(HAS_PAIRING);
   const [noticeDismissed, setNoticeDismissed] = useState(false);
   const { state } = cam;
 

@@ -58,5 +58,6 @@ export interface CreateSessionResponse {
 }
 
 export type ControlMessage =
-  | { type: "session_state"; state: "awaiting_confirmation" | "live" }
+  | { type: "session_state"; state: "awaiting_confirmation" }
+  | { type: "session_state"; state: "live" }
   | { type: "session_state"; state: "ended"; reason: string };
