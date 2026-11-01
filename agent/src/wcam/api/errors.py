@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 HTTP_ERROR_CODES = {404: "not_found", 405: "method_not_allowed"}
+SERVER_ERROR_THRESHOLD = 500
 
 
 def error_response(status_code: int, code: str, message: str) -> JSONResponse:
@@ -17,8 +18,14 @@ def install_error_handlers(app: FastAPI) -> None:
 
 
 async def handle_http_error(request: Request, exception: Exception) -> JSONResponse:
-    status_code = exception.status_code if isinstance(exception, HTTPException) else 500
-    return error_response(status_code, HTTP_ERROR_CODES.get(status_code, "http_error"), "The request failed.")
+    status_code = exception.status_code if isinstance(exception, HTTPException) else SERVER_ERROR_THRESHOLD
+    return error_response(status_code, http_error_code(status_code), "The request failed.")
+
+
+def http_error_code(status_code: int) -> str:
+    if status_code in HTTP_ERROR_CODES:
+        return HTTP_ERROR_CODES[status_code]
+    return "internal_error" if status_code >= SERVER_ERROR_THRESHOLD else "invalid_request"
 
 
 async def handle_validation_error(request: Request, exception: Exception) -> JSONResponse:

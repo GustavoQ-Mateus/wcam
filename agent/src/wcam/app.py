@@ -13,10 +13,10 @@ from wcam.api.errors import install_error_handlers
 from wcam.api.host_guard import HostGuard
 from wcam.api.phone_routes import create_phone_router
 from wcam.api.static import mount_web
+from wcam.api.subnet_guard import SubnetGuard
 from wcam.config import Settings
 from wcam.network.certificates import TlsCertificate
 from wcam.network.lan import LanInterface
-from wcam.network.subnet_guard import SubnetGuard
 
 CONSOLE_PAGES = ("/",)
 PHONE_PAGES = ("/cam",)

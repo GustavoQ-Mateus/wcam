@@ -1,7 +1,7 @@
 import socket
 from collections.abc import Iterable
 from dataclasses import dataclass
-from ipaddress import IPv4Address, IPv4Network
+from ipaddress import IPv4Address, IPv4Network, IPv6Address, ip_address
 
 import psutil
 
@@ -35,6 +35,17 @@ def select_lan_interface(candidates: Iterable[LanInterface], preferred_ip: str |
 
 def is_lan_address(ip: IPv4Address) -> bool:
     return any(ip in network for network in PRIVATE_NETWORKS)
+
+
+def is_in_network(address: str, network: IPv4Network) -> bool:
+    try:
+        parsed = ip_address(address)
+    except ValueError:
+        return False
+    if isinstance(parsed, IPv6Address):
+        mapped = parsed.ipv4_mapped
+        return mapped is not None and mapped in network
+    return parsed in network
 
 
 def list_ipv4_interfaces() -> list[LanInterface]:

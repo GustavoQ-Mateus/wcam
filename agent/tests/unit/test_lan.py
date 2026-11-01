@@ -2,7 +2,7 @@ from ipaddress import IPv4Address, IPv4Network
 
 import pytest
 
-from wcam.network.lan import LanInterface, NoLanInterfaceError, select_lan_interface
+from wcam.network.lan import LanInterface, NoLanInterfaceError, is_in_network, select_lan_interface
 
 LOOPBACK = LanInterface(IPv4Address("127.0.0.1"), IPv4Network("127.0.0.0/8"))
 WSL = LanInterface(IPv4Address("172.24.48.1"), IPv4Network("172.24.48.0/20"))
@@ -36,3 +36,11 @@ def test_lan_without_private_interface_raises() -> None:
 def test_lan_without_default_route_raises() -> None:
     with pytest.raises(NoLanInterfaceError):
         select_lan_interface([LOOPBACK, WIFI, WSL], None)
+
+
+def test_ipv4_mapped_ipv6_address_inside_network_is_accepted() -> None:
+    assert is_in_network("::ffff:192.168.0.23", WIFI.network)
+
+
+def test_invalid_address_is_outside_network() -> None:
+    assert not is_in_network("not-an-ip", WIFI.network)

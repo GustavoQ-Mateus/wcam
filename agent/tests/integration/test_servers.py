@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import httpx
+from fastapi import HTTPException
 
 from tests.conftest import LAN, console_client, phone_client
 from wcam.app import create_console_app, create_phone_app, create_servers
@@ -103,3 +104,28 @@ def test_servers_ignore_forwarded_client_address(settings: Settings) -> None:
     servers = create_servers(settings, LAN, certificate)
 
     assert [server.config.proxy_headers for server in servers] == [False, False]
+
+
+async def test_client_error_outside_table_returns_invalid_request(settings: Settings) -> None:
+    response = await request_route_raising(settings, 418)
+
+    assert response.status_code == 418
+    assert response.json()["error"]["code"] == "invalid_request"
+
+
+async def test_server_error_outside_table_returns_internal_error(settings: Settings) -> None:
+    response = await request_route_raising(settings, 502)
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "internal_error"
+
+
+async def request_route_raising(settings: Settings, status_code: int) -> httpx.Response:
+    app = create_console_app(settings)
+
+    @app.get("/api/fail")
+    async def fail() -> None:
+        raise HTTPException(status_code)
+
+    async with console_client(app) as client:
+        return await client.get("/api/fail")
