@@ -64,7 +64,7 @@ Rodei, dentro da rede do compose, o fluxo da `/cam` com a `RTCPeerConnection` ca
 | falsa padrão | 198 quadros VP8 1920x1080 (libvpx), 516 KB, cerca de 2,6 KB por quadro | `video` 1920x1080, 8 a 18 fps, 185 a 350 kbps, VP8, `framesScaled` 0, `source` `phone` |
 | `.y4m` de referência | 24 quadros VP8 1920x1080, 2,92 MB, cerca de 120 KB por quadro, `connected`, `qualityLimitationReason` `none` | `video` `null`, `source` `placeholder` a sessão inteira |
 
-O arquivo está certo no container (`/reference/reference.y4m`, legível, cabeçalho `C420jpeg`) e o `<video>` da `/cam` toca a referência. O vídeo para no agente: com quadros de mais de 100 pacotes RTP, nenhum chega a ser decodificado. Hipótese passada à sessão agent, não verificada: a capacidade fixa do jitter buffer de vídeo do aiortc. O web não tem o que mudar aqui: o `maxBitrate` de 10 Mbit/s vem do contrato.
+O arquivo está certo no container (`/reference/reference.y4m`, legível, cabeçalho `C420jpeg`) e o `<video>` da `/cam` toca a referência. O vídeo para no agente: com quadros de mais de 100 pacotes RTP, nenhum chega a ser decodificado. Causa confirmada pelo orquestrador: o aiortc 1.15.0 tem o jitter buffer de vídeo fixo em 128 pacotes, e o keyframe da referência passa disso. A sessão agent vai aumentá-lo para 2048. O mesmo defeito atingiria o celular real com uma cena detalhada. O web não tem o que mudar aqui: o `maxBitrate` de 10 Mbit/s vem do contrato.
 
 O teste de qualidade passa a registrar `quality` e `session.video` juntos (0927e97), para o próximo resultado já trazer o bitrate.
 
