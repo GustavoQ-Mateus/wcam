@@ -1,6 +1,6 @@
 # Spec v0.3.0, Pareamento e WebRTC
 
-Status: Aprovada (2026-11-01)
+Status: Entregue (2026-11-01)
 Branch de integração: `feature/pareamento`
 Sessões: `agent` e `web`, em paralelo
 Referências: `docs/planejamento.md` §1 (CA-2, CA-4), §4 (fluxo e segurança), §5.2 a §5.4; ADRs 0003, 0004, 0009 e 0010
@@ -233,4 +233,27 @@ Câmera virtual (v0.4.0), reconexão após queda (v0.7.0), pausa e troca de câm
 4. `qrSvg` é um documento SVG completo, com `xmlns` e sem declaração XML.
 
 ## Changelog
-Vazio até a entrega.
+
+### 0.3.0, 2026-11-01
+
+Entregue pelas sessões `agent` (`feature/pareamento-agent`) e `web` (`feature/pareamento-web`), integradas em `feature/pareamento`. Design em `docs/design-v0.3.0-cam.md`; relatórios em `docs/relatorio-v0.3.0-agent.md` e `docs/relatorio-v0.3.0-web.md`.
+
+| CA | Resultado | Evidência |
+|---|---|---|
+| 1 | Verificado | Testes de pareamento e segurança do agente (82 no total): token só em hash, uso único, expiração, janela fechada, limite de tentativas, sessão única, token ausente dos logs com os dois uvicorn reais em DEBUG. |
+| 2 | Verificado | `RTCConfiguration(iceServers=[])` testado; filtro da oferta remove WSL, `.local`, srflx e IPv6; a resposta real do aiortc só tem candidatos da sub-rede. |
+| 3 | Verificado | Os três vetores do contrato passam no Python e no Vitest. |
+| 4 | Verificado | Integração aiortc com aiortc em 1920x1080: portão recebe e libera 0 antes do Confirmar; depois libera e o status mostra 1920x1080. |
+| 5 | Verificado com ressalva | Usuário validou no celular real: mesmo código nas duas telas, Confirmar, `live` com a tally. Aparelho, navegador, codec negociado, fps médio de 60 s e bitrate não foram registrados; o agente não guarda métricas de sessões encerradas (persistência na v0.6.0). |
+| 6 | Verificado | e2e de recusa e celular real. |
+| 7 | Verificado | e2e de token reutilizado e celular real. `busy` com dois celulares não confirmado pelo usuário. |
+| 8 | Verificado | Celular real: Desconectar no console encerra e o celular mostra `ended` (`lastEnded` `disconnected_by_pc`). |
+| 9 | Verificado | e2e no compose contra o agente real: 9 de 9. |
+| 10 | Verificado | `docs/contrato.md` 0.3.0, com os ajustes registrados acima; textos só em `locales/`, com paridade. |
+| 11 | Verificado | Agente: ruff, pyright strict, 82 testes, pip-audit. Web: build sem avisos, lint, 33 testes. CI e CodeQL verdes. Versão 0.3.0 nos dois lados. |
+| 12 | Verificado | Fase 1 aprovada pelo usuário; `impeccable audit` 19/20 sem P0. |
+| 13 | Verificado | Dependabot ignora major e minor da imagem `python` e major de `node`, `@types/node` e `typescript`. |
+
+Pendências para a spec de polimento do front: o `ready` aparece por um quadro antes de `connecting`; anel de foco sobre imagem clara; disco do trilho encostado na borda da imagem em telas 20:9.
+
+Pendência para a v0.4.0: medir no celular real e registrar fps entregue, bitrate e codec, junto com a medição de qualidade da saída (SSIM).
