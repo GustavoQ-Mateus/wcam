@@ -20,7 +20,7 @@
   "cam.retry": "Try again",
   "cam.unavailable_unsupported": "Use Chrome or Safari to open the camera.",
   "cam.unavailable_no_camera": "No camera found on this device.",
-  "cam.unavailable_in_use": "Another app is using the camera. Close it and try again.",
+  "cam.unavailable_in_use": "Close the other app using the camera.",
   "cam.rotate_title": "Turn your phone sideways",
   "cam.rotate_body": "WCam sends landscape video, so nothing is cropped or scaled.",
   "cam.capture_format": "{width} × {height} · {fps} fps",
