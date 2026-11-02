@@ -21,11 +21,24 @@ Spec: `docs/specs/spec-v0.5.0.md`
 - `dotnet publish -r win-x64 -c Release` da DLL e do probe: 0 avisos de AOT e de trimming. A DLL publicada (2,4 MB) é nativa, sem cabeçalho CLR, e exporta as seis funções (conferido com `dumpbin /exports`).
 - Teste no próprio processo, sem registro: a DLL publicada é carregada, `DllGetClassObject` e `IClassFactory` criam o `IMFActivate`, que ativa a media source. O `IMFSourceReader` do Media Foundation leu 90 quadros NV12 1920x1080 de 3.110.400 bytes em 3,00 s, com 2,94 s entre o primeiro e o último timestamp: 30 fps.
 
-Ambiente: a máquina tem duas instalações do MSVC, Visual Studio 18 Insiders em `C:\Program Files` e Community em `G:\Microsoft\VisualStudio\18\Community`. O ILCompiler escolhe a Insiders (`vswhere -latest -prerelease`), e o `vcvarsall` dela falha ("'vswhere.exe' não é reconhecido"). Contorno: rodar o publish depois do `vcvarsall.bat amd64` da Community, com `/p:IlcUseEnvironmentalTools=true`. No CI isso não acontece. A outra saída é reparar ou remover a Insiders.
+Ambiente: o `vcvarsall.bat` chama `vswhere.exe` pelo PATH, e a pasta `C:\Program Files (x86)\Microsoft Visual Studio\Installer` não está no PATH desta máquina. A mensagem de erro ("'vswhere.exe' não é reconhecido") vai parar no caminho do linker que o ILCompiler monta, e o link falha com código 123. Isso acontecia com a instalação Insiders e continuou depois que o usuário a removeu, já com a Community. Contorno usado: chamar `G:\Microsoft\VisualStudio\18\Community\VC\Auxiliary\Build\vcvarsall.bat amd64` e depois publicar com `/p:IlcUseEnvironmentalTools=true`. Correção definitiva: pôr a pasta do Installer no PATH. No CI isso não acontece.
 
 ## Resultado nos apps
 
-Pendente.
+Registro feito em 2026-11-02 com o script de administrador, autorizado pelo usuário pelo UAC. O probe rodou como usuário comum.
+
+| Consumidor | Resultado | Evidência |
+|---|---|---|
+| Frame Server | A DLL carrega no serviço | Log: `pid` do `svchost` do serviço `FrameServer` (`NT AUTHORITY\LocalService`) com "media source created" e "media source started"; contador do stream: 30,0 fps entregues, 30,0 pedidos/s, 0 ticks ociosos, 0,9 a 1,8 ms por amostra |
+| Lista de câmeras do Media Foundation (`MFEnumDeviceSources`) | Aparece | Nome exposto pelo Windows: "WCam (Câmera Virtual do Windows)", link `\\?\swd#vcamdevapi#...` |
+| Chrome (headless, `getUserMedia`) | Funciona | "WCam (Câmera Virtual do Windows)" na lista; `getSettings` 1920x1080, 30 fps, `resizeMode` `none`; 29,9 fps medidos por `requestVideoFrameCallback` em 10 s; as 8 barras em RGB 255,255,255 / 254,255,0 / 0,254,255 / 0,255,1 / 255,0,254 / 255,1,0 / 1,0,255 / 0,0,0 |
+| Câmera some ao encerrar | Verificado | Depois de `WcamCameraStop`, `MFEnumDeviceSources` não lista mais a câmera |
+| App Câmera do Windows, novo Teams, Opera | Pendente | Teste do usuário |
+
+Observações:
+- O Windows acrescenta " (Câmera Virtual do Windows)" ao nome "WCam". O texto que o console vai mostrar precisa considerar isso.
+- Quando `MFCreateVirtualCamera` valida a source no processo do probe, a DLL tenta criar `Global\WCamFrames` e recebe acesso negado (falta privilégio ao usuário). Isso fica logado como erro e não atrapalha nada, porque só a instância que roda no serviço precisa da seção. Na fase 2 a seção deve ser criada só no processo do serviço.
+- Um cliente de teste em .NET lendo pelo Frame Server parou depois de cerca de 19 quadros, enquanto a DLL seguia entregando 30 fps. A causa provável é o cache de wrappers COM do cliente com as amostras que o Frame Server recicla. É um problema do cliente de teste, não da câmera: o Chrome leu 30 fps sem parar.
 
 ## Transporte de quadros
 
