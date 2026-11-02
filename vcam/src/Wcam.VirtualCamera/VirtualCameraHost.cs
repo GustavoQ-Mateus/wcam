@@ -9,6 +9,7 @@ internal static class VirtualCameraHost
 {
     private static readonly Lock Gate = new();
     private static IMFVirtualCamera? _camera;
+    private static PublishedFrameSection? _section;
 
     public static void Start()
     {
@@ -22,10 +23,12 @@ internal static class VirtualCameraHost
             PInvoke.MFStartup(PInvoke.MF_VERSION, PInvoke.MFSTARTUP_FULL).ThrowOnFailure();
             try
             {
+                _section = PublishedFrameSection.Create(FrameTransport.LocalSectionName);
                 _camera = CreateCamera();
             }
             catch
             {
+                ReleaseSection();
                 PInvoke.MFShutdown();
                 throw;
             }
@@ -50,10 +53,30 @@ internal static class VirtualCameraHost
                 _camera.Shutdown();
                 ComObjects.Release(_camera);
                 _camera = null;
+                ReleaseSection();
                 PInvoke.MFShutdown();
             }
         }
         Log.Info("virtual camera stopped");
+    }
+
+    public static bool Publish(ReadOnlySpan<byte> frame)
+    {
+        lock (Gate)
+        {
+            if (_section is null)
+            {
+                return false;
+            }
+            _section.Publish(frame);
+            return true;
+        }
+    }
+
+    private static void ReleaseSection()
+    {
+        _section?.Dispose();
+        _section = null;
     }
 
     private static void InitializeCom()
@@ -77,8 +100,6 @@ internal static class VirtualCameraHost
             out IMFVirtualCamera camera).ThrowOnFailure();
         try
         {
-            CameraOwner.Record(camera);
-            SessionChannelSpike.Create();
             camera.Start(null!);
             return camera;
         }

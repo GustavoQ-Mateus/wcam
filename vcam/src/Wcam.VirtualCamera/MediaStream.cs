@@ -19,7 +19,7 @@ internal sealed unsafe partial class MediaStream : IMFMediaStream2, IKsControl
     private readonly MediaSource _source;
     private readonly IMFMediaEventQueue _events;
     private readonly Queue<object?> _pendingTokens = new();
-    private readonly FrameProducer _producer = new();
+    private readonly SessionFrameReader _reader = new();
     private readonly DeliveryStats _stats = new();
     private FramePacer? _pacer;
     private MF_STREAM_STATE _state = MF_STREAM_STATE.MF_STREAM_STATE_STOPPED;
@@ -67,7 +67,7 @@ internal sealed unsafe partial class MediaStream : IMFMediaStream2, IKsControl
             pacer = TakePacer();
         }
         pacer?.Dispose();
-        _producer.Dispose();
+        _reader.Dispose();
         _events.Shutdown();
     }
 
@@ -115,6 +115,7 @@ internal sealed unsafe partial class MediaStream : IMFMediaStream2, IKsControl
 
     public void SetStreamState(MF_STREAM_STATE value)
     {
+        Log.Info($"stream state set to {value}");
         if (value != MF_STREAM_STATE.MF_STREAM_STATE_RUNNING)
         {
             EndDelivery(value);
@@ -225,7 +226,7 @@ internal sealed unsafe partial class MediaStream : IMFMediaStream2, IKsControl
         buffer.Lock(&data, null, null);
         try
         {
-            _producer.Fill(new Span<byte>(data, VideoFormat.FrameSize));
+            _reader.Fill(new Span<byte>(data, VideoFormat.FrameSize));
         }
         finally
         {

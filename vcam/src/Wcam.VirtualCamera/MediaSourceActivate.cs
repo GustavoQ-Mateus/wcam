@@ -26,12 +26,6 @@ internal sealed unsafe partial class MediaSourceActivate : IMFActivate
             MediaSource source;
             lock (_lock)
             {
-                if (_source is null)
-                {
-                    AttributeLog.Write("activate", _attributes);
-                    CameraOwner.TryRead(_attributes);
-                    SessionChannelSpike.Probe();
-                }
                 source = _source ??= new MediaSource();
             }
             return ComObjects.QueryInterface<IMFMediaSourceEx>(source, riid, out ppv);
