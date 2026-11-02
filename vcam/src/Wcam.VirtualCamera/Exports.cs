@@ -102,6 +102,24 @@ internal static unsafe class Exports
         }
     }
 
+    [UnmanagedCallersOnly(EntryPoint = "WcamFramePublish")]
+    public static int WcamFramePublish(byte* nv12, uint length, uint width, uint height)
+    {
+        try
+        {
+            if (nv12 == null || !FrameTransport.AcceptsFrame(length, width, height))
+            {
+                return HRESULT.E_INVALIDARG;
+            }
+            return VirtualCameraHost.Publish(new ReadOnlySpan<byte>(nv12, (int)length)) ? HRESULT.S_OK : HRESULT.S_FALSE;
+        }
+        catch (Exception exception)
+        {
+            Log.Error("WcamFramePublish failed", exception);
+            return exception.HResult;
+        }
+    }
+
     private static string ModulePath()
     {
         HMODULE module;
