@@ -77,6 +77,8 @@ internal static class VirtualCameraHost
             out IMFVirtualCamera camera).ThrowOnFailure();
         try
         {
+            CameraOwner.Record(camera);
+            SessionChannelSpike.Create();
             camera.Start(null!);
             return camera;
         }
