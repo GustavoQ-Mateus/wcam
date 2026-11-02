@@ -36,9 +36,14 @@ Branch: `feature/camera-virtual-agent`
 - Correções depois da revisão:
   - `docker-compose.yml`: o serviço `reference` saiu, porque o `--exit-code-from e2e` derruba todo o compose quando qualquer serviço termina. O `agent` gera a referência antes de iniciar (`make_reference ... && exec wcam`), com o volume gravável no `agent` e só leitura no `e2e`.
   - `media/peer.py`, `enlarge_video_jitter_buffers`: troca o jitter buffer de vídeo de cada receiver, que o aiortc 1.15 fixa em 128 pacotes, por um de 2048, pelo atributo interno do receiver. Antes, um keyframe com mais de 128 pacotes (a referência no Chromium, ou uma cena detalhada a 10 Mbit/s) nunca era montado: `video` ficava `null` e `source` ficava `placeholder` durante o `live`.
+  - `media/peer.py`, `enlarge_ice_receive_buffers`: depois do `setLocalDescription`, quando os sockets do ICE já existem, pede `SO_RCVBUF` de 4 MB (`ICE_RECEIVE_BUFFER_BYTES`) em cada socket.
+    - Caminho até os sockets: `transceiver.receiver.transport.transport.iceGatherer` (público), depois `_connection` (aioice, interno do aiortc), `_protocols` (interno do aioice) e `transport.get_extra_info("socket")`.
+    - Deduplica por socket, porque com BUNDLE todas as transceivers compartilham o mesmo ICE.
+    - Se algum elo interno faltar (mudança de versão), registra um aviso no log e a sessão segue sem o aumento.
+    - O teste do keyframe grande passou para o nível do `JitterBuffer`, sem rede: o encoder VP8 gera um keyframe de mais de 128 pacotes, ele é empacotado em RTP e passado ao jitter buffer de uma sessão real, e o teste exige um quadro montado e decodificado em 1920x1080. A versão anterior dependia de rede e falhava no CI Linux.
   - `media/peer.py`, `start_video_estimate_at_max_bitrate`: inicia o estimador de banda do receiver de vídeo em 10 Mbit/s (o `maxBitrate` do contrato), com `set_estimate`. A reação a congestionamento continua. Antes, o aiortc não enviava REMB nos primeiros 3 s e depois anunciava só a vazão medida, subindo 8% por segundo: o Chromium ficava perto de 0,5 Mbit/s no primeiro minuto.
 
-Commits: `52cb4c5`, `611afda`, `debf4d6`, `1f01c4e`, `689df30` (relatório), `8a5ccc5` (faixa de cor), `78691a7` (referência gerada no próprio agent), `4935e5d` (jitter buffer), `6786bb3` (estimativa de banda), `282fa49` (relatório), `e43e7ed` (trama no lugar do ruído) e a atualização deste relatório.
+Commits: `52cb4c5`, `611afda`, `debf4d6`, `1f01c4e`, `689df30` (relatório), `8a5ccc5` (faixa de cor), `78691a7` (referência gerada no próprio agent), `4935e5d` (jitter buffer), `6786bb3` (estimativa de banda), `282fa49` e `4e8f732` (relatório), `e43e7ed` (trama no lugar do ruído), `659c5bc` (buffers de recepção UDP) e a atualização deste relatório.
 
 ### Formato I420 do pyvirtualcam
 
@@ -91,6 +96,13 @@ Compose, do lado do agent:
 7. `cpuPercent` dividido pelo número de CPUs. Sem a divisão, um núcleo inteiro daria 100% e o valor poderia passar de 100.
 8. `quality` com referência definida e nenhum quadro medido: `{"ssim": null, "minimum": null, "frames": 0}`, como você aprovou.
 9. O terminal usa as chaves `console.virtual_camera_<motivo>` para o `{reason}` de `terminal.virtual_camera_unavailable`, sem chave nova.
+
+10. Buffers de recepção UDP, medidos depois da falha do CI Linux (`65f109d`):
+    - Linux (container `python:3.13-slim` com 2 CPUs, como o runner): `SO_RCVBUF` padrão de 212.992 bytes. Pedindo 4 MB sem root, o kernel entrega 425.984 (limite do `rmem_max`, dobrado).
+    - No teste antigo do keyframe, o contador `Udp RcvbufErrors` de `/proc/net/snmp` foi de 0 para 2.654 a 3.003 datagramas descartados. O cliente aiortc despeja os 343 pacotes do keyframe de uma vez, sem pacing, e mesmo com 425.984 bytes os descartes continuaram.
+    - Windows: `SO_RCVBUF` padrão de 65.536 bytes (cerca de 50 pacotes de vídeo); pedindo 4 MB, o Windows entrega 4.194.304, sem corte. É no Windows que o aumento protege o produto, contra rajadas de um celular num Wi-Fi ruim.
+    - Depois da mudança, a suíte passou três vezes seguidas no Linux com 2 CPUs (109 passed, `RcvbufErrors=0`) e uma no Windows (109 passed).
+    - `test_pairing_token_never_appears_in_logs` não falhou em nenhuma reprodução local, nem depois da falha do teste do keyframe. No CI ele estourou no `wait_until` logo depois dessa falha. Nenhum timeout foi alterado.
 
 ## 4. Dependências
 
