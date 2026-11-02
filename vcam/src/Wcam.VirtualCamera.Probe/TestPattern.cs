@@ -1,4 +1,4 @@
-namespace Wcam.VirtualCamera;
+namespace Wcam.VirtualCamera.Probe;
 
 internal sealed class TestPattern
 {

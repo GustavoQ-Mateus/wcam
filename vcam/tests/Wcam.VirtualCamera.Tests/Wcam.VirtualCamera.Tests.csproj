@@ -12,6 +12,9 @@
     <ProjectReference Include="..\..\src\Wcam.VirtualCamera\Wcam.VirtualCamera.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\Wcam.VirtualCamera.Probe\TestPattern.cs" Link="Probe\TestPattern.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 </Project>
