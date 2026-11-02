@@ -113,3 +113,14 @@ Instalador (v1.0.0), assinatura de código da DLL, console definitivo (v0.6.0), 
 
 1. Uma sessão nova `vcam` para o projeto .NET (recomendado: escopo, linguagem e ferramentas diferentes), ou o .NET também com a sessão `agent`?
 2. Instalar o Visual Studio Build Tools (C++ desktop e Windows SDK) antes de começar. Sem ele, o publish Native AOT não linka.
+
+## Decisões registradas durante a implementação
+
+1. Fase 1 validada pelo usuário em 2026-11-02: "WCam" com padrão de teste no app Câmera, no novo Teams, no Meet e no Opera; Chrome mediu 1920x1080 a 29,9 fps. Relatório em `docs/relatorio-v0.5.0-vcam-fase1.md`.
+2. Transporte: seção `Global\` criada pela media source, escrita só pelo SID do dono (ADR 0011, que substitui a 0005). O arquivo mapeado também funcionou, mas gravava cerca de 5 GB por hora no disco.
+3. Vários apps ao mesmo tempo: resolvido pela opção do Windows "Permitir que vários aplicativos usem a câmera ao mesmo tempo", sem código. O instalador da v1.0.0 avalia ligá-la.
+4. Contrato: `virtualCamera.backend` ganha `media_foundation` e o campo `fallbackReason`. O texto do terminal deixa de fixar o nome "OBS Virtual Camera" e recebe `{name}`.
+5. O primeiro item da fase 2 é provar o caminho confiável do SID do dono até a media source.
+
+## Changelog
+Vazio até a entrega.

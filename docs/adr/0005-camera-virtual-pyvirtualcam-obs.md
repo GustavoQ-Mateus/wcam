@@ -1,6 +1,6 @@
 # 0005. Câmera virtual via pyvirtualcam sobre OBS Virtual Camera na v1
 
-Status: Aceita
+Status: Substituída pela ADR 0011 (2026-11-02)
 Data: 2026-10-31
 
 ## Contexto
