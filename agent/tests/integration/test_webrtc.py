@@ -3,9 +3,11 @@ import json
 import logging
 import socket
 import ssl
+import sys
 import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +15,10 @@ import httpx
 import numpy as np
 import pytest
 from aiortc import RTCConfiguration, RTCDataChannel, RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
+from aiortc.codecs import depayload, get_decoder, get_encoder
 from aiortc.rate import RemoteBitrateEstimator
+from aiortc.rtcrtpparameters import RTCRtpCodecParameters
+from aiortc.rtp import RtpPacket
 from av import VideoFrame
 
 from tests.conftest import console_app, console_client, opened_pipeline, phone_app, phone_client, services
@@ -21,12 +26,15 @@ from wcam.app import create_servers, serve
 from wcam.config import Settings
 from wcam.media import peer as peer_module
 from wcam.media.peer import (
+    ICE_RECEIVE_BUFFER_BYTES,
+    ICE_SOCKETS_UNREACHABLE,
     PHONE_MAX_BITRATE_BPS,
     VIDEO_JITTER_BUFFER_PACKETS,
     AiortcPeer,
     aiortc_peer_factory,
+    ice_sockets,
     video_bitrate_estimator,
-    video_jitter_buffer_capacity,
+    video_jitter_buffer,
 )
 from wcam.media.pipeline import FramePipeline, FrameSource
 from wcam.media.sdp_filter import candidate_addresses, sha256_fingerprint
@@ -51,6 +59,10 @@ SIMULATED_PACKET_INTERVAL_MS = 2
 SIMULATED_DURATION_MS = 3000
 SIMULATED_SSRC = 1
 FIRST_REMB_MINIMUM_SHARE = 0.9
+VP8_PAYLOAD_TYPE = 96
+VP8 = RTCRtpCodecParameters(mimeType="video/VP8", clockRate=90000, payloadType=VP8_PAYLOAD_TYPE)
+VIDEO_TIME_BASE = Fraction(1, 90000)
+NEXT_FRAME_TIMESTAMP_STEP = 3000
 UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
 
 
@@ -296,7 +308,7 @@ async def test_video_receiver_jitter_buffer_holds_large_frames(lan: LanInterface
     peer = factory.peers[0]
 
     capacities = [
-        video_jitter_buffer_capacity(transceiver.receiver)
+        video_jitter_buffer(transceiver.receiver).capacity
         for transceiver in peer.connection.getTransceivers()
         if transceiver.kind == "video"
     ]
@@ -331,22 +343,100 @@ def first_remb_for_steady_stream(estimator: RemoteBitrateEstimator) -> int | Non
     return None
 
 
-async def test_keyframe_larger_than_aiortc_default_buffer_is_decoded(
-    lan: LanInterface, pipeline: FramePipeline
+async def test_keyframe_larger_than_aiortc_default_buffer_is_assembled_and_decoded(
+    lan: LanInterface,
+    pipeline: FramePipeline,
 ) -> None:
-    client = phone_client_peer(DetailedVideo())
+    client = phone_client_peer()
     factory = RecordingPeerFactory(lan, pipeline)
     await factory(await client.offer(), PeerEvents(lambda: None, lambda _: None))
     peer = factory.peers[0]
-    await client.connection.setRemoteDescription(RTCSessionDescription(peer.answer_sdp, "answer"))
+    receiver = next(t.receiver for t in peer.connection.getTransceivers() if t.kind == "video")
+    buffer = video_jitter_buffer(receiver)
+    await peer.close()
+    await client.connection.close()
+    payloads, timestamp = detailed_keyframe_payloads()
 
-    try:
-        await wait_until(lambda: peer.gate.received > 0)
-    finally:
-        await peer.close()
-        await client.connection.close()
+    assembled = [frame for packet in rtp_packets(payloads, timestamp) if (frame := buffer.add(packet)[1]) is not None]
+    decoded = [frame for jitter_frame in assembled for frame in get_decoder(VP8).decode(jitter_frame)]
 
-    assert peer.gate.received > 0
+    assert len(payloads) > AIORTC_DEFAULT_VIDEO_JITTER_PACKETS
+    assert len(assembled) == 1
+    assert [(frame.width, frame.height) for frame in decoded if isinstance(frame, VideoFrame)] == [(WIDTH, HEIGHT)]
+
+
+def detailed_keyframe_payloads() -> tuple[list[bytes], int]:
+    generator = np.random.default_rng(DETAILED_FRAME_SEED)
+    image = generator.integers(0, 256, size=(HEIGHT * 3 // 2, WIDTH), dtype=np.uint8)
+    frame = VideoFrame.from_ndarray(image, format="yuv420p")
+    frame.pts = 0
+    frame.time_base = VIDEO_TIME_BASE
+    return get_encoder(VP8).encode(frame, force_keyframe=True)
+
+
+def rtp_packets(payloads: list[bytes], timestamp: int) -> list[RtpPacket]:
+    packets = [
+        rtp_packet(index, timestamp, payload, marker=index == len(payloads) - 1)
+        for index, payload in enumerate(payloads)
+    ]
+    packets.append(rtp_packet(len(payloads), timestamp + NEXT_FRAME_TIMESTAMP_STEP, payloads[0], marker=True))
+    return packets
+
+
+def rtp_packet(sequence_number: int, timestamp: int, payload: bytes, *, marker: bool) -> RtpPacket:
+    packet = RtpPacket(
+        payload_type=VP8_PAYLOAD_TYPE,
+        marker=int(marker),
+        sequence_number=sequence_number,
+        timestamp=timestamp,
+        payload=payload,
+    )
+    setattr(packet, "_data", depayload(VP8, payload))  # noqa: B010
+    return packet
+
+
+async def test_ice_sockets_get_a_larger_receive_buffer(lan: LanInterface, pipeline: FramePipeline) -> None:
+    client = phone_client_peer()
+    factory = RecordingPeerFactory(lan, pipeline)
+    await factory(await client.offer(), PeerEvents(lambda: None, lambda _: None))
+    peer = factory.peers[0]
+
+    buffers = [
+        ice_socket.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF) for ice_socket in ice_sockets(peer.connection)
+    ]
+    await peer.close()
+    await client.connection.close()
+
+    assert buffers
+    assert all(size >= minimum_enlarged_receive_buffer() for size in buffers)
+
+
+def minimum_enlarged_receive_buffer() -> int:
+    if sys.platform == "win32":
+        return ICE_RECEIVE_BUFFER_BYTES
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        default: int = probe.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
+    return default + 1
+
+
+async def test_unreachable_ice_sockets_are_logged_and_the_session_continues(
+    lan: LanInterface,
+    pipeline: FramePipeline,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(peer_module, "AIORTC_ICE_CONNECTION_ATTRIBUTE", "_renamed_by_a_new_aiortc")
+    client = phone_client_peer()
+    factory = RecordingPeerFactory(lan, pipeline)
+
+    with caplog.at_level(logging.WARNING):
+        await factory(await client.offer(), PeerEvents(lambda: None, lambda _: None))
+    peer = factory.peers[0]
+    await peer.close()
+    await client.connection.close()
+
+    assert ICE_SOCKETS_UNREACHABLE in caplog.text
+    assert candidate_addresses(peer.answer_sdp)
 
 
 async def test_pairing_token_never_appears_in_logs(
