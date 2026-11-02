@@ -1,6 +1,6 @@
 # Contrato entre web e agent
 
-Versão: 0.3.0
+Versão: 0.4.0
 
 Fonte da verdade da comunicação entre `web` e `agent`. Mudou aqui, muda na spec da versão antes do código.
 
@@ -150,6 +150,47 @@ Vetores de teste (os dois lados testam os três):
 
 Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford base32), sem mudar a decisão.
 
+## Câmera virtual, CPU e qualidade em `GET /api/status`
+
+```json
+{
+  "virtualCamera": {
+    "state": "active",
+    "backend": "obs",
+    "reason": null,
+    "output": {"width": 1920, "height": 1080, "fps": 30},
+    "source": "phone"
+  },
+  "session": {
+    "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800, "codec": "H264", "framesScaled": 0}
+  },
+  "process": {"cpuPercent": 12.5},
+  "quality": null
+}
+```
+
+- `virtualCamera.state`: `active` ou `unavailable`. `reason` (só com `unavailable`): `driver_missing`, `device_in_use` ou `error`.
+- `backend`: `obs` ou `fake`.
+- `source`: `phone` quando os quadros vêm do celular; `placeholder` em qualquer outro momento.
+- `session.video.codec`: o codec negociado (`H264` ou `VP8`). `framesScaled`: quantos quadros precisaram ser redimensionados na sessão (o esperado é 0; ver "Formato de saída").
+- `process.cpuPercent`: uso de CPU do processo do agente, média da última janela de 1 s, via psutil.
+- `quality`: só existe com `WCAM_QUALITY_REFERENCE` definido (desenvolvimento e e2e); fora disso é sempre `null`. Ver "Qualidade".
+
+Variáveis de ambiente (somam-se à tabela abaixo):
+
+| Variável | Padrão | Uso |
+|---|---|---|
+| `WCAM_VIRTUAL_CAMERA` | `auto` | `auto` (Windows usa `obs`, o resto usa `fake`), `obs` ou `fake` |
+| `WCAM_QUALITY_REFERENCE` | vazio | caminho de um arquivo `.y4m` de referência; liga a medição de SSIM |
+
+## Qualidade (`quality`)
+
+Medição automática:
+- Com `WCAM_QUALITY_REFERENCE` definido, o agente lê o arquivo `.y4m` de referência (1920x1080, um quadro estático de alto detalhe) e compara cada quadro entregue ao sink com ele: SSIM no plano Y, janela de 8x8, implementado com numpy. Os quadros dos primeiros 3 s da sessão `live` são ignorados, enquanto o codificador estabiliza.
+- `quality` no status: `{"ssim": <média>, "minimum": <menor>, "frames": <quantos>}`. Com a referência definida e nenhum quadro medido ainda, vem `{"ssim": null, "minimum": null, "frames": 0}`; o cliente espera `frames >= 30` antes de ler `ssim`.
+- O arquivo de referência é gerado por um script do agente (`python -m wcam.tools.make_reference <saida.y4m>`), deterministicamente, com padrão de alto detalhe representativo de imagem de câmera: texto fino, linhas de 1 px, gradientes e uma textura fina estruturada, estática, com detalhe de 2 a 4 px (trama, como tecido). Sem ruído aleatório pixel a pixel, que nenhuma câmera entrega (o celular remove o ruído do sensor) e que o codificador de câmera do Chromium descarta por definição. Ele não é commitado.
+- No e2e, o Chromium recebe a referência como câmera falsa (`--use-file-for-fake-video-capture`), faz o fluxo completo até `live`, e o teste confere `quality.ssim >= 0.98` depois de pelo menos 30 quadros medidos.
+
 ## Variáveis de ambiente do agente
 
 | Variável | Padrão | Uso |
@@ -169,3 +210,4 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
 |---|---|
 | `E2E_CONSOLE_URL` | `http://agent:8080` |
 | `E2E_PHONE_URL` | `https://agent:8443` |
+| `E2E_QUALITY_REFERENCE` | `/reference/reference.y4m` (volume `reference`, o mesmo arquivo de `WCAM_QUALITY_REFERENCE` no `agent`) |

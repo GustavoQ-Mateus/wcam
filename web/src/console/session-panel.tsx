@@ -41,7 +41,18 @@ export function SessionPanel({ session, onConfirm, onReject, onDisconnect }: Ses
           ))}
         </p>
       )}
-      {session.video && <p className={styles.video}>{t("console.video_format", videoFormatValues(session.video))}</p>}
+      {session.video && (
+        <p className={styles.video}>
+          <span>{t("console.video_format", videoFormatValues(session.video))}</span>
+          <span>{session.video.codec}</span>
+        </p>
+      )}
+      {session.video && session.video.framesScaled > 0 && (
+        <p className={styles.warning}>
+          <span className={styles.warningMark} aria-hidden="true" />
+          {t("console.frames_scaled", { count: String(session.video.framesScaled) })}
+        </p>
+      )}
       <div className={styles.actions}>
         {awaiting ? (
           <>

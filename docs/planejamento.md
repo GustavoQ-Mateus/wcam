@@ -381,6 +381,23 @@ Decisão: a tally "ao vivo" é verde (`--data`), não vermelha como na TV. Verme
 
 Contraste conferido (WCAG): sobre `--ground`, `--muted` 10,1:1, `--faint` 6,9:1, `--negative` 5,4:1 e `--data-3` 3,9:1 (este só em marcas gráficas, nunca em texto). `--faint` sobre `--raised` fica em 4,7:1, perto do mínimo de 4,5:1. Cada cor de estado sobre o seu tint: verde 7,7:1, âmbar 7,4:1, vermelho 4,6:1.
 
+### 5.7 Linguagem da interface
+
+O WCam será usado por quem nunca vai ler o código. A interface fala de coisas que a pessoa vê: o WCam no computador, o celular, o QR code, o código, a câmera nos apps de reunião. Os nomes da arquitetura ficam no código e na documentação técnica.
+
+| Termo interno | Na interface |
+|---|---|
+| agente, servidor, processo | o WCam (no computador) |
+| sessão | conexão; "conectado", "desconectado" |
+| pareamento, janela de pareamento, token | o QR code; "QR code novo", "QR code vencido" |
+| código de confirmação | o código |
+| requisição inválida, erro interno | "algo deu errado" com a próxima ação |
+| interface não gerada | mensagem de instalação incompleta, com a ação |
+| câmera virtual | "a câmera do WCam" ou "OBS Virtual Camera", que é o nome que os apps mostram |
+| fps, bitrate, codec, CPU, SHA-256 | só em "Detalhes" no console, nunca na mensagem principal |
+
+Levantamento de 2026-11-01: `console.status_checking`, `console.status_running`, `console.cpu`, `errors.network_error`, `errors.internal_error`, `errors.invalid_request`, `errors.web_not_built` e `errors.pairing_window_closed` usam termos internos; `terminal.fingerprint` e `console.video_format` mostram detalhe técnico fora de uma área de detalhes. A revisão completa, com um teste que falha se um termo proibido aparecer em `locales/`, entra na v0.6.0, junto com o console definitivo.
+
 ## 6. Roteiro de specs
 
 Cada linha vira uma spec `docs/specs/spec-vX.Y.Z.md` com CA verificáveis. Uma só começa depois da anterior entregue.
@@ -391,12 +408,13 @@ Cada linha vira uma spec `docs/specs/spec-vX.Y.Z.md` com CA verificáveis. Uma s
 | 0.2.0 | Captura no celular | `/cam` com permissão, visor, troca de câmera, Wake Lock, exigência de paisagem, tratamento de negação | 1920x1080 local em Android Chrome e iOS Safari; retrato bloqueia "Ao vivo" (CA-2) |
 | 0.3.0 | Pareamento e WebRTC | tokens com hash, janela de pareamento, checagem de sub-rede, limite de tentativas, `POST /api/sessions`, peer aiortc, bitrate e `maintain-resolution`, `docs/contrato.md` | agente recebe 1080p30; todos os testes de pareamento do CA-4 verdes; teste de integração aiortc com aiortc |
 | 0.4.0 | Câmera virtual (MVP) | pipeline sem redimensionar nem converter cor, sink real e falso, quadros "aguardando" e "sem sinal" | tabela inteira do CA-1 verificada; SSIM de pelo menos 0,98 e teste de 10 min do CA-2 |
-| 0.5.0 | Console | QR no console, SSE, prévia por MediaRelay com liga e desliga, métricas, controles via DataChannel | CA-3 completo; trocar câmera pelo console muda a imagem no Meet |
-| 0.6.0 | Persistência | SQLite, migrations, preferências, histórico de sessões e métricas | preferências sobrevivem a reinício; histórico visível no console |
-| 0.7.0 | Robustez | reconexão com token de sessão, troca de rede, tela do celular bloqueada, encerramento limpo | Wi-Fi do celular fora por 10 s volta sozinho; fora por mais de 60 s exige novo QR |
-| 0.8.0 | Polimento do front | passada completa de `impeccable audit`, `emil-design-eng`, Playwright e2e | auditoria sem pendência crítica; e2e verde no CI |
+| 0.5.0 | Câmera nativa | câmera virtual Media Foundation do Windows 11 (`MFCreateVirtualCamera`) com media source própria em C++, nome "WCam", sem depender do OBS; build no CI; substitui a ADR 0005 | CA-1 completo, incluindo o novo Teams; SSIM do CA-2 mantido |
+| 0.6.0 | Console | QR no console, SSE, prévia por MediaRelay com liga e desliga, métricas numa área de detalhes, controles via DataChannel, revisão de linguagem de todas as superfícies (§5.7) | CA-3 completo; trocar câmera pelo console muda a imagem no Meet |
+| 0.7.0 | Persistência | SQLite, migrations, preferências, histórico de sessões e métricas | preferências sobrevivem a reinício; histórico visível no console |
+| 0.8.0 | Robustez | reconexão com token de sessão, troca de rede, tela do celular bloqueada, encerramento limpo | Wi-Fi do celular fora por 10 s volta sozinho; fora por mais de 60 s exige novo QR |
+| 0.9.0 | Polimento do front | passada completa de `impeccable audit`, `emil-design-eng`, Playwright e2e | auditoria sem pendência crítica; e2e verde no CI |
 | 1.0.0 | App Windows | executável PyInstaller, bandeja, janela WebView2, instalador com regra de firewall, README com GIF de demonstração, guia de solução de problemas, varredura `nmap` do CA-4 | instalação limpa num Windows sem o repositório funciona do zero; celular não instala nada |
-| 1.x | Futuro | câmera virtual nativa (Media Foundation, sem OBS), Linux, macOS | cada uma com ADR própria |
+| 1.x | Futuro | Linux, macOS | cada uma com ADR própria |
 
 ## 7. ADRs iniciais (escritas na spec 0.1.0, após aprovação deste plano)
 

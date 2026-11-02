@@ -5,6 +5,7 @@ import { useHealth, type HealthState } from "../data/use-health";
 import styles from "./console-page.module.scss";
 import { PairingPanel } from "./pairing-panel";
 import { SessionPanel } from "./session-panel";
+import { VirtualCameraPanel } from "./virtual-camera-panel";
 
 export default function ConsolePage() {
   const health = useHealth();
@@ -17,6 +18,7 @@ export default function ConsolePage() {
         <span className={styles.indicator} aria-hidden="true" />
         {statusText(health)}
       </p>
+      {data.status && <VirtualCameraPanel virtualCamera={data.status.virtualCamera} process={data.status.process} />}
       {session ? (
         <SessionPanel
           session={session}

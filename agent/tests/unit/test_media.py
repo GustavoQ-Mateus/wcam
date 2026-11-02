@@ -7,6 +7,7 @@ from wcam.media.sdp_filter import (
     is_publishable_offer,
     keep_candidates_in_network,
     sha256_fingerprint,
+    video_codec,
 )
 
 LAN_NETWORK = IPv4Network("192.168.0.0/24")
@@ -95,3 +96,16 @@ def test_meter_reports_fps_and_bitrate_of_last_second() -> None:
         meter.record_frame(10.0 + index * frame_interval, 1920, 1080, index * bytes_per_frame)
 
     assert meter.stats == VideoStats(1920, 1080, 30.0, 9600)
+
+
+def test_video_codec_is_the_first_payload_of_the_answer() -> None:
+    answer = "\r\n".join(
+        [
+            "m=video 9 UDP/TLS/RTP/SAVPF 102 97",
+            "a=rtpmap:97 VP8/90000",
+            "a=rtpmap:102 H264/90000",
+            "",
+        ]
+    )
+
+    assert video_codec(answer) == "H264"

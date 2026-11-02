@@ -8,6 +8,9 @@ FINGERPRINT_PREFIX = "a=fingerprint:sha-256 "
 MEDIA_PREFIX = "m="
 LINE_BREAK = "\r\n"
 REQUIRED_MEDIA = frozenset({"video", "application"})
+VIDEO_MEDIA_PREFIX = "m=video "
+RTPMAP_PREFIX = "a=rtpmap:"
+VIDEO_PAYLOADS_FIELD = 3
 
 
 def keep_candidates_in_network(sdp: str, network: IPv4Network) -> str:
@@ -48,3 +51,14 @@ def candidate_address(line: str) -> str | None:
 def candidate_in_network(line: str, network: IPv4Network) -> bool:
     address = candidate_address(line)
     return address is not None and is_in_network(address, network)
+
+
+def video_codec(sdp: str) -> str | None:
+    lines = sdp.splitlines()
+    media = next((line for line in lines if line.startswith(VIDEO_MEDIA_PREFIX)), None)
+    if media is None or len(media.split()) <= VIDEO_PAYLOADS_FIELD:
+        return None
+    payload = media.split()[VIDEO_PAYLOADS_FIELD]
+    rtpmap = f"{RTPMAP_PREFIX}{payload} "
+    mapping = next((line for line in lines if line.startswith(rtpmap)), None)
+    return None if mapping is None else mapping[len(rtpmap) :].split("/", 1)[0].upper()
