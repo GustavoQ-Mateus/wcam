@@ -19,6 +19,7 @@ Monorepo único, conta `GustavoQ-Mateus` no GitHub.
 | `agent` | Python 3.13, uv, FastAPI + uvicorn, aiortc, PyAV, pyvirtualcam, SQLite, pystray, pywebview, PyInstaller, pytest | Servidor local: HTTPS na LAN, pareamento, WebRTC, câmera virtual, API e eventos |
 | `web` | React + Vite + TypeScript + SCSS, Vitest, Playwright | Duas superfícies: `/cam` (celular, captura) e `/` (console no PC) |
 | `docs` | Markdown | Planejamento, specs, ADRs |
+| `vcam` | C# com .NET 10 Native AOT, CsWin32, xUnit | Câmera virtual nativa do Windows (media source Media Foundation) |
 | `installer` | Inno Setup | Instalador Windows e regra de firewall |
 | raiz | Docker Compose | Ambiente de desenvolvimento e CI |
 
@@ -69,6 +70,11 @@ Python
 - Erros de API sempre no formato `{"error":{"code","message"}}`; o cliente roteia por `code`, nunca pela mensagem.
 - Tarefas `asyncio` com dono e cancelamento explícito; nada de `create_task` solto.
 
+C#
+- `PascalCase` para tipos, métodos, propriedades e constantes; `camelCase` para locais e parâmetros; `_camelCase` para campos privados; interface com prefixo `I`; assíncronos com sufixo `Async`.
+- `var` só quando o tipo é óbvio. Corpo `=>` só em membro de uma linha. Sem `#region`. DTO como `record` imutável.
+- Native AOT sem avisos: nada de reflection, COM só por `[GeneratedComInterface]`/`[GeneratedComClass]`, P/Invoke e interfaces Win32 só pelo CsWin32. Código que roda no processo do Frame Server nunca deixa exceção escapar de um método COM: converte em `HRESULT`.
+
 TypeScript/React
 - Componente funcional, um por arquivo, sem `any`, TypeScript estrito; dados em hooks ou módulos em `data/`, fora do JSX.
 - Arquivos em `kebab-case` (`pairing-qr.tsx`); componentes e tipos em `PascalCase`; hooks `useAlgo`; constantes de módulo em `UPPER_SNAKE_CASE`.
@@ -94,6 +100,7 @@ Testes
 ## Verificação antes de commitar
 - Agent, a partir de `agent`: `uv run ruff check`, `uv run ruff format --check`, `uv run pyright` e `uv run pytest`.
 - Web, a partir de `web`: `npm run build` (inclui `tsc -b`) sem avisos, `npm run lint` e `npm test`.
+- Vcam, a partir de `vcam`: `dotnet build` sem avisos, `dotnet test` e `dotnet publish -r win-x64 -c Release` sem avisos de trimming ou AOT.
 - Não declarar pronto o que não foi verificado. Se algo não foi testado, dizer.
 
 ## Verificação antes de abrir PR
@@ -116,7 +123,7 @@ Testes
 - O `gh` local tem duas contas, `GustavoQ-Mateus` e `Gustavo-QMateus`. O remote é da `GustavoQ-Mateus`; confira com `gh auth status` que ela é a ativa antes de push ou PR.
 
 ## Commits
-- Curtos, uma linha, Conventional Commits: `tipo(escopo): descrição`. Escopos: `agent`, `web`, `docs`, `ci`.
+- Curtos, uma linha, Conventional Commits: `tipo(escopo): descrição`. Escopos: `agent`, `web`, `vcam`, `docs`, `ci`.
 - Tipos: feat, fix, refactor, test, docs, chore, build, ci.
 - Descrição no imperativo, minúscula, sem ponto final.
 - Um commit por unidade lógica de mudança.

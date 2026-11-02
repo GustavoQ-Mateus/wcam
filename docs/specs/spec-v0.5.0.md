@@ -25,21 +25,31 @@ Por isso a versão tem uma fase 1 que só prova que a câmera aparece no Teams c
 - Visual Studio Build Tools com "Desenvolvimento para desktop com C++" e Windows SDK: o Native AOT usa o linker do MSVC. Ainda não instalado em 2026-11-02.
 - Terminal de administrador uma vez, para registrar a DLL em desenvolvimento.
 
+## Linguagem: C# com .NET 10 Native AOT
+
+A media source precisa ser uma DLL nativa carregada pelo Frame Server. Avaliação feita com o usuário:
+- C# com .NET 10 Native AOT: gera DLL nativa sem runtime instalado; `[UnmanagedCallersOnly]` exporta `DllGetClassObject`, `DllRegisterServer` e a API C; COM gerado por código (`[GeneratedComInterface]`, `[GeneratedComClass]`, `ComWrappers`) implementa as interfaces sem reflection; as interfaces de Media Foundation e as funções Win32 vêm do CsWin32. É a stack de trabalho do usuário. **Escolhida.**
+- C++: caminho dos exemplos oficiais, mas fora da stack do usuário. Fica como alternativa se a fase 1 provar que o Native AOT não serve, registrada em ADR.
+- Go: descartado. A DLL levaria o runtime do Go (GC e threads próprias) para dentro do processo do serviço, só um runtime por processo, e COM todo à mão.
+
+Riscos específicos: poucas referências públicas de media source em Native AOT; restrições de trimming (nada de reflection); depurar código dentro do processo do Frame Server. A fase 1 existe para expor esses riscos cedo.
+
 ## Estrutura nova
 
 ```
-vcam/                      projeto C++ da sessão vcam
-  CMakeLists.txt
-  src/
-    media_source.*         IMFMediaSourceEx, IKsControl, atributos da câmera
-    media_stream.*         IMFMediaStream2, entrega de amostras NV12
-    frame_channel.*        leitura dos quadros publicados pelo agente
-    test_pattern.*         padrão de teste da fase 1
-    control_api.*          API C exportada para o agente (iniciar, parar, publicar quadro)
-    module.cpp             DllGetClassObject, DllRegisterServer, DllUnregisterServer
-  tests/                   testes unitários do que não depende do Frame Server
+vcam/                            solução .NET da sessão vcam
+  Wcam.VirtualCamera.sln
+  src/Wcam.VirtualCamera/        DLL nativa (PublishAot, OutputType Library)
+    MediaSource.cs               IMFMediaSourceEx, IKsControl, atributos da câmera
+    MediaStream.cs               IMFMediaStream2, entrega de amostras NV12
+    FrameChannel.cs              leitura dos quadros publicados pelo agente
+    TestPattern.cs               padrão de teste da fase 1
+    Exports.cs                   DllGetClassObject, DllRegisterServer, DllUnregisterServer e a API C para o agente
+    NativeMethods.txt            lista do CsWin32
+  src/Wcam.VirtualCamera.Probe/  executável de teste da fase 1 (também Native AOT)
+  tests/Wcam.VirtualCamera.Tests/  xUnit: canal de quadros, seqlock, padrão de teste
 scripts/
-  register-vcam.ps1        registra a DLL (administrador)
+  register-vcam.ps1              registra a DLL (administrador)
   unregister-vcam.ps1
 ```
 
@@ -47,12 +57,12 @@ scripts/
 
 - Media source NV12 1920x1080 a 30 fps que gera um padrão de teste animado (barras e um contador de quadros), sem nenhum dado externo.
 - Uma API C exportada pela mesma DLL (`WcamCameraStart`, `WcamCameraStop`) chama `MFCreateVirtualCamera` com tipo `SoftwareCameraSource`, nome "WCam", tempo de vida `Session` e acesso `CurrentUser`, e `Start` na câmera.
-- Um executável mínimo de teste (`vcam-probe.exe`) chama a API e fica rodando até Enter.
+- Um executável mínimo de teste (`Wcam.VirtualCamera.Probe.exe`) chama a API e fica rodando até Enter.
 - Registro e remoção por script de administrador.
 
 Saída da fase 1:
 - "WCam" aparece e mostra o padrão no app Câmera do Windows, no novo Teams, no Chrome e no Opera;
-- a câmera some quando o `vcam-probe` termina;
+- a câmera some quando o probe termina;
 - `docs/relatorio-v0.5.0-vcam-fase1.md`, com a decisão sobre o transporte de quadros (próxima seção) justificada por teste real.
 
 O usuário valida a fase 1 antes da fase 2.
@@ -76,7 +86,7 @@ Formato fixo, nas duas opções: cabeçalho (magic, versão, largura, altura, fo
 
 ## CI
 
-- Job `vcam` em `windows-latest`: CMake e MSVC, build em Release, testes unitários, DLL e `vcam-probe.exe` como artefatos.
+- Job `vcam` em `windows-latest`: `dotnet test` e `dotnet publish -r win-x64 -c Release` com Native AOT, sem avisos de trimming ou AOT; DLL e probe como artefatos.
 - Os testes do agente com a DLL real só rodam na máquina do usuário; no CI, o `media_foundation_sink` é testado com uma DLL falsa ou com a API simulada.
 
 ## Textos
@@ -96,10 +106,10 @@ Instalador (v1.0.0), assinatura de código da DLL, console definitivo (v0.6.0), 
 5. Caminho sem perda: teste confirma que o NV12 publicado pelo agente chega à media source com os mesmos bytes.
 6. Fallback: com a DLL não registrada, o agente usa o backend `obs` e diz o motivo; sem os dois, `fake`, e diz o motivo.
 7. O e2e de qualidade continua acima de 0,98 (no compose, com o sink falso).
-8. CI verde, incluindo o job `vcam`; versão 0.5.0 no agente, no web e no projeto C++.
+8. CI verde, incluindo o job `vcam`, com o publish Native AOT sem avisos; versão 0.5.0 no agente, no web e no projeto .NET.
 9. ADR 0011 aceita, substituindo a 0005; contrato atualizado (`backend` `media_foundation`, motivos novos).
 
 ## Decisões em aberto para o usuário
 
-1. Uma sessão nova `vcam` para o C++ (recomendado: escopo, linguagem e ferramentas diferentes), ou o C++ também com a sessão `agent`?
-2. Instalar o Visual Studio Build Tools antes de começar. Sem ele, a sessão vcam não compila.
+1. Uma sessão nova `vcam` para o projeto .NET (recomendado: escopo, linguagem e ferramentas diferentes), ou o .NET também com a sessão `agent`?
+2. Instalar o Visual Studio Build Tools (C++ desktop e Windows SDK) antes de começar. Sem ele, o publish Native AOT não linka.
