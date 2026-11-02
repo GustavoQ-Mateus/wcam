@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices.Marshalling;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -19,6 +20,7 @@ internal sealed unsafe partial class MediaStream : IMFMediaStream2, IKsControl
     private readonly IMFMediaEventQueue _events;
     private readonly Queue<object?> _pendingTokens = new();
     private readonly FrameProducer _producer = new();
+    private readonly DeliveryStats _stats = new();
     private FramePacer? _pacer;
     private MF_STREAM_STATE _state = MF_STREAM_STATE.MF_STREAM_STATE_STOPPED;
     private bool _isShutdown;
@@ -107,6 +109,7 @@ internal sealed unsafe partial class MediaStream : IMFMediaStream2, IKsControl
                 throw ComObjects.Error(HRESULT.MF_E_INVALIDREQUEST);
             }
             _pendingTokens.Enqueue(pToken);
+            _stats.CountRequest();
         }
     }
 
@@ -175,11 +178,14 @@ internal sealed unsafe partial class MediaStream : IMFMediaStream2, IKsControl
         {
             if (_isShutdown || _state != MF_STREAM_STATE.MF_STREAM_STATE_RUNNING || _pendingTokens.Count == 0)
             {
+                _stats.CountIdleTick();
                 return;
             }
             token = _pendingTokens.Dequeue();
         }
+        long buildStarted = Stopwatch.GetTimestamp();
         IMFSample sample = CreateSample(token);
+        _stats.CountDelivery(buildStarted);
         try
         {
             Guid none = Guid.Empty;
