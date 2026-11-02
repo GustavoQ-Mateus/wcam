@@ -1,6 +1,6 @@
 # Spec v0.4.0, Câmera virtual
 
-Status: Aprovada (2026-11-01)
+Status: Entregue (2026-11-02), com o CA 1 parcial
 Branch de integração: `feature/camera-virtual`
 Sessões: `agent` (principal) e `web` (console e e2e), em paralelo
 Referências: `docs/planejamento.md` §1 (CA-1, CA-2), §4 (fluxo, passo 5), §8 (riscos); ADRs 0002 e 0005
@@ -152,4 +152,24 @@ Quadros de espera com texto, espelhar a saída, pausa, troca de câmera pelo PC 
 4. Jitter buffer de vídeo do aiortc aumentado de 128 para 2048 pacotes (keyframes grandes não eram montados) e estimador de banda iniciado em 10 Mbit/s. `x-google-start-bitrate` testado e descartado (sem efeito); `x-google-min-bitrate` proibido.
 
 ## Changelog
-Vazio até a entrega.
+
+### 0.4.0, 2026-11-02
+
+Entregue pelas sessões `agent` (`feature/camera-virtual-agent`) e `web` (`feature/camera-virtual-web`), integradas em `feature/camera-virtual`. Relatórios em `docs/relatorio-v0.4.0-agent.md` e `docs/relatorio-v0.4.0-web.md`.
+
+| CA | Resultado | Evidência |
+|---|---|---|
+| 1 | **Parcial** | Funciona em app de navegador: webcamtests no navegador mostrou "OBS Virtual Camera" em 1920x1080 a 30 fps. Não funciona no novo Microsoft Teams (pacote `MSTeams` 26260, app empacotado): a câmera não aparece na lista, porque o app só enxerga câmeras Media Foundation e o driver do OBS é DirectShow. É o risco previsto na ADR 0005. Por decisão do usuário, a câmera nativa Media Foundation vira a v0.5.0 e o CA 1 completo passa para ela. Meet, Zoom, Discord, OBS como fonte e app Câmera do Windows não testados. |
+| 2 | Verificado | Testes do pipeline e status `source` `placeholder` sem sessão e aguardando confirmação; consumidor DirectShow real leu quadro preto. |
+| 3 | Verificado | e2e de qualidade no compose: SSIM médio 0,9854 e mínimo 0,9828 (sessão agent), 0,9851 e 0,9834 (sessão web), com a referência de textura estruturada. |
+| 4 | Verificado | Coleta automática a cada 10 s, 67 amostras em `live` de 02:47 a 02:58 UTC (11 min), iPhone com Safari (modelo não registrado): 1920x1080 em todas, fps médio 30,1 (mínimo 29,0), `framesScaled` 0, H.264, bitrate médio 7,4 Mbit/s (1,2 a 10,3), CPU média do agente 8,2% (máximo 14,6%). |
+| 5 | Verificado | Teste de bytes I420 iguais na entrada e no sink; leitura crua do NV12 da câmera mostrou os bytes intactos, inclusive 0, 16, 235 e 255. |
+| 6 | Verificado | Testes com sink falhando pelos dois motivos; `device_in_use` real com uma segunda instância. |
+| 7 | Verificado | Volta ao preto em 0,26 s depois de Desconectar (medição da sessão agent). |
+| 8 | Verificado | Agente com 109 testes, pyright e ruff limpos; web com 34 testes; e2e 10 de 10; CI e CodeQL verdes; versão 0.4.0 nos dois lados. |
+
+Correções de produto achadas pelos testes: jitter buffer de vídeo do aiortc de 128 para 2048 pacotes (keyframes grandes nunca eram montados); estimador de banda iniciado em 10 Mbit/s (antes levava cerca de 45 s para sair de 0,5 Mbit/s); buffer de recepção UDP do ICE em 4 MB (no Windows o padrão é 64 KB). Correção de ambiente: o compose deixou de ter serviço que termina sozinho, incompatível com `--exit-code-from`.
+
+Pendências registradas:
+- Qualidade percebida pelo usuário menor que a esperada no webcamtests (luminosidade medida de 6,7% e bitrate mínimo de 1,2 Mbit/s na coleta). Investigar depois da câmera nativa.
+- Texto `terminal.virtual_camera_active` fixo em "OBS Virtual Camera", enganoso com o backend `fake`. Entra na revisão de linguagem.
