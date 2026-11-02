@@ -9,6 +9,7 @@ from wcam.virtualcam.sink import (
 )
 
 BACKEND = "obs"
+CAMERA_NAME = "OBS Virtual Camera"
 DRIVER_MISSING_MARKER = "device not found"
 DEVICE_IN_USE_MARKER = "could not be started"
 
@@ -21,6 +22,10 @@ class PyvirtualcamSink:
     @property
     def backend(self) -> str:
         return BACKEND
+
+    @property
+    def name(self) -> str:
+        return CAMERA_NAME
 
     @property
     def status(self) -> SinkStatus:

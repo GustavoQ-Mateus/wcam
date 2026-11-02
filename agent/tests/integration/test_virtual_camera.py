@@ -30,6 +30,7 @@ async def test_unavailable_driver_keeps_agent_running_and_reports_reason(
         "state": "unavailable",
         "backend": "fake",
         "reason": reason.value,
+        "fallbackReason": None,
         "output": {"width": 1920, "height": 1080, "fps": 30},
         "source": "placeholder",
     }

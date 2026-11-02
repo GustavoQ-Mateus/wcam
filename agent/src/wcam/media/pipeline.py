@@ -29,8 +29,10 @@ class FramePipeline:
         sink: VirtualCameraSink,
         quality: QualityMeter | None = None,
         clock: Callable[[], float] = time.monotonic,
+        fallback_reason: str | None = None,
     ) -> None:
         self.sink = sink
+        self.fallback_reason = fallback_reason
         self.quality = quality
         self._clock = clock
         self._placeholder = black_i420(OUTPUT_WIDTH, OUTPUT_HEIGHT)
