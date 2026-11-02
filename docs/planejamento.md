@@ -413,7 +413,7 @@ Cada linha vira uma spec `docs/specs/spec-vX.Y.Z.md` com CA verificáveis. Uma s
 | 0.7.0 | Persistência | SQLite, migrations, preferências, histórico de sessões e métricas | preferências sobrevivem a reinício; histórico visível no console |
 | 0.8.0 | Robustez | reconexão com token de sessão, troca de rede, tela do celular bloqueada, encerramento limpo | Wi-Fi do celular fora por 10 s volta sozinho; fora por mais de 60 s exige novo QR |
 | 0.9.0 | Polimento do front | passada completa de `impeccable audit`, `emil-design-eng`, Playwright e2e | auditoria sem pendência crítica; e2e verde no CI |
-| 1.0.0 | App Windows | executável PyInstaller, bandeja, janela WebView2, instalador com regra de firewall, README com GIF de demonstração, guia de solução de problemas, varredura `nmap` do CA-4 | instalação limpa num Windows sem o repositório funciona do zero; celular não instala nada |
+| 1.0.0 | App Windows | executável PyInstaller, bandeja, janela WebView2, instalador único nas Releases do GitHub que, com um só pedido de administrador, copia os arquivos, registra a câmera "WCam" e cria a regra de firewall (desinstalar remove tudo; o usuário final nunca roda script nem PowerShell), README com GIF de demonstração, guia de solução de problemas, varredura `nmap` do CA-4 | instalação limpa num Windows sem o repositório funciona do zero; celular não instala nada |
 | 1.x | Futuro | Linux, macOS | cada uma com ADR própria |
 
 ## 7. ADRs iniciais (escritas na spec 0.1.0, após aprovação deste plano)
