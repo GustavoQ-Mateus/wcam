@@ -11,6 +11,8 @@ $MinimumBuild = 22000
 $InstallDirectory = Join-Path $env:ProgramFiles 'WCam'
 $DataDirectory = Join-Path $env:ProgramData 'WCam'
 $InstalledDll = Join-Path $InstallDirectory $DllName
+$LogDirectory = Join-Path $DataDirectory 'logs'
+$LeftoverFrameFile = Join-Path $DataDirectory 'frames.bin'
 
 function Find-PublishedDll {
     $searchRoot = Join-Path $PSScriptRoot '..\vcam\src\Wcam.VirtualCamera\bin'
@@ -37,9 +39,12 @@ function Copy-Dll([string]$source) {
 }
 
 function Grant-DataAccess {
-    New-Item -ItemType Directory -Force -Path (Join-Path $DataDirectory 'logs') | Out-Null
-    & icacls.exe $DataDirectory /grant "${LocalServiceSid}:(OI)(CI)M" /grant "${User}:(OI)(CI)M" | Out-Null
+    New-Item -ItemType Directory -Force -Path $LogDirectory | Out-Null
+    Remove-Item -Path $LeftoverFrameFile -Force -ErrorAction SilentlyContinue
+    & icacls.exe $DataDirectory /remove:g $LocalServiceSid $User | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "icacls failed on $DataDirectory" }
+    & icacls.exe $LogDirectory /grant "${LocalServiceSid}:(OI)(CI)M" /grant "${User}:(OI)(CI)M" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "icacls failed on $LogDirectory" }
     & icacls.exe $InstallDirectory /grant "${LocalServiceSid}:(OI)(CI)RX" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "icacls failed on $InstallDirectory" }
 }
@@ -57,4 +62,4 @@ Copy-Dll (Resolve-Path $DllPath).Path
 Grant-DataAccess
 Register-Dll
 Write-Host "Registered $InstalledDll"
-Write-Host "Data and logs: $DataDirectory (access for LOCAL SERVICE and $User)"
+Write-Host "Logs: $LogDirectory (write access for LOCAL SERVICE and $User)"
