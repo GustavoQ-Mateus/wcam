@@ -40,6 +40,28 @@ Observações:
 - Quando `MFCreateVirtualCamera` valida a source no processo do probe, a DLL tenta criar `Global\WCamFrames` e recebe acesso negado (falta privilégio ao usuário). Isso fica logado como erro e não atrapalha nada, porque só a instância que roda no serviço precisa da seção. Na fase 2 a seção deve ser criada só no processo do serviço.
 - Um cliente de teste em .NET lendo pelo Frame Server parou depois de cerca de 19 quadros, enquanto a DLL seguia entregando 30 fps. A causa provável é o cache de wrappers COM do cliente com as amostras que o Frame Server recicla. É um problema do cliente de teste, não da câmera: o Chrome leu 30 fps sem parar.
 
+### Teste do usuário (sem transporte)
+
+| App | Resultado |
+|---|---|
+| App Câmera do Windows | Aparece e mostra o padrão, com o contador rodando |
+| Novo Teams (app) | Aparece como "WCam (Câmera Virtual do Windows)" e mostra o padrão (contador 000223, espelhado pela opção do Teams) |
+| Google Meet no navegador | Aparece e mostra o padrão |
+| Opera | Aparece e mostra o padrão |
+
+### Vários consumidores ao mesmo tempo
+
+Achado do usuário: com o app Câmera aberto, a prévia do Teams fica preta, e só funciona depois de fechar o app Câmera.
+
+Diagnóstico pelo `vcam.log` (serviço `FrameServer`, pid 26992):
+- Uma única media source é criada (14:05:38) e reaproveitada por todos os apps. Cada app novo provoca um `Start` na mesma source (14:07:21, 14:09:39, 14:11:17), às vezes dois seguidos, sem erro.
+- Com o segundo app aberto, a source continua recebendo 30 pedidos/s e entregando 30,0 fps. Quem distribui os quadros entre os apps é o Frame Server; a source vê um consumidor só.
+- O stream já declara `MF_DEVICESTREAM_FRAMESERVER_SHARED` = 1.
+
+Conclusão: a limitação é a política de compartilhamento do Frame Server (um cliente com controle; os outros só em modo compartilhado), não a media source. Decisão do orquestrador: nenhum código para vários consumidores. Resta verificar a opção do Windows 11 em Configurações > Bluetooth e dispositivos > Câmeras > (câmera) > "Permitir que vários aplicativos usem a câmera ao mesmo tempo" para a WCam. Resultado: pendente do usuário.
+
+Lacuna de log: há intervalos sem entrega sem que o `Stop` da source seja chamado (14:10:01 a 14:11:17), provavelmente via `IMFMediaStream2.SetStreamState`, que não loga. Uma linha de log em `SetStreamState` está aprovada para a fase 2.
+
 ## Transporte de quadros
 
 Pendente do teste real. As duas opções estão no código para a prova:
