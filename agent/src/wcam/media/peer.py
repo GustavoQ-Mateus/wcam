@@ -1,5 +1,7 @@
 import asyncio
 import json
+import logging
+import socket
 from dataclasses import replace
 from ipaddress import IPv4Network
 from typing import Protocol, cast
@@ -25,10 +27,31 @@ VIDEO_JITTER_BUFFER_PACKETS = 2048
 AIORTC_JITTER_BUFFER_ATTRIBUTE = "_RTCRtpReceiver__jitter_buffer"
 AIORTC_BITRATE_ESTIMATOR_ATTRIBUTE = "_RTCRtpReceiver__remote_bitrate_estimator"
 PHONE_MAX_BITRATE_BPS = 10_000_000
+ICE_RECEIVE_BUFFER_BYTES = 4 * 1024 * 1024
+AIORTC_ICE_CONNECTION_ATTRIBUTE = "_connection"
+AIOICE_PROTOCOLS_ATTRIBUTE = "_protocols"
+SOCKET_EXTRA_INFO = "socket"
+ICE_SOCKETS_UNREACHABLE = (
+    "ICE sockets are not reachable in this aiortc version; receive buffers keep the system default"
+)
+
+logger = logging.getLogger(__name__)
 
 
 class FrameSource(Protocol):
     async def recv(self) -> object: ...
+
+
+class StunProtocol(Protocol):
+    transport: asyncio.DatagramTransport
+
+
+class IceSocket(Protocol):
+    def fileno(self) -> int: ...
+
+    def setsockopt(self, level: int, option: int, value: int, /) -> None: ...
+
+    def getsockopt(self, level: int, option: int, /) -> int: ...
 
 
 def peer_configuration() -> RTCConfiguration:
@@ -77,6 +100,7 @@ class AiortcPeer:
         enlarge_video_jitter_buffers(self._connection)
         start_video_estimate_at_max_bitrate(self._connection)
         await self._connection.setLocalDescription(await self._connection.createAnswer())
+        enlarge_ice_receive_buffers(self._connection)
         self._answer_sdp = keep_candidates_in_network(self._connection.localDescription.sdp, self._network)
 
     def open_gate(self) -> None:
@@ -152,9 +176,37 @@ def video_bitrate_estimator(receiver: RTCRtpReceiver) -> RemoteBitrateEstimator:
     return estimator
 
 
-def video_jitter_buffer_capacity(receiver: RTCRtpReceiver) -> int:
+def video_jitter_buffer(receiver: RTCRtpReceiver) -> JitterBuffer:
     buffer: JitterBuffer = getattr(receiver, AIORTC_JITTER_BUFFER_ATTRIBUTE)
-    return buffer.capacity
+    return buffer
+
+
+def enlarge_ice_receive_buffers(connection: RTCPeerConnection) -> None:
+    # Windows gives each UDP socket 64 KB, about 50 video packets, so a burst from the phone would be dropped.
+    for ice_socket in ice_sockets(connection):
+        ice_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, ICE_RECEIVE_BUFFER_BYTES)
+
+
+def ice_sockets(connection: RTCPeerConnection) -> list[IceSocket]:
+    found: dict[int, IceSocket] = {}
+    try:
+        for gatherer in ice_gatherers(connection):
+            aioice_connection = getattr(gatherer, AIORTC_ICE_CONNECTION_ATTRIBUTE)
+            protocols = cast(list[StunProtocol], getattr(aioice_connection, AIOICE_PROTOCOLS_ATTRIBUTE))
+            for protocol in protocols:
+                ice_socket = cast(IceSocket, protocol.transport.get_extra_info(SOCKET_EXTRA_INFO))
+                found[ice_socket.fileno()] = ice_socket
+    except AttributeError:
+        logger.warning(ICE_SOCKETS_UNREACHABLE)
+        return []
+    return list(found.values())
+
+
+def ice_gatherers(connection: RTCPeerConnection) -> list[object]:
+    transports = [transceiver.receiver.transport for transceiver in connection.getTransceivers()]
+    if connection.sctp is not None:
+        transports.append(connection.sctp.transport)
+    return [transport.transport.iceGatherer for transport in transports]
 
 
 async def bytes_received(receiver: RTCRtpReceiver) -> int:
