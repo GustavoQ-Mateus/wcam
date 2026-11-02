@@ -2,7 +2,7 @@
 
 Status: Draft
 Branch de integração: `feature/camera-nativa`
-Sessões: `vcam` (nova, C++), `agent` (integração Python); `web` sem trabalho
+Sessões: `vcam` (nova, C# com .NET 10 Native AOT), `agent` (integração Python); `web` sem trabalho
 Referências: `docs/planejamento.md` §1 (CA-1, CA-2); ADR 0005 (a ser substituída); changelog da v0.4.0
 
 ## Objetivo
@@ -21,7 +21,8 @@ Por isso a versão tem uma fase 1 que só prova que a câmera aparece no Teams c
 ## Pré-requisitos na máquina do usuário
 
 - Windows 11 build 22000 ou maior (a máquina tem 26200).
-- Visual Studio Build Tools com "Desenvolvimento para desktop com C++", incluindo Windows SDK e CMake. Ainda não instalado em 2026-11-02.
+- .NET SDK 10 (instalado: 10.0.401).
+- Visual Studio Build Tools com "Desenvolvimento para desktop com C++" e Windows SDK: o Native AOT usa o linker do MSVC. Ainda não instalado em 2026-11-02.
 - Terminal de administrador uma vez, para registrar a DLL em desenvolvimento.
 
 ## Estrutura nova
