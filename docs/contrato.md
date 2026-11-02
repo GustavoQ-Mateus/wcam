@@ -172,7 +172,7 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
 
 - `virtualCamera.state`: `active` ou `unavailable`. `reason` (só com `unavailable`): `driver_missing`, `device_in_use` ou `error`.
 - `backend`: `media_foundation` (câmera nativa "WCam", ADR 0011), `obs` (fallback) ou `fake`.
-- `fallbackReason`: por que a câmera nativa não está em uso; `null` quando `backend` é `media_foundation`. Valores: `native_not_registered` (DLL não registrada), `windows_too_old` (build anterior a 22000), `native_error` (a DLL falhou ao iniciar) e `not_windows`.
+- `fallbackReason`: por que a câmera nativa não está em uso; `null` quando `backend` é `media_foundation`. Valores: `native_not_registered` (DLL não registrada), `windows_too_old` (build anterior a 22000), `native_error` (a DLL falhou ao iniciar) e `not_windows`. Só é preenchido quando `WCAM_VIRTUAL_CAMERA` é `auto` e a escolha caiu da câmera nativa para outro backend; com backend explícito é sempre `null`. Com `WCAM_VIRTUAL_CAMERA=media_foundation` explícito e falha, não há fallback: `state` `unavailable` com `reason` `driver_missing` (DLL ausente) ou `error` (`WcamCameraStart` falhou).
 - `source`: `phone` quando os quadros vêm do celular; `placeholder` em qualquer outro momento.
 - `session.video.codec`: o codec negociado (`H264` ou `VP8`). `framesScaled`: quantos quadros precisaram ser redimensionados na sessão (o esperado é 0; ver "Formato de saída").
 - `process.cpuPercent`: uso de CPU do processo do agente, média da última janela de 1 s, via psutil.
@@ -183,6 +183,7 @@ Variáveis de ambiente (somam-se à tabela abaixo):
 | Variável | Padrão | Uso |
 |---|---|---|
 | `WCAM_VIRTUAL_CAMERA` | `auto` | `auto` (Windows 22000 ou maior com a DLL registrada usa `media_foundation`; senão `obs`; fora do Windows, `fake`), `media_foundation`, `obs` ou `fake` |
+| `WCAM_VCAM_DLL` | `%ProgramFiles%\WCam\Wcam.VirtualCamera.dll` | caminho da DLL da câmera nativa |
 | `WCAM_QUALITY_REFERENCE` | vazio | caminho de um arquivo `.y4m` de referência; liga a medição de SSIM |
 
 ## Qualidade (`quality`)
