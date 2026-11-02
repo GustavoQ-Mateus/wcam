@@ -1,6 +1,6 @@
 # Spec v0.5.0, Câmera nativa do Windows
 
-Status: Draft
+Status: Aprovada (2026-11-02)
 Branch de integração: `feature/camera-nativa`
 Sessões: `vcam` (nova, C# com .NET 10 Native AOT), `agent` (integração Python); `web` sem trabalho
 Referências: `docs/planejamento.md` §1 (CA-1, CA-2); ADR 0005 (a ser substituída); changelog da v0.4.0
