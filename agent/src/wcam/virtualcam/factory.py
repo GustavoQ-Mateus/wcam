@@ -65,6 +65,6 @@ def select_automatically(
 
 
 def current_windows_build() -> int:
-    if sys.platform != WINDOWS_PLATFORM:
-        return 0
-    return sys.getwindowsversion().build
+    if sys.platform == "win32":
+        return sys.getwindowsversion().build
+    return 0
