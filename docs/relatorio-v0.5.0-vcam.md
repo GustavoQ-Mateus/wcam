@@ -45,7 +45,11 @@ Fase 1: `docs/relatorio-v0.5.0-vcam-fase1.md`
   - publicando luma 200: a source entrega luma 200 e chroma 128;
   - 1,5 s depois do último quadro: luma 16 e chroma 128;
   - log: "opened Session\1\WCamFrames for reading", "showing published frames" e, 3 s depois, "showing black: no frame in the last second".
-- Pendente: o mesmo caminho no Frame Server, que depende do novo registro, e o teste final com o agente e o celular.
+- No Frame Server, com a DLL final registrada pelo usuário e o probe como usuário comum, lido pelo Chrome headless (`getUserMedia`):
+  - `--pattern` (quadros pelo `WcamFramePublish`): 1920x1080, 30,1 fps, barras exatas;
+  - sem `--pattern` (nenhum quadro publicado): 1920x1080, 30,1 fps, RGB 0,0,0 nas 8 posições (CA 4).
+  - Log do Frame Server (pid 10900): "opened Session\WCamFrames for reading", "showing published frames", "stream state set to MF_STREAM_STATE_STOPPED", 30,0 fps entregues. Log do processo do probe: "created Local\WCamFrames for S-1-5-21-...-1001".
+- Pendente: o teste final com o agente e o celular.
 
 ## Proposta do job de CI
 
