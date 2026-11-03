@@ -21,7 +21,7 @@ Branch: `feature/camera-nativa-agent`
 - Encerramento: o pipeline já fechava o sink no `finally` do seu loop, que é cancelado no Ctrl+C e no SIGTERM; com o sink nativo, isso chama `WcamCameraStop`.
 - Versão 0.5.0 no `pyproject.toml` e no `uv.lock`.
 
-Commits: `5e1ce11` (sink nativo, escolha de backend, status e terminal), `8c8159e` (versão) e o deste relatório.
+Commits: `5e1ce11` (sink nativo, escolha de backend, status e terminal), `8c8159e` (versão), `25c0c97` (relatório) e a atualização dele.
 
 ## 2. Critérios de aceitação
 
@@ -32,7 +32,7 @@ Commits: `5e1ce11` (sink nativo, escolha de backend, status e terminal), `8c8159
 | 4 | Verificado (agent) | Sem celular, o leitor viu Y 16 e UV 128 exatos, a 28,9 fps. Depois do Desconectar, a câmera voltou ao preto em 0,22 s. |
 | 5 | Verificado | Sem o agente rodando, para o teste ser o único dono da câmera: o `MediaFoundationSink` do agente publicou a 30 fps um quadro I420 aleatório (semente fixa), convertido pelo próprio `i420_to_nv12`. Os 90 quadros lidos da "WCam" pelo Frame Server (3.110.400 bytes cada) são idênticos byte a byte ao NV12 publicado, luma e croma, desde o primeiro. |
 | 6 | Verificado | Com a DLL da fase 1 (sem `WcamFramePublish`), o `auto` caiu para o OBS: o terminal imprimiu "A câmera WCam não está disponível neste computador, então a OBS Virtual Camera está em uso." e "Câmera virtual: OBS Virtual Camera, 1920 × 1080 a 30 fps"; o status trouxe `backend` `obs` e `fallbackReason` `native_not_registered`. Cada caminho do `auto` tem teste. |
-| 8 (agent) | Parcial | Em `agent/`: `ruff check` e `ruff format --check` limpos, `pyright` com 0 erros, `pytest` com 127 passed e 1 skipped (o teste da DLL real, opcional) e `wcam --version` 0.5.0. CI não verificado: o push está pendente (ver §5). |
+| 8 (agent) | Parcial | Em `agent/`: `ruff check` e `ruff format --check` limpos, `pyright` com 0 erros, `pytest` com 127 passed e 1 skipped (o teste da DLL real, opcional) e `wcam --version` 0.5.0. CI não verificado: roda na integração. |
 
 Com a DLL final registrada:
 - `WCAM_TEST_REAL_VCAM=1 uv run pytest -k real`: 1 passed (Start, Publish e Stop pela DLL real).
@@ -59,5 +59,5 @@ Nenhuma nova. A DLL é carregada com `ctypes`, da biblioteca padrão.
 
 ## 5. Pendências
 
-1. Push: os commits `5e1ce11`, `8c8159e` e o deste relatório estão só locais. A conta ativa do `gh` é `Gustavo-QMateus`, e o remote é da `GustavoQ-Mateus`. Não troquei a conta; a decisão é do usuário.
+1. Push: feito, com a conta `GustavoQ-Mateus` ativa de novo.
 2. Teste final com o usuário: celular ao vivo na "WCam" no novo Teams, no Teams web, no Chrome (webcamtests e Instagram), no Opera e no app Câmera, mais a coleta de 10 minutos.
