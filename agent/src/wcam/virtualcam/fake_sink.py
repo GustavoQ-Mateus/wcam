@@ -19,6 +19,10 @@ class FakeSink:
         return "fake"
 
     @property
+    def name(self) -> str:
+        return "fake"
+
+    @property
     def status(self) -> SinkStatus:
         return self._status
 

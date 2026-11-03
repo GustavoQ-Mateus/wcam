@@ -58,6 +58,7 @@ class VirtualCameraBody(CamelModel):
     state: str
     backend: str
     reason: str | None
+    fallback_reason: str | None
     output: OutputBody
     source: str
 
@@ -115,6 +116,7 @@ def virtual_camera_body(pipeline: FramePipeline) -> VirtualCameraBody:
         state=sink_status.state,
         backend=pipeline.sink.backend,
         reason=sink_status.reason,
+        fallback_reason=pipeline.fallback_reason,
         output=OutputBody(width=OUTPUT_WIDTH, height=OUTPUT_HEIGHT, fps=OUTPUT_FPS),
         source=pipeline.source,
     )
