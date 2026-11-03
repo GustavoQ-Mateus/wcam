@@ -1,6 +1,6 @@
 # Spec v0.5.0, Câmera nativa do Windows
 
-Status: Aprovada (2026-11-02)
+Status: Entregue (2026-11-03)
 Branch de integração: `feature/camera-nativa`
 Sessões: `vcam` (nova, C# com .NET 10 Native AOT), `agent` (integração Python); `web` sem trabalho
 Referências: `docs/planejamento.md` §1 (CA-1, CA-2); ADR 0005 (a ser substituída); changelog da v0.4.0
@@ -123,4 +123,24 @@ Instalador (v1.0.0), assinatura de código da DLL, console definitivo (v0.6.0), 
 5. O primeiro item da fase 2 é provar o caminho confiável do SID do dono até a media source.
 
 ## Changelog
-Vazio até a entrega.
+
+### 0.5.0, 2026-11-03
+
+Entregue pelas sessões `vcam` (`feature/camera-nativa-vcam`), `agent` (`feature/camera-nativa-agent`) e `web` (`feature/camera-nativa-web`, só a versão), integradas em `feature/camera-nativa`. ADRs 0011 (substitui a 0005) e 0012. Relatórios em `docs/relatorio-v0.5.0-vcam-fase1.md`, `docs/relatorio-v0.5.0-vcam.md` e `docs/relatorio-v0.5.0-agent.md`.
+
+| CA | Resultado | Evidência |
+|---|---|---|
+| 1 | Verificado | Fase 1 validada pelo usuário: "WCam" com padrão de teste no app Câmera, no novo Teams, no Meet e no Opera. |
+| 2 | Verificado, com ressalva | Celular ao vivo (iPhone com Safari) na "WCam": reunião real no novo Teams por 44 min, Google Meet e app Câmera do Windows. Opera e Teams web confirmados só com o padrão de teste. Coleta da reunião: 264 amostras em `live`, 1920x1080 em todas, fps médio 29,9 (mínimo 25,8), H.264, bitrate médio 9,4 Mbit/s, `framesScaled` 0, CPU média do agente 10%. |
+| 3 | Verificado | Depois do `WcamCameraStop`, `MFEnumDeviceSources` não lista mais a WCam (sessão agent); a câmera some ao encerrar o probe (fase 1). |
+| 4 | Verificado | Sem quadro publicado, Chrome mediu RGB 0,0,0; preto exato (Y=16, UV=128) lido do Frame Server; volta ao preto em 0,22 s após Desconectar. |
+| 5 | Verificado | 90 quadros publicados pelo `MediaFoundationSink` lidos do Frame Server idênticos byte a byte, luma e croma. |
+| 6 | Verificado | Com a DLL antiga sem `WcamFramePublish`, o `auto` caiu para o OBS com `fallbackReason` `native_not_registered` e o texto genérico; caminhos simulados em teste. |
+| 7 | Verificado | e2e no compose (sink falso) verde no CI. |
+| 8 | Verificado | CI da integração (a47b9c9) verde em agent (Windows e Linux), web, e2e e no job novo `vcam` (build, 27 testes e publish Native AOT sem avisos); versão 0.5.0 nos três projetos. |
+| 9 | Verificado | ADRs 0011 e 0012 aceitas; contrato 0.5.0 com `backend` `media_foundation`, `fallbackReason` e `WCAM_VCAM_DLL`. |
+
+Achados registrados:
+- Vários apps ao mesmo tempo: a WCam atende um app por vez por padrão do Frame Server; com a opção do Windows "Permitir que vários aplicativos usem a câmera ao mesmo tempo" ligada, Meet e Teams funcionaram juntos, sem código.
+- Qualidade percebida: o Safari do iPhone envia H.264 em faixa cheia (`yuvj420p`, `color_range` 2, colorspace não especificado). O agente repassa os bytes e a WCam é tratada como faixa limitada: de 3,6% a 5,3% dos pixels abaixo de 16 viram preto e de 0,9% a 1,9% acima de 235 viram branco (diagnóstico de 2026-11-03). É a causa das sombras esmagadas em pouca luz. Primeiro item da v0.6.0.
+- Ambiente: o `vswhere` fora do PATH e a instalação Visual Studio Insiders atrapalham o publish Native AOT local; o job de CI põe o `vswhere` no PATH.
