@@ -55,3 +55,27 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: docker compose --profile e2e up --build --exit-code-from e2e
+
+  vcam:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: vcam
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+      - name: Put vswhere on PATH
+        run: Add-Content $env:GITHUB_PATH "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+      - run: dotnet build
+      - run: dotnet test --no-build
+      - run: dotnet publish src/Wcam.VirtualCamera -r win-x64 -c Release
+      - run: dotnet publish src/Wcam.VirtualCamera.Probe -r win-x64 -c Release
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vcam
+          path: |
+            vcam/src/Wcam.VirtualCamera/bin/**/publish/Wcam.VirtualCamera.dll
+            vcam/src/Wcam.VirtualCamera.Probe/bin/**/publish/Wcam.VirtualCamera.Probe.exe
