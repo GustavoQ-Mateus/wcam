@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -7,27 +8,29 @@ using Windows.Win32.System.Memory;
 
 namespace Wcam.VirtualCamera;
 
-internal sealed unsafe class GlobalFrameSection : IDisposable
+internal sealed unsafe class PublishedFrameSection : IDisposable
 {
-    private const string AccessDescriptor = "D:(A;;GA;;;SY)(A;;GA;;;LS)(A;;GA;;;BA)(A;;GRGW;;;IU)";
     private static readonly HANDLE PagingFile = new(-1);
 
     private readonly SafeFileHandle _section;
+    private readonly MappedFrameChannel _writer;
 
-    private GlobalFrameSection(SafeFileHandle section, MappedFrameChannel reader)
+    private PublishedFrameSection(SafeFileHandle section, MappedFrameChannel writer)
     {
         _section = section;
-        Reader = reader;
+        _writer = writer;
     }
 
-    public MappedFrameChannel Reader { get; }
-
-    public static GlobalFrameSection Create()
+    public static PublishedFrameSection Create(string name)
     {
-        SafeFileHandle section = CreateSection();
+        string ownerSid = WindowsIdentity.GetCurrent().User!.Value;
+        SafeFileHandle section = CreateSection(name, FrameTransport.AccessDescriptor(ownerSid));
         try
         {
-            return new GlobalFrameSection(section, MappedFrameChannel.OpenSection(FrameTransport.SectionName, writable: false));
+            MappedFrameChannel writer = MappedFrameChannel.OpenSection(name, writable: true);
+            writer.Channel.InitializeHeader();
+            Log.Info($"created {name} for {ownerSid}");
+            return new PublishedFrameSection(section, writer);
         }
         catch
         {
@@ -36,16 +39,18 @@ internal sealed unsafe class GlobalFrameSection : IDisposable
         }
     }
 
+    public void Publish(ReadOnlySpan<byte> frame) => _writer.Channel.Publish(frame, DateTime.UtcNow.Ticks);
+
     public void Dispose()
     {
-        Reader.Dispose();
+        _writer.Dispose();
         _section.Dispose();
     }
 
-    private static SafeFileHandle CreateSection()
+    private static SafeFileHandle CreateSection(string name, string accessDescriptor)
     {
         PSECURITY_DESCRIPTOR descriptor;
-        if (!PInvoke.ConvertStringSecurityDescriptorToSecurityDescriptor(AccessDescriptor, PInvoke.SDDL_REVISION_1, out descriptor))
+        if (!PInvoke.ConvertStringSecurityDescriptorToSecurityDescriptor(accessDescriptor, PInvoke.SDDL_REVISION_1, out descriptor))
         {
             throw new Win32Exception();
         }
@@ -56,7 +61,7 @@ internal sealed unsafe class GlobalFrameSection : IDisposable
                 nLength = (uint)sizeof(SECURITY_ATTRIBUTES),
                 lpSecurityDescriptor = descriptor,
             };
-            fixed (char* name = FrameTransport.SectionName)
+            fixed (char* sectionName = name)
             {
                 HANDLE section = PInvoke.CreateFileMapping(
                     PagingFile,
@@ -64,7 +69,7 @@ internal sealed unsafe class GlobalFrameSection : IDisposable
                     PAGE_PROTECTION_FLAGS.PAGE_READWRITE,
                     (uint)(FrameChannel.Capacity >> 32),
                     (uint)FrameChannel.Capacity,
-                    name);
+                    sectionName);
                 if (section.IsNull)
                 {
                     throw new Win32Exception();

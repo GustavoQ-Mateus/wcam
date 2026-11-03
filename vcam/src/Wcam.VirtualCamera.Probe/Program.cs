@@ -3,12 +3,12 @@ namespace Wcam.VirtualCamera.Probe;
 internal static class Program
 {
     private const string DllOption = "--dll";
-    private const string WriteOption = "--write";
-    private const string Usage = "usage: Wcam.VirtualCamera.Probe [--dll <path>] [--write file|section]";
+    private const string PatternOption = "--pattern";
+    private const string Usage = "usage: Wcam.VirtualCamera.Probe [--dll <path>] [--pattern]";
 
     private static int Main(string[] args)
     {
-        if (!TryParse(args, out string? dllPath, out ProbeTransport? transport))
+        if (!TryParse(args, out string? dllPath, out bool pattern))
         {
             Console.Error.WriteLine(Usage);
             return 2;
@@ -27,7 +27,7 @@ internal static class Program
         {
             return 1;
         }
-        using (ProbeWriter? writer = transport is null ? null : new ProbeWriter(transport.Value))
+        using (PatternPublisher? publisher = pattern ? new PatternPublisher(library) : null)
         {
             Console.WriteLine("camera \"WCam\" is running; press Enter to stop");
             Console.ReadLine();
@@ -37,24 +37,19 @@ internal static class Program
         return status < 0 ? 1 : 0;
     }
 
-    private static bool TryParse(string[] args, out string? dllPath, out ProbeTransport? transport)
+    private static bool TryParse(string[] args, out string? dllPath, out bool pattern)
     {
         dllPath = null;
-        transport = null;
-        for (int index = 0; index < args.Length; index += 2)
+        pattern = false;
+        for (int index = 0; index < args.Length; index++)
         {
-            if (index + 1 >= args.Length)
-            {
-                return false;
-            }
-            string value = args[index + 1];
             switch (args[index])
             {
-                case DllOption:
-                    dllPath = Path.GetFullPath(value);
+                case PatternOption:
+                    pattern = true;
                     break;
-                case WriteOption when Enum.TryParse(value, ignoreCase: true, out ProbeTransport parsed):
-                    transport = parsed;
+                case DllOption when index + 1 < args.Length:
+                    dllPath = Path.GetFullPath(args[++index]);
                     break;
                 default:
                     return false;

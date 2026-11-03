@@ -1,3 +1,5 @@
+using Wcam.VirtualCamera.Probe;
+
 namespace Wcam.VirtualCamera.Tests;
 
 public class TestPatternTests

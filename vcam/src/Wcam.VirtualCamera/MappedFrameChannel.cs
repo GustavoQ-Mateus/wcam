@@ -18,40 +18,20 @@ internal sealed unsafe class MappedFrameChannel : IDisposable
 
     public FrameChannel Channel { get; }
 
-    public static MappedFrameChannel CreateFile(string path)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete);
-        MemoryMappedFile file = MemoryMappedFile.CreateFromFile(
-            stream,
-            null,
-            FrameChannel.Capacity,
-            MemoryMappedFileAccess.ReadWrite,
-            HandleInheritability.None,
-            leaveOpen: false);
-        var mapped = new MappedFrameChannel(file, MemoryMappedFileAccess.ReadWrite);
-        mapped.Channel.InitializeHeader();
-        return mapped;
-    }
-
-    public static MappedFrameChannel OpenFile(string path)
-    {
-        var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        MemoryMappedFile file = MemoryMappedFile.CreateFromFile(
-            stream,
-            null,
-            0,
-            MemoryMappedFileAccess.Read,
-            HandleInheritability.None,
-            leaveOpen: false);
-        return new MappedFrameChannel(file, MemoryMappedFileAccess.Read);
-    }
-
     public static MappedFrameChannel OpenSection(string name, bool writable)
     {
         MemoryMappedFileRights rights = writable ? MemoryMappedFileRights.ReadWrite : MemoryMappedFileRights.Read;
         MemoryMappedFileAccess access = writable ? MemoryMappedFileAccess.ReadWrite : MemoryMappedFileAccess.Read;
-        return new MappedFrameChannel(MemoryMappedFile.OpenExisting(name, rights), access);
+        MemoryMappedFile file = MemoryMappedFile.OpenExisting(name, rights);
+        try
+        {
+            return new MappedFrameChannel(file, access);
+        }
+        catch
+        {
+            file.Dispose();
+            throw;
+        }
     }
 
     public void Dispose()
