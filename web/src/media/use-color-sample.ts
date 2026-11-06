@@ -7,6 +7,7 @@ const SAMPLE_INTERVAL_MS = 1000;
 const SAMPLES_PER_CAMERA = 5;
 const PREFERRED_COLOR_SPACE: SampleColorSpace = "display-p3";
 const FALLBACK_COLOR_SPACE: SampleColorSpace = "srgb";
+const SMOOTHING_QUALITY: ImageSmoothingQuality = "high";
 
 interface SampleContext {
   context: CanvasRenderingContext2D;
@@ -68,6 +69,8 @@ function createSampleContext(): SampleContext | null {
   if (!context) {
     return null;
   }
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = SMOOTHING_QUALITY;
   const colorSpace =
     context.getContextAttributes().colorSpace === PREFERRED_COLOR_SPACE ? PREFERRED_COLOR_SPACE : FALLBACK_COLOR_SPACE;
   return { context, colorSpace };
