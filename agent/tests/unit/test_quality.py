@@ -7,10 +7,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from tests.unit.test_color_calibration import KNOWN_CORRECTION
 from tests.unit.test_pipeline import SteppingClock, phone_frame
+from wcam.media.color_calibration import correction_tables
 from wcam.media.color_calibrator import MEASURING, CalibrationState, CalibrationStatus
+from wcam.media.color_range import ColorRange
 from wcam.media.pipeline import FramePipeline
-from wcam.media.quality import WARMUP_SECONDS, Luma, QualityMeter, read_y4m_luma, ssim
+from wcam.media.quality import WARMUP_SECONDS, Luma, QualityMeter, read_y4m_luma, ssim, translated
 from wcam.tools.make_reference import HEIGHT, WIDTH, reference_frame
 from wcam.virtualcam.fake_sink import FakeSink
 
@@ -91,10 +94,12 @@ class RecordingMeter(QualityMeter):
     def __init__(self) -> None:
         super().__init__(detailed_luma())
         self.restarts: list[float] = []
+        self.luma_tables: list[bytes | None] = []
 
-    def restart(self, now: float) -> None:
+    def restart(self, now: float, luma_table: bytes | None = None) -> None:
         self.restarts.append(now)
-        super().restart(now)
+        self.luma_tables.append(luma_table)
+        super().restart(now, luma_table)
 
 
 def restarts_after_delivery(pipeline: FramePipeline, meter: RecordingMeter, count: int) -> list[float]:
@@ -124,3 +129,29 @@ def test_quality_restarts_when_color_calibration_settles_and_measures_again(sett
     pipeline.color_calibrator.status = MEASURING
     assert restarts_after_delivery(pipeline, meter, 3)[-1] == clock.now
     assert len(restarts_after_delivery(pipeline, meter, 4)) == 3
+
+
+def test_reference_through_the_applied_luma_table_matches_video_through_it() -> None:
+    reference = detailed_luma()
+    luma_table, _ = correction_tables(KNOWN_CORRECTION, ColorRange.FULL)
+    meter = QualityMeter(reference)
+    meter.restart(0.0, luma_table)
+
+    meter.observe(WARMUP_SECONDS, translated(reference, luma_table))
+
+    assert meter.report.ssim == 1.0
+
+
+def test_applied_calibration_restarts_quality_with_its_luma_table_and_default_without() -> None:
+    meter = RecordingMeter()
+    pipeline = FramePipeline(FakeSink(), meter, clock=SteppingClock())
+    pipeline.open()
+    pipeline.start_phone()
+    pipeline.color_calibrator.correction = KNOWN_CORRECTION
+    pipeline.color_calibrator.status = CalibrationStatus(CalibrationState.APPLIED, 0.5)
+    restarts_after_delivery(pipeline, meter, 2)
+    pipeline.color_calibrator.correction = None
+    pipeline.color_calibrator.status = CalibrationStatus(CalibrationState.DEFAULT, None)
+    restarts_after_delivery(pipeline, meter, 3)
+
+    assert meter.luma_tables == [None, correction_tables(KNOWN_CORRECTION, pipeline.color_range)[0], None]

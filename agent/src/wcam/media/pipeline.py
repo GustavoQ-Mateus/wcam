@@ -8,7 +8,7 @@ import numpy as np
 from av import VideoFrame
 from av.video.reformatter import ColorRange as DeclaredRange
 
-from wcam.media.color_calibration import ColorTables, applied_tables, can_reduce
+from wcam.media.color_calibration import ColorTables, applied_tables, can_reduce, correction_tables
 from wcam.media.color_calibrator import CalibrationState, ColorCalibrator
 from wcam.media.color_range import (
     UNSPECIFIED_MATRIX,
@@ -145,7 +145,11 @@ class FramePipeline:
         if state is self._measured_calibration:
             return
         self._measured_calibration = state
-        self._quality_worker.submit(quality.restart, now)
+        correction = self.color_calibrator.correction
+        luma_table = None
+        if state is CalibrationState.APPLIED and correction is not None:
+            luma_table = correction_tables(correction, self.color_range)[0]
+        self._quality_worker.submit(quality.restart, now, luma_table)
 
     async def _next_frame(self) -> VideoFrame | None:
         try:
