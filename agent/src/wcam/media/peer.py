@@ -8,25 +8,29 @@ from typing import Protocol, cast
 
 from aiortc import MediaStreamTrack, RTCConfiguration, RTCDataChannel, RTCPeerConnection, RTCSessionDescription
 from aiortc.clock import current_ms
-from aiortc.jitterbuffer import JitterBuffer
 from aiortc.mediastreams import MediaStreamError
-from aiortc.rate import RemoteBitrateEstimator
+from aiortc.rate import AimdRateControl, BandwidthUsage, RemoteBitrateEstimator
 from aiortc.rtcrtpreceiver import RTCRtpReceiver
 from aiortc.stats import RTCTransportStats
 from av import VideoFrame
 
+from wcam.media.episodes import EpisodeTracker, LinkSample, write_episode
 from wcam.media.frame_gate import FrameGate
 from wcam.media.metrics import VideoMeter, VideoStats
 from wcam.media.pipeline import FramePipeline
+from wcam.media.pipeline import FrameSource as OutputSource
+from wcam.media.quality_preset import DEFAULT_QUALITY_PRESET
+from wcam.media.recovering_jitter_buffer import STALLED_SECONDS, RecoveringJitterBuffer
 from wcam.media.sdp_filter import keep_candidates_in_network, video_codec
 from wcam.sessions.manager import EndReason, MediaPeer, PeerEvents, PeerFactory
 
 CONTROL_CHANNEL = "control"
 CLOSE_FLUSH_SECONDS = 0.2
+EPISODE_SAMPLE_SECONDS = 0.1
 VIDEO_JITTER_BUFFER_PACKETS = 2048
+STALLED_BUFFER_SECONDS = STALLED_SECONDS
 AIORTC_JITTER_BUFFER_ATTRIBUTE = "_RTCRtpReceiver__jitter_buffer"
 AIORTC_BITRATE_ESTIMATOR_ATTRIBUTE = "_RTCRtpReceiver__remote_bitrate_estimator"
-PHONE_MAX_BITRATE_BPS = 10_000_000
 ICE_RECEIVE_BUFFER_BYTES = 4 * 1024 * 1024
 AIORTC_ICE_CONNECTION_ATTRIBUTE = "_connection"
 AIOICE_PROTOCOLS_ATTRIBUTE = "_protocols"
@@ -40,6 +44,28 @@ logger = logging.getLogger(__name__)
 
 class FrameSource(Protocol):
     async def recv(self) -> object: ...
+
+
+class CappedRateControl(AimdRateControl):
+    def __init__(self, max_bitrate_bps: int) -> None:
+        super().__init__()
+        self.max_bitrate_bps = max_bitrate_bps
+        self.set_estimate(max_bitrate_bps, current_ms())
+
+    def limit(self, max_bitrate_bps: int) -> None:
+        self.max_bitrate_bps = max_bitrate_bps
+        self.set_estimate(max_bitrate_bps, current_ms())
+
+    def update(
+        self,
+        bandwidth_usage: BandwidthUsage,
+        estimated_throughput: int | None,
+        now_ms: int,
+    ) -> int | None:
+        if super().update(bandwidth_usage, estimated_throughput, now_ms) is None:
+            return None
+        self.current_bitrate = min(self.current_bitrate, self.max_bitrate_bps)
+        return self.current_bitrate
 
 
 class StunProtocol(Protocol):
@@ -72,6 +98,9 @@ class AiortcPeer:
         self._events = events
         self._channel: RTCDataChannel | None = None
         self._frame_task: asyncio.Task[None] | None = None
+        self._jitter_buffers: list[RecoveringJitterBuffer] = []
+        self._episodes = EpisodeTracker(write_episode)
+        self._episode_task: asyncio.Task[None] | None = None
         self._answer_sdp = ""
         self.gate = FrameGate()
         self._meter = VideoMeter()
@@ -89,7 +118,13 @@ class AiortcPeer:
         stats = self._meter.stats
         if stats is None:
             return None
-        return replace(stats, codec=video_codec(self._answer_sdp), frames_scaled=self._pipeline.frames_scaled)
+        return replace(
+            stats,
+            codec=video_codec(self._answer_sdp),
+            frames_scaled=self._pipeline.frames_scaled,
+            color_range=self._pipeline.color_range,
+            color_matrix=self._pipeline.color_matrix,
+        )
 
     async def answer(self, offer_sdp: str) -> None:
         self._connection.on("datachannel", self._handle_channel)
@@ -97,8 +132,8 @@ class AiortcPeer:
         self._connection.on("connectionstatechange", self._handle_connection_state)
         offer = RTCSessionDescription(keep_candidates_in_network(offer_sdp, self._network), "offer")
         await self._connection.setRemoteDescription(offer)
-        enlarge_video_jitter_buffers(self._connection)
-        start_video_estimate_at_max_bitrate(self._connection)
+        self._jitter_buffers = install_recovering_jitter_buffers(self._connection)
+        cap_video_estimate(self._connection, DEFAULT_QUALITY_PRESET.max_bitrate_bps)
         await self._connection.setLocalDescription(await self._connection.createAnswer())
         enlarge_ice_receive_buffers(self._connection)
         self._answer_sdp = keep_candidates_in_network(self._connection.localDescription.sdp, self._network)
@@ -106,12 +141,17 @@ class AiortcPeer:
     def open_gate(self) -> None:
         self._pipeline.start_phone()
         self.gate.open()
+        self._episode_task = asyncio.get_running_loop().create_task(self._watch_episodes())
+
+    def limit_bitrate(self, max_bitrate_bps: int) -> None:
+        cap_video_estimate(self._connection, max_bitrate_bps)
 
     def send(self, message: dict[str, str]) -> None:
         if self._channel is not None and self._channel.readyState == "open":
             self._channel.send(json.dumps(message))
 
     async def close(self) -> None:
+        await self._stop_watching_episodes()
         if self.gate.is_open:
             self._pipeline.stop_phone()
         if self._frame_task is not None:
@@ -121,11 +161,42 @@ class AiortcPeer:
             await asyncio.sleep(CLOSE_FLUSH_SECONDS)
         await self._connection.close()
 
+    async def _watch_episodes(self) -> None:
+        while True:
+            await asyncio.sleep(EPISODE_SAMPLE_SECONDS)
+            sample = self._link_sample()
+            if sample is not None:
+                self._episodes.observe(sample)
+
+    async def _stop_watching_episodes(self) -> None:
+        if self._episode_task is None:
+            return
+        self._episode_task.cancel()
+        await asyncio.gather(self._episode_task, return_exceptions=True)
+        sample = self._link_sample()
+        if sample is not None:
+            self._episodes.finish(sample)
+
+    def _link_sample(self) -> LinkSample | None:
+        frame_age = self._pipeline.phone_frame_age()
+        if frame_age is None:
+            return None
+        return LinkSample(
+            at=asyncio.get_running_loop().time(),
+            frame_age=frame_age,
+            portrait=self._pipeline.portrait,
+            black=self._pipeline.source is OutputSource.PLACEHOLDER,
+            rtp_bytes=sum(buffer.received_bytes for buffer in self._jitter_buffers),
+            keyframe_requests=sum(buffer.keyframe_requests for buffer in self._jitter_buffers),
+            stalls=sum(buffer.stalls for buffer in self._jitter_buffers),
+        )
+
     def _handle_channel(self, channel: RTCDataChannel) -> None:
         if channel.label != CONTROL_CHANNEL:
             return
         self._channel = channel
         channel.on("close", lambda: self._events.on_lost(EndReason.DISCONNECTED_BY_PHONE))
+        channel.on("message", self._events.on_message)
         self._events.on_connected()
 
     def _handle_track(self, track: MediaStreamTrack) -> None:
@@ -141,6 +212,9 @@ class AiortcPeer:
         elif state == "closed":
             self._events.on_lost(EndReason.DISCONNECTED_BY_PHONE)
 
+    def _admits_after_recovery(self, frame: VideoFrame) -> bool:
+        return all(buffer.admits_decoded(frame.key_frame) for buffer in self._jitter_buffers)
+
     async def _consume_frames(self, track: FrameSource, receiver: RTCRtpReceiver) -> None:
         loop = asyncio.get_running_loop()
         while True:
@@ -148,27 +222,37 @@ class AiortcPeer:
                 frame = await track.recv()
             except MediaStreamError:
                 return
-            if not self.gate.admit() or not isinstance(frame, VideoFrame):
+            if not isinstance(frame, VideoFrame) or not self._admits_after_recovery(frame):
+                continue
+            if not self.gate.admit():
                 continue
             self._pipeline.submit(frame)
             self._meter.record_frame(loop.time(), frame.width, frame.height, await bytes_received(receiver))
 
 
-def enlarge_video_jitter_buffers(connection: RTCPeerConnection) -> None:
+def install_recovering_jitter_buffers(connection: RTCPeerConnection) -> list[RecoveringJitterBuffer]:
     # aiortc 1.15 fixes the video jitter buffer at 128 packets and has no option for it; a detailed 1080p
     # keyframe needs more, so it would never be assembled.
+    buffers: list[RecoveringJitterBuffer] = []
     for transceiver in connection.getTransceivers():
         if transceiver.kind == "video":
-            buffer = JitterBuffer(capacity=VIDEO_JITTER_BUFFER_PACKETS, is_video=True)
+            buffer = RecoveringJitterBuffer(VIDEO_JITTER_BUFFER_PACKETS, STALLED_BUFFER_SECONDS)
             setattr(transceiver.receiver, AIORTC_JITTER_BUFFER_ATTRIBUTE, buffer)
+            buffers.append(buffer)
+    return buffers
 
 
-def start_video_estimate_at_max_bitrate(connection: RTCPeerConnection) -> None:
-    # aiortc starts its REMB from the first measured throughput and grows it 8% per second, which keeps the
-    # phone near 0.5 Mbit/s for the first minute; congestion still lowers it from here.
+def cap_video_estimate(connection: RTCPeerConnection, max_bitrate_bps: int) -> None:
+    # aiortc starts its REMB from the first measured throughput, grows it 8% per second and has no ceiling, which
+    # keeps the phone near 0.5 Mbit/s for the first minute; it starts at the ceiling and congestion lowers it.
     for transceiver in connection.getTransceivers():
-        if transceiver.kind == "video":
-            video_bitrate_estimator(transceiver.receiver).rate_control.set_estimate(PHONE_MAX_BITRATE_BPS, current_ms())
+        if transceiver.kind != "video":
+            continue
+        estimator = video_bitrate_estimator(transceiver.receiver)
+        if isinstance(estimator.rate_control, CappedRateControl):
+            estimator.rate_control.limit(max_bitrate_bps)
+        else:
+            estimator.rate_control = CappedRateControl(max_bitrate_bps)
 
 
 def video_bitrate_estimator(receiver: RTCRtpReceiver) -> RemoteBitrateEstimator:
@@ -176,8 +260,8 @@ def video_bitrate_estimator(receiver: RTCRtpReceiver) -> RemoteBitrateEstimator:
     return estimator
 
 
-def video_jitter_buffer(receiver: RTCRtpReceiver) -> JitterBuffer:
-    buffer: JitterBuffer = getattr(receiver, AIORTC_JITTER_BUFFER_ATTRIBUTE)
+def video_jitter_buffer(receiver: RTCRtpReceiver) -> RecoveringJitterBuffer:
+    buffer: RecoveringJitterBuffer = getattr(receiver, AIORTC_JITTER_BUFFER_ATTRIBUTE)
     return buffer
 
 

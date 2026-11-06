@@ -6,20 +6,25 @@ from enum import StrEnum
 
 import numpy as np
 from av import VideoFrame
+from av.video.reformatter import ColorRange as DeclaredRange
 
+from wcam.media.color_range import UNSPECIFIED_MATRIX, ColorRange, declared_matrix, declared_range, limit_range
 from wcam.media.placeholder import black_i420
 from wcam.media.quality import QualityMeter, QualityReport
 from wcam.virtualcam.sink import OUTPUT_FPS, OUTPUT_HEIGHT, OUTPUT_WIDTH, CameraState, I420Frame, VirtualCameraSink
 
 FRAME_INTERVAL_SECONDS = 1 / OUTPUT_FPS
-PHONE_SILENCE_SECONDS = 1.0
+STALE_FRAME_SECONDS = 0.5
+FREEZE_SECONDS = 3.0
 I420_FORMAT = "yuv420p"
+RAW_I420_FORMATS = (I420_FORMAT, "yuvj420p")
 WORKER_NAME = "wcam-frames"
 QUALITY_WORKER_NAME = "wcam-quality"
 
 
 class FrameSource(StrEnum):
     PHONE = "phone"
+    FROZEN = "frozen"
     PLACEHOLDER = "placeholder"
 
 
@@ -43,8 +48,11 @@ class FramePipeline:
         self._phone_active = False
         self._last_phone: I420Frame | None = None
         self._last_phone_at: float | None = None
+        self.portrait = False
         self.source = FrameSource.PLACEHOLDER
         self.frames_scaled = 0
+        self.color_range = ColorRange.UNSPECIFIED
+        self.color_matrix = UNSPECIFIED_MATRIX
 
     @property
     def quality_report(self) -> QualityReport | None:
@@ -55,8 +63,11 @@ class FramePipeline:
 
     def start_phone(self) -> None:
         self.frames_scaled = 0
+        self.color_range = ColorRange.UNSPECIFIED
+        self.color_matrix = UNSPECIFIED_MATRIX
         self._last_phone = None
-        self._last_phone_at = None
+        self._last_phone_at = self._clock()
+        self.portrait = False
         self._phone_active = True
         if self.quality is not None:
             self.quality.restart(self._clock())
@@ -64,6 +75,11 @@ class FramePipeline:
     def stop_phone(self) -> None:
         self._phone_active = False
         self._last_phone = None
+
+    def phone_frame_age(self) -> float | None:
+        if not self._phone_active or self._last_phone_at is None:
+            return None
+        return self._clock() - self._last_phone_at
 
     def submit(self, frame: VideoFrame) -> None:
         if self._pending.full():
@@ -85,14 +101,21 @@ class FramePipeline:
         now = self._clock()
         if frame is not None:
             self._accept_phone_frame(frame, now)
-        elif self._last_phone_at is None or now - self._last_phone_at > PHONE_SILENCE_SECONDS:
+        elif self._last_phone_at is None or now - self._last_phone_at > FREEZE_SECONDS:
             self._last_phone = None
         output = self._last_phone if self._phone_active else None
-        self.source = FrameSource.PLACEHOLDER if output is None else FrameSource.PHONE
+        self.source = self._source_of(output, now)
         if self.sink.status.state is CameraState.ACTIVE:
             self.sink.send(self._placeholder if output is None else output)
         if output is not None and frame is not None:
             self._measure(now, output)
+
+    def _source_of(self, output: I420Frame | None, now: float) -> FrameSource:
+        if output is None:
+            return FrameSource.PLACEHOLDER
+        if self._last_phone_at is not None and now - self._last_phone_at > STALE_FRAME_SECONDS:
+            return FrameSource.FROZEN
+        return FrameSource.PHONE
 
     def _measure(self, now: float, output: I420Frame) -> None:
         if self.quality is None or (self._measuring is not None and not self._measuring.done()):
@@ -106,12 +129,15 @@ class FramePipeline:
             return None
 
     def _accept_phone_frame(self, frame: VideoFrame, now: float) -> None:
-        self._last_phone_at = now
-        if frame.height > frame.width:
+        self.color_range = declared_range(frame)
+        self.color_matrix = declared_matrix(frame)
+        self.portrait = frame.height > frame.width
+        if self.portrait:
             self._last_phone = None
             return
+        self._last_phone_at = now
         if (frame.width, frame.height) == (OUTPUT_WIDTH, OUTPUT_HEIGHT):
-            self._last_phone = i420_array(frame)
+            self._last_phone = limited_i420(frame, OUTPUT_WIDTH, OUTPUT_HEIGHT, self.color_range)
             return
         self._last_phone = self._letterboxed(frame)
         self.frames_scaled += 1
@@ -120,15 +146,31 @@ class FramePipeline:
         scale = min(OUTPUT_WIDTH / frame.width, OUTPUT_HEIGHT / frame.height)
         width = even(frame.width * scale)
         height = even(frame.height * scale)
-        scaled = i420_array(frame.reformat(width=width, height=height, format=I420_FORMAT))
+        scaled = limited_i420(frame, width, height, self.color_range)
         canvas = self._placeholder.copy()
         paste_i420(canvas, scaled, width, height)
         return canvas
 
 
-def i420_array(frame: VideoFrame) -> I420Frame:
-    converted = frame if frame.format.name == I420_FORMAT else frame.reformat(format=I420_FORMAT)
-    array: I420Frame = np.ascontiguousarray(converted.to_ndarray(), dtype=np.uint8)
+def limited_i420(frame: VideoFrame, width: int, height: int, color_range: ColorRange) -> I420Frame:
+    array = i420_array(frame, width, height, color_range)
+    if color_range is ColorRange.FULL:
+        limit_range(array, height)
+    return array
+
+
+def i420_array(frame: VideoFrame, width: int, height: int, color_range: ColorRange) -> I420Frame:
+    source = frame
+    if frame.format.name not in RAW_I420_FORMATS or (frame.width, frame.height) != (width, height):
+        kept_range = DeclaredRange.JPEG if color_range is ColorRange.FULL else DeclaredRange.MPEG
+        source = frame.reformat(
+            width=width,
+            height=height,
+            format=I420_FORMAT,
+            src_color_range=kept_range,
+            dst_color_range=kept_range,
+        )
+    array: I420Frame = np.ascontiguousarray(source.to_ndarray(), dtype=np.uint8)
     return array
 
 
