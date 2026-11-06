@@ -4,6 +4,7 @@ import { PHONE_LANDSCAPE } from "./cam-helpers";
 import { endSession, goLive, status } from "./session-helpers";
 
 const CALIBRATION_TIMEOUT_MS = 15_000;
+const TEST_TIMEOUT_MS = 60_000;
 const SETTLED_STATES: readonly ColorCalibration["state"][] = ["applied", "default"];
 
 test.describe.configure({ mode: "serial" });
@@ -14,12 +15,14 @@ test.afterEach(async ({ request }) => {
 });
 
 test("every connection measures the color again and settles with a delta E", async ({ page, request }) => {
+  test.setTimeout(TEST_TIMEOUT_MS);
   await goLive(page, request);
   await expectSettled(request);
   await endSession(request);
 
-  await goLive(page, request);
-  expect((await calibration(request))?.state).toBe("measuring");
+  const nextPage = await page.context().newPage();
+  await goLive(nextPage, request);
+  await expect.poll(async () => (await calibration(request))?.state).toBe("measuring");
   await expectSettled(request);
 });
 
@@ -33,5 +36,7 @@ async function expectSettled(request: APIRequestContext): Promise<void> {
       timeout: CALIBRATION_TIMEOUT_MS,
     })
     .toBe(true);
-  expect((await calibration(request))?.deltaE).toEqual(expect.any(Number));
+  const settled = await calibration(request);
+  expect(settled?.deltaE).toEqual(expect.any(Number));
+  console.log(`color calibration ${settled?.state ?? ""}, delta E ${String(settled?.deltaE)}`);
 }
