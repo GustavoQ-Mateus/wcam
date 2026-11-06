@@ -24,6 +24,11 @@ type ColorTables = tuple[bytes, bytes]
 REDUCED_WIDTH = 320
 REDUCED_HEIGHT = 180
 MIN_CORRELATION = 0.8
+MAX_DETAIL = 0.04
+MIN_FIT_CELLS = 500
+LIMITED_LUMA_CEILING = 235
+LIMITED_CHROMA_FLOOR = 16
+LIMITED_CHROMA_CEILING = 240
 EDGE_QUANTILE = 0.7
 CURVE_KNOTS = 9
 KNOT_POSITIONS = np.linspace(0.0, 1.0, CURVE_KNOTS)
@@ -68,6 +73,7 @@ class ReducedFrame:
     luma: FloatArray
     blue: FloatArray
     red: FloatArray
+    detail: FloatArray
     color_range: ColorRange
 
 
@@ -95,7 +101,7 @@ class ColorCorrection:
 @dataclass(frozen=True, slots=True)
 class CalibrationResult:
     correction: ColorCorrection | None
-    delta_e: float
+    delta_e: float | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,8 +152,22 @@ def reduced_frame(planes: tuple[I420Frame, I420Frame, I420Frame], color_range: C
         (luma - luma_floor) / luma_span,
         (blue - CHROMA_CENTER) / chroma_span,
         (red - CHROMA_CENTER) / chroma_span,
+        fine_detail(planes[0]) / luma_span,
         color_range,
     )
+
+
+def fine_detail(luma: I420Frame) -> FloatArray:
+    row_stride = luma.shape[0] // REDUCED_HEIGHT
+    column_stride = luma.shape[1] // REDUCED_WIDTH
+    rows = slice(0, row_stride * REDUCED_HEIGHT, row_stride)
+    columns = slice(0, column_stride * REDUCED_WIDTH, column_stride)
+    next_rows = slice(1, row_stride * REDUCED_HEIGHT, row_stride)
+    next_columns = slice(1, column_stride * REDUCED_WIDTH, column_stride)
+    corner = luma[rows, columns].astype(np.int16)
+    horizontal = np.abs(corner - luma[rows, next_columns])
+    vertical = np.abs(corner - luma[next_rows, columns])
+    return np.maximum(horizontal, vertical).astype(np.float64)
 
 
 def range_scale(color_range: ColorRange) -> tuple[int, int, int]:
@@ -157,9 +177,9 @@ def range_scale(color_range: ColorRange) -> tuple[int, int, int]:
 
 
 def resized_frame(frame: ReducedFrame, width: int, height: int, mirrored: bool) -> ReducedFrame:
-    planes = (block_mean(plane, width, height) for plane in (frame.luma, frame.blue, frame.red))
-    luma, blue, red = (plane[:, ::-1] if mirrored else plane for plane in planes)
-    return ReducedFrame(luma, blue, red, frame.color_range)
+    planes = (block_mean(plane, width, height) for plane in (frame.luma, frame.blue, frame.red, frame.detail))
+    luma, blue, red, detail = (plane[:, ::-1] if mirrored else plane for plane in planes)
+    return ReducedFrame(luma, blue, red, detail, frame.color_range)
 
 
 def correlation(first: FloatArray, second: FloatArray) -> float:
@@ -218,7 +238,7 @@ def fit_cells(matches: Sequence[SampleMatch]) -> FitCells:
     for match in matches:
         rgb = sample_rgb(match.sample)
         lab = to_lab(rgb, match.sample.color_space)
-        mask = flat_edges_mask(lab)
+        mask = flat_edges_mask(lab) & (match.frame.detail <= MAX_DETAIL)
         srgb = to_srgb(rgb, match.sample.color_space)
         parts.append((match.frame.luma[mask], match.frame.blue[mask], match.frame.red[mask], lab[mask], srgb[mask]))
     luma, blue, red, lab, srgb = (np.concatenate([part[index] for part in parts]) for index in range(5))
@@ -227,6 +247,8 @@ def fit_cells(matches: Sequence[SampleMatch]) -> FitCells:
 
 def fit_correction(matches: Sequence[SampleMatch]) -> CalibrationResult:
     cells = fit_cells(matches)
+    if len(cells.luma) < MIN_FIT_CELLS:
+        return CalibrationResult(None, None)
     before = mean_delta_e(IDENTITY_CORRECTION, cells)
     stride = max(1, len(cells.luma) // FIT_CELLS)
     correction = refined_correction(initial_correction(cells), cells.every(stride))
@@ -318,9 +340,25 @@ def correction_tables(correction: ColorCorrection, color_range: ColorRange) -> C
         chroma = (values - CHROMA_CENTER) / LIMITED_CHROMA_SPAN
     corrected_luma = np.clip(correction.tone(luma), 0, 1)
     corrected_chroma = np.clip(correction.saturation * chroma, -CHROMA_LIMIT, CHROMA_LIMIT)
-    luma_table = np.rint(LIMITED_LUMA_FLOOR + LIMITED_LUMA_SPAN * corrected_luma).astype(np.uint8)
-    chroma_table = np.rint(CHROMA_CENTER + LIMITED_CHROMA_SPAN * corrected_chroma).astype(np.uint8)
+    luma_table = without_fixed_points(
+        LIMITED_LUMA_FLOOR + LIMITED_LUMA_SPAN * corrected_luma, LIMITED_LUMA_FLOOR, LIMITED_LUMA_CEILING
+    )
+    chroma_table = without_fixed_points(
+        CHROMA_CENTER + LIMITED_CHROMA_SPAN * corrected_chroma, LIMITED_CHROMA_FLOOR, LIMITED_CHROMA_CEILING
+    )
     return luma_table.tobytes(), chroma_table.tobytes()
+
+
+def without_fixed_points(exact: FloatArray, low: int, high: int) -> I420Frame:
+    # bytes.translate branches on whether each byte changed; entries that map to themselves make that branch
+    # unpredictable on noisy content and up to four times slower, so each one moves one code towards its exact value.
+    rounded = np.rint(exact)
+    step = np.where(exact >= rounded, 1.0, -1.0)
+    nudged = rounded + step
+    nudged = np.where((nudged < low) | (nudged > high), rounded - step, nudged)
+    indexes = np.arange(TABLE_ENTRIES)
+    fixed = (rounded == indexes) & ~np.isclose(exact, indexes)
+    return np.where(fixed, nudged, rounded).astype(np.uint8)
 
 
 def applied_tables(correction: ColorCorrection | None, color_range: ColorRange) -> ColorTables | None:

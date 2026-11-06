@@ -67,7 +67,7 @@ def sample_record(traced: TracedSample) -> dict[str, object]:
         "matchedFrame": None,
     }
     if match is not None:
-        luma, blue, red = decoded_planes(match.frame)
+        luma, blue, red = (plane[:, ::-1] if match.mirrored else plane for plane in decoded_planes(match.frame))
         record["matchedFrame"] = {
             "y": encoded(luma.tobytes()),
             "u": encoded(blue.tobytes()),

@@ -64,6 +64,7 @@ class ColorCalibrator:
         self._tasks: set[asyncio.Task[None]] = set()
         self._matches: list[SampleMatch] = []
         self._received = 0
+        self._unmatched = 0
         self._generation = 0
         self._collect_until = clock() + COLLECT_SECONDS
         self._color_range = ColorRange.UNSPECIFIED
@@ -72,7 +73,7 @@ class ColorCalibrator:
 
     @property
     def collecting(self) -> bool:
-        wanted = self._received < SAMPLES_PER_MEASUREMENT or bool(self._tasks)
+        wanted = self._received < SAMPLES_PER_MEASUREMENT or self._unmatched > 0
         return wanted and self._clock() < self._collect_until
 
     def restart(self) -> None:
@@ -82,6 +83,7 @@ class ColorCalibrator:
         self._ring.clear()
         self._matches = []
         self._received = 0
+        self._unmatched = 0
         self._generation += 1
         self._collect_until = self._clock() + COLLECT_SECONDS
         self.correction = None
@@ -98,6 +100,7 @@ class ColorCalibrator:
 
     def add_sample(self, sample: ColorSample) -> None:
         self._received += 1
+        self._unmatched += 1
         self._collect_until = max(self._collect_until, self._clock() + COLLECT_SECONDS)
         traced = TracedSample(sample, self._wall_clock() * MILLISECONDS, self.status.state.value, None)
         task = asyncio.get_running_loop().create_task(self._measure(traced, self._generation))
@@ -110,21 +113,24 @@ class ColorCalibrator:
         match = await loop.run_in_executor(self._worker, best_match, tuple(self._ring), traced.sample)
         if generation != self._generation:
             return
+        self._unmatched -= 1
         self._record(TracedSample(traced.sample, traced.received_at_ms, traced.state, match))
         if match is not None and match.accepted:
             self._matches.append(match)
+        if self._unmatched > 0:
+            return
         if len(self._matches) >= MIN_VALID_SAMPLES:
             result = await loop.run_in_executor(self._worker, fit_correction, tuple(self._matches))
             if generation == self._generation:
                 self._apply(result)
             return
-        if self._received >= SAMPLES_PER_MEASUREMENT and len(self._tasks) == 1:
+        if self._received >= SAMPLES_PER_MEASUREMENT:
             self._apply(None)
 
     def _apply(self, result: CalibrationResult | None) -> None:
         self.correction = None if result is None else result.correction
         state = CalibrationState.DEFAULT if self.correction is None else CalibrationState.APPLIED
-        delta_e = None if result is None else round(result.delta_e, DELTA_E_DIGITS)
+        delta_e = None if result is None or result.delta_e is None else round(result.delta_e, DELTA_E_DIGITS)
         self.status = CalibrationStatus(state, delta_e)
         if self._trace is not None:
             self._worker.submit(

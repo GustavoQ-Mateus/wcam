@@ -9,7 +9,7 @@ from av import VideoFrame
 from av.video.reformatter import ColorRange as DeclaredRange
 
 from wcam.media.color_calibration import ColorTables, applied_tables, can_reduce
-from wcam.media.color_calibrator import ColorCalibrator
+from wcam.media.color_calibrator import CalibrationState, ColorCalibrator
 from wcam.media.color_range import (
     UNSPECIFIED_MATRIX,
     ColorRange,
@@ -55,6 +55,7 @@ class FramePipeline:
         self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=WORKER_NAME)
         self._quality_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=QUALITY_WORKER_NAME)
         self._measuring: Future[None] | None = None
+        self._measured_calibration = CalibrationState.MEASURING
         self._phone_active = False
         self._last_phone: I420Frame | None = None
         self._last_phone_at: float | None = None
@@ -80,6 +81,7 @@ class FramePipeline:
         self.portrait = False
         self.color_calibrator.restart()
         self._phone_active = True
+        self._measured_calibration = CalibrationState.MEASURING
         if self.quality is not None:
             self.quality.restart(self._clock())
 
@@ -131,9 +133,19 @@ class FramePipeline:
         return FrameSource.PHONE
 
     def _measure(self, now: float, output: I420Frame) -> None:
-        if self.quality is None or (self._measuring is not None and not self._measuring.done()):
+        if self.quality is None:
+            return
+        self._restart_quality_on_calibration_change(self.quality, now)
+        if self._measuring is not None and not self._measuring.done():
             return
         self._measuring = self._quality_worker.submit(self.quality.observe, now, output[:OUTPUT_HEIGHT])
+
+    def _restart_quality_on_calibration_change(self, quality: QualityMeter, now: float) -> None:
+        state = self.color_calibrator.status.state
+        if state is self._measured_calibration:
+            return
+        self._measured_calibration = state
+        self._quality_worker.submit(quality.restart, now)
 
     async def _next_frame(self) -> VideoFrame | None:
         try:

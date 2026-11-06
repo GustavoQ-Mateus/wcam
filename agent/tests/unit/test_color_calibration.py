@@ -3,6 +3,7 @@ import base64
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -23,7 +24,9 @@ from wcam.media.color_calibration import (
     best_match,
     block_mean,
     correction_tables,
+    decoded_planes,
     fit_correction,
+    range_tables,
     reduced_frame,
     rendered_rgb,
     resized_frame,
@@ -38,7 +41,7 @@ from wcam.media.color_difference import (
     encode_srgb_curve,
 )
 from wcam.media.color_range import CHROMA_TABLE, LUMA_TABLE, ColorRange
-from wcam.media.color_trace import ColorTrace
+from wcam.media.color_trace import ColorTrace, TracedSample
 from wcam.sessions.manager import COLOR_SAMPLE_BEFORE_LIVE, IGNORED_PHONE_MESSAGE
 from wcam.virtualcam.sink import OUTPUT_HEIGHT, I420Frame
 
@@ -57,6 +60,9 @@ APPLIED_DELTA_E = 2.0
 SETTLE_SECONDS = 20.0
 POLL_SECONDS = 0.02
 CAPTURED_AT = 1793991387130.0
+STRIPED_COLUMNS = 240
+ALIASING_CODES = 30
+EXACT_TABLE_VALUES = {16, 128, 235, 240}
 KNOWN_CORRECTION = ColorCorrection(tuple(float(value) for value in KNOT_POSITIONS**KNOWN_EXPONENT), KNOWN_SATURATION)
 
 type Planes = tuple[I420Frame, I420Frame, I420Frame]
@@ -149,7 +155,48 @@ def test_fit_recovers_known_tone_curve_and_saturation() -> None:
     assert result.correction is not None
     assert np.abs(np.array(result.correction.curve) - np.array(KNOWN_CORRECTION.curve)).max() < CURVE_TOLERANCE
     assert abs(result.correction.saturation - KNOWN_SATURATION) < SATURATION_TOLERANCE
+    assert result.delta_e is not None
     assert result.delta_e < RECOVERED_DELTA_E
+
+
+def striped_matches(seeds: tuple[int, ...]) -> list[SampleMatch]:
+    matches: list[SampleMatch] = []
+    for seed in seeds:
+        luma, blue, red = scene_planes(seed)
+        luma = luma.copy()
+        luma[:, :STRIPED_COLUMNS] = np.where(np.arange(STRIPED_COLUMNS) % 2 == 0, 235, 16)
+        planes = (luma, blue, red)
+        sample = phone_sample(planes)
+        aliased = sample.pixels.astype(int)
+        aliased[:, : STRIPED_COLUMNS * SAMPLE_WIDTH // SCENE_WIDTH] += ALIASING_CODES
+        aliased_sample = ColorSample(sample.color_space, to_uint8(aliased), CAPTURED_AT)
+        match = best_match([reduced_frame(planes, ColorRange.FULL)], aliased_sample)
+        assert match is not None
+        matches.append(match)
+    return matches
+
+
+def test_fit_ignores_fine_detail_the_phone_canvas_aliases() -> None:
+    matches = striped_matches((1, 2, 3))
+
+    result = fit_correction(matches)
+
+    assert all(match.accepted and not match.mirrored for match in matches)
+    assert result.correction is not None
+    assert np.abs(np.array(result.correction.curve) - np.array(KNOWN_CORRECTION.curve)).max() < CURVE_TOLERANCE
+    assert abs(result.correction.saturation - KNOWN_SATURATION) < SATURATION_TOLERANCE
+
+
+def test_fit_without_enough_smooth_cells_keeps_the_default() -> None:
+    planes = scene_planes(1)
+    luma = np.tile(np.where(np.arange(SCENE_WIDTH) % 2 == 0, 235, 16).astype(np.uint8), (SCENE_HEIGHT, 1))
+    striped = (luma, planes[1], planes[2])
+    match = best_match([reduced_frame(striped, ColorRange.FULL)], phone_sample(striped))
+    assert match is not None
+
+    result = fit_correction([match])
+
+    assert (result.correction, result.delta_e) == (None, None)
 
 
 def test_sample_of_another_scene_is_discarded() -> None:
@@ -184,8 +231,21 @@ def test_sample_without_frames_has_no_match() -> None:
     assert best_match([], phone_sample(scene_planes(1))) is None
 
 
-def test_identity_correction_tables_equal_range_tables() -> None:
-    assert correction_tables(IDENTITY_CORRECTION, ColorRange.FULL) == (LUMA_TABLE.tobytes(), CHROMA_TABLE.tobytes())
+def test_identity_correction_moves_only_rounded_fixed_points_of_the_range_tables_by_one_code() -> None:
+    luma, chroma = correction_tables(IDENTITY_CORRECTION, ColorRange.FULL)
+
+    for table, range_table in ((luma, LUMA_TABLE), (chroma, CHROMA_TABLE)):
+        difference = np.frombuffer(table, dtype=np.uint8).astype(int) - range_table.astype(int)
+        assert np.abs(difference).max() <= 1
+        assert all(range_table[index] == index for index in np.flatnonzero(difference))
+    assert chroma[128] == 128
+
+
+def test_calibration_tables_have_no_rounded_fixed_points() -> None:
+    for color_range in (ColorRange.FULL, ColorRange.LIMITED):
+        luma, chroma = correction_tables(KNOWN_CORRECTION, color_range)
+        fixed = [index for index in range(256) if luma[index] == index or chroma[index] == index]
+        assert set(fixed) <= EXACT_TABLE_VALUES
 
 
 def test_correction_tables_apply_curve_and_saturation_on_limited_output() -> None:
@@ -194,7 +254,7 @@ def test_correction_tables_apply_curve_and_saturation_on_limited_output() -> Non
     assert (luma_table[0], luma_table[255]) == (16, 235)
     assert luma_table[128] == round(16 + 219 * float(KNOWN_CORRECTION.tone(np.array(128 / 255))))
     assert chroma_table[128] == 128
-    assert chroma_table[160] == round(128 + 224 * KNOWN_SATURATION * (160 - 128) / 255)
+    assert abs(chroma_table[160] - 128 - 224 * KNOWN_SATURATION * (160 - 128) / 255) <= 1
     assert (chroma_table[0], chroma_table[255]) == (16, 240)
 
 
@@ -367,3 +427,34 @@ async def test_trace_records_each_sample_and_the_calibration(tmp_path: Path) -> 
         "color-sample-2.json",
         "color-sample-3.json",
     ]
+
+
+def test_trace_keeps_the_unmirrored_frame_at_sample_size_and_full_tables(tmp_path: Path) -> None:
+    planes = scene_planes(4)
+    frame = reduced_frame(planes, ColorRange.FULL)
+    match = best_match([frame], phone_sample(planes, mirrored=True))
+    assert match is not None
+    trace = ColorTrace(tmp_path)
+
+    trace.record_sample(TracedSample(match.sample, CAPTURED_AT, "measuring", match))
+    trace.record_calibration(
+        "applied", 0.5, range_tables(ColorRange.FULL), correction_tables(KNOWN_CORRECTION, ColorRange.FULL)
+    )
+
+    record = read_json(tmp_path / "color-sample-1.json")
+    calibration = read_json(tmp_path / "color-calibration.json")
+    stored = [np.frombuffer(base64.b64decode(record["matchedFrame"][key]), dtype=np.uint8) for key in ("y", "u", "v")]
+    unmirrored = decoded_planes(resized_frame(frame, SAMPLE_WIDTH, SAMPLE_HEIGHT, False))
+    assert record["mirrored"] is True
+    for stored_plane, expected in zip(stored, unmirrored, strict=True):
+        assert stored_plane.size == SAMPLE_WIDTH * SAMPLE_HEIGHT
+        assert np.array_equal(stored_plane, expected.reshape(-1))
+    for key in ("rangeTables", "appliedTables"):
+        for plane in ("y", "u", "v"):
+            values = calibration[key][plane]
+            assert len(values) == 256
+            assert all(isinstance(value, int) and 0 <= value <= 255 for value in values)
+
+
+def read_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
