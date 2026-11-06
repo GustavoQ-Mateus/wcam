@@ -57,10 +57,9 @@ def main() -> None:
     pipeline.open()
     manager = SessionManager(aiortc_peer_factory(lan.network, pipeline))
     services = AgentServices(manager, pipeline, CpuMonitor())
-    ticket = manager.open_pairing()
     print_banner(messages, console_url, phone_url, certificate)
     print_virtual_camera(messages, selection)
-    print_pairing_qr(messages, pairing_url(phone_url, ticket.token))
+    announce_pairing(messages, manager, phone_url, console_url, sys.stdout)
     asyncio.run(run(create_servers(settings, lan, certificate, services), services))
     print(messages.text("terminal.stopped"))
 
@@ -94,8 +93,21 @@ def print_virtual_camera(messages: Messages, selection: SinkSelection) -> None:
     print(messages.text("terminal.virtual_camera_unavailable", reason=reason))
 
 
-def print_pairing_qr(messages: Messages, url: str) -> None:
-    print(messages.text("terminal.scan_with_token"))
-    print(messages.text("terminal.scan_hint"))
-    segno.make(url, error="m").terminal(compact=True)
-    print(messages.text("terminal.stop_hint"))
+def announce_pairing(
+    messages: Messages,
+    manager: SessionManager,
+    phone_url: str,
+    console_url: str,
+    output: TextIO,
+) -> None:
+    if output.isatty():
+        print_pairing_qr(messages, pairing_url(phone_url, manager.open_pairing().token), output)
+    else:
+        print(messages.text("terminal.scan_in_console", url=console_url), file=output)
+    print(messages.text("terminal.stop_hint"), file=output)
+
+
+def print_pairing_qr(messages: Messages, url: str, output: TextIO) -> None:
+    print(messages.text("terminal.scan_with_token"), file=output)
+    print(messages.text("terminal.scan_hint"), file=output)
+    segno.make(url, error="m").terminal(out=output, compact=True)
