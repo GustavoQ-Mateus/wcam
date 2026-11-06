@@ -1,9 +1,10 @@
 import asyncio
 
 import numpy as np
+import pytest
 from av import VideoFrame
 
-from wcam.media.pipeline import FramePipeline, FrameSource
+from wcam.media.pipeline import FREEZE_SECONDS, FramePipeline, FrameSource
 from wcam.media.placeholder import black_i420
 from wcam.virtualcam.fake_sink import FakeSink
 from wcam.virtualcam.sink import OUTPUT_FPS, OUTPUT_HEIGHT, OUTPUT_WIDTH, I420Frame
@@ -11,6 +12,7 @@ from wcam.virtualcam.sink import OUTPUT_FPS, OUTPUT_HEIGHT, OUTPUT_WIDTH, I420Fr
 SEED = 7
 RUN_SECONDS = 0.5
 MINIMUM_PLACEHOLDERS_IN_RUN = 10
+FREEZE_TOLERANCE_SECONDS = 0.2
 
 
 class SteppingClock:
@@ -21,13 +23,13 @@ class SteppingClock:
         return self.now
 
 
-def random_i420(width: int, height: int) -> I420Frame:
-    generator = np.random.default_rng(SEED)
+def random_i420(width: int, height: int, seed: int = SEED) -> I420Frame:
+    generator = np.random.default_rng(seed)
     return generator.integers(0, 256, size=(height * 3 // 2, width), dtype=np.uint8)
 
 
-def phone_frame(width: int = OUTPUT_WIDTH, height: int = OUTPUT_HEIGHT) -> VideoFrame:
-    return VideoFrame.from_ndarray(random_i420(width, height), format="yuv420p")
+def phone_frame(width: int = OUTPUT_WIDTH, height: int = OUTPUT_HEIGHT, seed: int = SEED) -> VideoFrame:
+    return VideoFrame.from_ndarray(random_i420(width, height, seed), format="yuv420p")
 
 
 def live_pipeline(clock: SteppingClock | None = None) -> tuple[FramePipeline, FakeSink]:
@@ -115,17 +117,46 @@ def test_short_gap_repeats_the_last_phone_frame() -> None:
     assert pipeline.source is FrameSource.PHONE
 
 
-def test_sink_receives_placeholder_after_one_second_without_frames() -> None:
+@pytest.mark.parametrize("seconds", [0.6, 1.5, FREEZE_SECONDS - FREEZE_TOLERANCE_SECONDS])
+def test_gap_shorter_than_three_seconds_freezes_the_last_phone_frame(seconds: float) -> None:
+    clock = SteppingClock()
+    pipeline, sink = live_pipeline(clock)
+    pipeline.deliver(phone_frame())
+    sent = sink.last_frame
+
+    clock.now += seconds
+    pipeline.deliver(None)
+
+    assert sink.last_frame is sent
+    assert pipeline.source is FrameSource.FROZEN
+
+
+def test_gap_longer_than_three_seconds_turns_to_black() -> None:
     clock = SteppingClock()
     pipeline, sink = live_pipeline(clock)
     pipeline.deliver(phone_frame())
 
-    clock.now += 1.01
+    clock.now += FREEZE_SECONDS + FREEZE_TOLERANCE_SECONDS
     pipeline.deliver(None)
 
     assert sink.last_frame is not None
-    assert sink.last_frame.tobytes() == black_i420(OUTPUT_WIDTH, OUTPUT_HEIGHT).tobytes()
+    assert (sink.last_frame[:OUTPUT_HEIGHT] == 16).all()
+    assert (sink.last_frame[OUTPUT_HEIGHT:] == 128).all()
     assert pipeline.source is FrameSource.PLACEHOLDER
+
+
+def test_frame_after_freeze_goes_back_to_phone() -> None:
+    clock = SteppingClock()
+    pipeline, sink = live_pipeline(clock)
+    pipeline.deliver(phone_frame())
+    clock.now += 2.0
+    pipeline.deliver(None)
+
+    pipeline.deliver(phone_frame(seed=SEED + 1))
+
+    assert pipeline.source is FrameSource.PHONE
+    assert sink.last_frame is not None
+    assert sink.last_frame.tobytes() == random_i420(OUTPUT_WIDTH, OUTPUT_HEIGHT, SEED + 1).tobytes()
 
 
 def test_stopping_the_phone_returns_to_placeholder_at_once() -> None:

@@ -14,7 +14,8 @@ from wcam.media.quality import QualityMeter, QualityReport
 from wcam.virtualcam.sink import OUTPUT_FPS, OUTPUT_HEIGHT, OUTPUT_WIDTH, CameraState, I420Frame, VirtualCameraSink
 
 FRAME_INTERVAL_SECONDS = 1 / OUTPUT_FPS
-PHONE_SILENCE_SECONDS = 1.0
+STALE_FRAME_SECONDS = 0.5
+FREEZE_SECONDS = 3.0
 I420_FORMAT = "yuv420p"
 RAW_I420_FORMATS = (I420_FORMAT, "yuvj420p")
 WORKER_NAME = "wcam-frames"
@@ -23,6 +24,7 @@ QUALITY_WORKER_NAME = "wcam-quality"
 
 class FrameSource(StrEnum):
     PHONE = "phone"
+    FROZEN = "frozen"
     PLACEHOLDER = "placeholder"
 
 
@@ -92,14 +94,21 @@ class FramePipeline:
         now = self._clock()
         if frame is not None:
             self._accept_phone_frame(frame, now)
-        elif self._last_phone_at is None or now - self._last_phone_at > PHONE_SILENCE_SECONDS:
+        elif self._last_phone_at is None or now - self._last_phone_at > FREEZE_SECONDS:
             self._last_phone = None
         output = self._last_phone if self._phone_active else None
-        self.source = FrameSource.PLACEHOLDER if output is None else FrameSource.PHONE
+        self.source = self._source_of(output, now)
         if self.sink.status.state is CameraState.ACTIVE:
             self.sink.send(self._placeholder if output is None else output)
         if output is not None and frame is not None:
             self._measure(now, output)
+
+    def _source_of(self, output: I420Frame | None, now: float) -> FrameSource:
+        if output is None:
+            return FrameSource.PLACEHOLDER
+        if self._last_phone_at is not None and now - self._last_phone_at > STALE_FRAME_SECONDS:
+            return FrameSource.FROZEN
+        return FrameSource.PHONE
 
     def _measure(self, now: float, output: I420Frame) -> None:
         if self.quality is None or (self._measuring is not None and not self._measuring.done()):
