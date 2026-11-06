@@ -28,8 +28,7 @@ SCENE_SEED = 21
 SAMPLES = 5
 SAMPLE_INTERVAL_SECONDS = 1.0
 APPLIED_DELTA_E = 2.0
-ENCODER_WARMUP_SECONDS = 3.0
-LAST_FIT_SECONDS = 3.0
+ENCODER_WARMUP_FRAMES = 90
 SETTLE_SECONDS = 20.0
 POLL_SECONDS = 0.1
 
@@ -48,7 +47,12 @@ class StillScene(VideoStreamTrack):
         return frame
 
 
-async def calibration_after_samples(console: httpx.AsyncClient, phone: httpx.AsyncClient) -> dict[str, Any]:
+async def calibration_after_samples(
+    console: httpx.AsyncClient,
+    phone: httpx.AsyncClient,
+    factory: RecordingPeerFactory,
+    pipeline: FramePipeline,
+) -> dict[str, Any]:
     client = phone_client_peer(StillScene())
     planes = scene_planes(SCENE_SEED, OUTPUT_WIDTH, OUTPUT_HEIGHT)
     try:
@@ -60,11 +64,12 @@ async def calibration_after_samples(console: httpx.AsyncClient, phone: httpx.Asy
         await client.next_state()
         video = await wait_for_video(console)
         assert video["colorCalibration"] == {"state": "measuring", "deltaE": None}
-        await asyncio.sleep(ENCODER_WARMUP_SECONDS)
+        gate = factory.peers[-1].gate
+        await wait_until(lambda: gate.released >= ENCODER_WARMUP_FRAMES)
         for _ in range(SAMPLES):
             client.channel.send(color_sample_message(phone_sample(planes, color_range=ColorRange.LIMITED)))
             await asyncio.sleep(SAMPLE_INTERVAL_SECONDS)
-        await asyncio.sleep(LAST_FIT_SECONDS)
+        await wait_until(lambda: not pipeline.color_calibrator.collecting)
         calibration = await settled_calibration(console)
         await console.delete("/api/sessions/current")
         return calibration
@@ -100,15 +105,16 @@ async def test_each_connection_measures_and_applies_the_phone_color(
     lan: LanInterface,
     pipeline: FramePipeline,
 ) -> None:
-    manager = SessionManager(RecordingPeerFactory(lan, pipeline))
+    factory = RecordingPeerFactory(lan, pipeline)
+    manager = SessionManager(factory)
 
     async with (
         console_client(console_app(settings, manager, pipeline)) as console,
         phone_client(phone_app(settings, manager)) as phone,
     ):
-        first = await calibration_after_samples(console, phone)
+        first = await calibration_after_samples(console, phone, factory, pipeline)
         await wait_until(lambda: pipeline.source is FrameSource.PLACEHOLDER)
-        second = await calibration_after_samples(console, phone)
+        second = await calibration_after_samples(console, phone, factory, pipeline)
 
     assert first["state"] == "applied"
     assert first["deltaE"] < APPLIED_DELTA_E
