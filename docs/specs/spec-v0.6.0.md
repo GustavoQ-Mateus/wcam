@@ -17,16 +17,20 @@ E prepara a v0.7.0 (resolução e fps à escolha do usuário) medindo o que o na
 
 ## 1. Faixa de cor e matriz
 
-Decisão: a câmera WCam anuncia sempre **faixa limitada (16 a 235)**, que é o padrão das webcams e o que os apps assumem, e o agente normaliza para ela todo quadro que chega em faixa cheia. Anunciar faixa cheia por quadro não é possível (o tipo de mídia é negociado uma vez), e o Android envia faixa limitada, então converter só quando preciso é o único caminho que serve aos dois.
+Quem decide a faixa e a matriz é o celular: cada aparelho as declara no próprio fluxo H.264, e o agente lê essa declaração em cada quadro, sem supor nada pelo modelo do aparelho. Medido em 2026-11-03 no iPhone 16 Pro Max do usuário (Safari): `yuvj420p`, `color_range` 2 (faixa cheia), `colorspace`, primária e transferência não declaradas; de 3,6% a 5,3% dos pixels abaixo de 16. Outros aparelhos ainda não foram medidos.
+
+Decisão: a câmera WCam anuncia sempre **faixa limitada (16 a 235)**, que é o padrão das webcams e o que os apps assumem. Ela só pode anunciar uma faixa, negociada uma vez com o app, então o agente traduz a faixa declarada por cada celular para a anunciada.
 
 Agent:
-- Lê a faixa de cada quadro decodificado (`color_range` do PyAV e o formato `yuvj420p`). Faixa cheia é normalizada por tabela de consulta: Y para `16 + Y × 219 / 255`, U e V para `128 + (C − 128) × 224 / 255`, com arredondamento. Faixa limitada ou não declarada passa sem mudança, como hoje.
+- Lê a faixa de cada quadro decodificado (`color_range` do PyAV e o formato `yuvj420p`). Faixa cheia é normalizada por tabela de consulta: Y para `16 + Y × 219 / 255`, U e V para `128 + (C − 128) × 224 / 255`, com arredondamento. Faixa limitada passa sem mudança, como hoje. Faixa não declarada é tratada como limitada; isso é suposição, conferida pelo campo abaixo em cada aparelho testado.
+- Registra o que o celular declarou: `session.video.colorRange` (`full`, `limited` ou `unspecified`) e `session.video.colorMatrix` (`bt709`, `bt601`, outro nome do FFmpeg ou `unspecified`), para conferir qualquer aparelho em vez de supor.
+- Matriz: quando o celular declara uma matriz diferente da anunciada pela WCam, o relatório registra o caso; converter matriz fica fora desta versão até um aparelho real precisar.
 - A normalização roda fora do event loop, junto da conversão para NV12.
 - Isso emenda o CA-2 do produto ("sem converter cor"): a única transformação permitida é ajustar a faixa ao formato anunciado pela câmera, sem tocar em resolução nem matiz. O planejamento §1 registra a emenda.
 
 Vcam:
 - O tipo de mídia passa a declarar `MF_MT_VIDEO_NOMINAL_RANGE` (16 a 235) e a matriz de cor, a primária e a função de transferência, hoje omitidas.
-- A matriz (BT.709 ou BT.601) é escolhida por medição, não suposta: o probe publica barras de cor de valores conhecidos, e o relatório compara o RGB lido no Chrome e no app Câmera com o esperado para cada matriz. O iPhone não declara a matriz (`colorspace` não especificado), então a mesma medição é feita com um quadro real do iPhone contra a prévia.
+- A matriz anunciada (BT.709 ou BT.601) é escolhida por medição, não suposta: o probe publica barras de cor de valores conhecidos, e o relatório compara o RGB lido no Chrome e no app Câmera com o esperado para cada matriz. Como o iPhone não declara a matriz, a mesma medição é feita com um quadro real dele contra a prévia.
 
 ## 2. Imagem preta por alguns segundos
 
@@ -63,7 +67,7 @@ O terminal imprime o QR e a URL com token só quando a saída é um terminal int
 
 Nada aqui muda o formato da câmera; é só levantamento, registrado nos relatórios.
 
-- Web: depois que o DataChannel abre, o celular envia as capacidades da câmera em uso (`getCapabilities()`: largura, altura e fps máximos, por câmera frontal e traseira quando disponível). O agente expõe isso no status.
+- Web: depois que o DataChannel abre, o celular envia as capacidades da câmera em uso (`getCapabilities()`: largura, altura e fps máximos, por câmera frontal e traseira quando disponível) e os codecs de vídeo que o navegador sabe enviar (`RTCRtpSender.getCapabilities("video")`, só os `mimeType`). O agente expõe isso no status.
 - Agent: script de desenvolvimento `python -m wcam.tools.decode_benchmark` que decodifica H.264 sintético em 1280x720, 1920x1080, 2560x1440 e 3840x2160, a 30 e 60 fps, e mede a CPU do processo.
 - Usuário, no iPhone dele: o relatório registra as capacidades reais e o resultado do benchmark nesta máquina.
 
@@ -71,11 +75,11 @@ Nada aqui muda o formato da câmera; é só levantamento, registrado nos relató
 
 Console:
 - `PUT /api/quality-preset` com `{"preset": "maximum" | "balanced" | "light"}`: `204`; `422 invalid_request` com valor desconhecido. Vale para a sessão atual e as próximas.
-- `GET /api/status` ganha `qualityPreset` no primeiro nível (sempre presente), `virtualCamera.source` ganha o valor `frozen`, e `session.cameraCapabilities` (`null` até o celular enviar).
+- `GET /api/status` ganha `qualityPreset` no primeiro nível (sempre presente), `virtualCamera.source` ganha o valor `frozen`, `session.cameraCapabilities` (`null` até o celular enviar), e `session.video` ganha `colorRange` e `colorMatrix`, como declarados pelo celular.
 
 DataChannel `control`:
 - Agente para o celular: `{"type": "quality_preset", "preset": "<chave>"}` quando o canal abre e a cada mudança.
-- Celular para o agente (primeira vez que o celular envia mensagens): `{"type": "set_quality_preset", "preset": "<chave>"}` e `{"type": "camera_capabilities", "width": <max>, "height": <max>, "frameRate": <max>, "facingMode": "user" | "environment" | null}`. Mensagem desconhecida ou inválida é ignorada e registrada.
+- Celular para o agente (primeira vez que o celular envia mensagens): `{"type": "set_quality_preset", "preset": "<chave>"}` e `{"type": "camera_capabilities", "width": <max>, "height": <max>, "frameRate": <max>, "facingMode": "user" | "environment" | null, "codecs": ["video/H264", ...]}`. Mensagem desconhecida ou inválida é ignorada e registrada.
 
 WebRTC: `maxBitrate` deixa de ser fixo em 10 000 000 e segue a opção.
 
@@ -86,13 +90,14 @@ Chaves novas em `locales/en.json` e `locales/pt-BR.json` no mesmo commit, na bra
 ## Fora do escopo
 
 - Resolução e fps à escolha do usuário, e a câmera anunciar outros formatos (v0.7.0).
+- Avaliação de codecs mais eficientes que o H.264 (VP9, AV1, HEVC) (v0.7.0); esta versão só registra quais o celular oferece.
 - Console definitivo, SSE e revisão de linguagem de todas as superfícies (v0.8.0).
 - Guardar a escolha entre reinícios (persistência).
 - Reconexão automática depois de queda longa (robustez).
 
 ## Critérios de aceitação
 
-1. Faixa de cor: teste unitário confirma a tabela de normalização (0 vira 16, 255 vira 235, 128 de croma fica 128) e que quadro de faixa limitada passa sem mudança. Com um quadro real do iPhone em pouca luz, nenhum pixel que era acima de 0 na origem vira 16 ou menos na saída.
+1. Faixa de cor: teste unitário confirma a tabela de normalização (0 vira 16, 255 vira 235, 128 de croma fica 128) e que quadro de faixa limitada passa sem mudança. Com um quadro real do iPhone em pouca luz, nenhum pixel que era acima de 0 na origem vira 16 ou menos na saída. O status mostra `colorRange` e `colorMatrix` declarados; o relatório registra os valores de cada aparelho testado (o iPhone do usuário, e um Android se houver um disponível).
 2. A WCam declara faixa, matriz, primária e transferência; o relatório da vcam mostra a medição das barras de cor que escolheu a matriz.
 3. O usuário compara lado a lado, no mesmo ambiente com pouca luz, a prévia do celular e a WCam no app Câmera do Windows, e aprova que sombras e cores estão no mesmo nível.
 4. Congelar: sem quadro novo, a câmera repete o último quadro bom por 3 s (tolerância de 0,2 s) e então mostra preto (Y=16, UV=128). Teste automatizado e verificação no Frame Server.
@@ -101,7 +106,7 @@ Chaves novas em `locales/en.json` e `locales/pt-BR.json` no mesmo commit, na bra
 7. Reunião real de pelo menos 30 min no novo Teams com o iPhone na opção Máxima: nenhum preto visto pelo usuário; o `episodes.log` da reunião vai para o changelog.
 8. Qualidade: mudar a opção no celular aparece no console, e no console aparece no celular, em menos de 300 ms; a taxa medida pelo agente acompanha a opção em até 5 s. Teste e2e com a câmera falsa do Chromium e verificação no iPhone.
 9. Terminal: com a saída redirecionada, nenhuma URL com `#t=` é escrita; teste automatizado.
-10. Medição: capacidades do iPhone do usuário e o benchmark de decodificação nesta máquina registrados nos relatórios.
+10. Medição: capacidades e codecs do iPhone do usuário e o benchmark de decodificação nesta máquina registrados nos relatórios.
 11. O e2e de qualidade continua com SSIM de pelo menos 0,98; CI verde nos cinco jobs; versão 0.6.0 no agente, no web e no projeto .NET.
 12. Contrato 0.6.0 e emenda do CA-2 no planejamento registrados antes do código.
 
