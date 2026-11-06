@@ -34,6 +34,8 @@
   "console.source_phone": "Mostrando o celular",
   "console.source_placeholder": "Mostrando quadro preto",
   "console.source_frozen": "Mostrando a última imagem até o vídeo do celular voltar",
+  "console.color_matched": "Cor igual à do celular",
+  "console.color_default": "Cor padrão",
   "console.frames_scaled": "{count} quadros precisaram ser redimensionados. Confira o Wi-Fi.",
   "console.cpu": "CPU do agente {percent}%",
   "console.virtual_camera_fallback": "Usando a OBS Virtual Camera porque a câmera WCam não está disponível.",

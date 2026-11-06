@@ -34,6 +34,8 @@
   "console.source_phone": "Showing the phone",
   "console.source_placeholder": "Showing a black frame",
   "console.source_frozen": "Showing the last image until the phone's video comes back",
+  "console.color_matched": "Color matched to the phone",
+  "console.color_default": "Standard color",
   "console.frames_scaled": "{count} frames had to be resized. Check the Wi-Fi.",
   "console.cpu": "Agent CPU {percent}%",
   "console.virtual_camera_fallback": "Using the OBS Virtual Camera because the WCam camera is not available.",

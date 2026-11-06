@@ -65,3 +65,24 @@ Na ordem: comparação lado a lado em pouca luz (CA 3); 10 min na Máxima sem ep
 ## Relatórios
 
 `docs/relatorio-v0.6.0-agent.md`, `docs/relatorio-v0.6.0-web.md` e `docs/relatorio-v0.6.0-vcam.md`, no formato de sempre, com o CA da spec que cada item cumpre. Commits sem referência a Claude ou Anthropic; push da própria branch liberado; PR não. Me avisem (`wcam-ae`) ao fechar cada etapa e antes de qualquer pedido ao usuário.
+
+## Adendo: calibração de cor (2026-11-06)
+
+Spec §1.1, CA 3.1 e 3.2, decisões 5 a 7. Contrato: mensagem `color_sample` e `session.video.colorCalibration`. Textos: `console.color_matched` e `console.color_default`, já em `locales/`. Os spikes `spike/color-space` (agent) e `spike/color-sample` (web) são referência de medição e não entram como estão: o código novo sai na branch de cada sessão, sem `WCAM_SPIKE_DIR` nem gravação em disco.
+
+Sessão agent:
+1. Aceitar `color_sample` só em `live`; validar formato (contrato) e descartar o resto com log.
+2. Anel de quadros reduzidos dos últimos 2 s, ativo só enquanto houver amostra a comparar; casamento por correlação de luminância (com e sem espelho), descarte abaixo de 0,8.
+3. Ajuste com pelo menos 3 amostras válidas: curva de tom monotônica no Y e ganho de saturação no U e V, minimizando o ΔE2000 entre amostra e saída corrigida lida como BT.709 limitada no espaço de cor da amostra. Só aplica se reduzir o ΔE2000.
+4. Correção composta com a tabela de faixa numa tabela só por plano, no mesmo worker; custo por quadro igual ao de hoje.
+5. `colorCalibration` no status; recomeça em `measuring` a cada conexão e troca de câmera; nada em disco.
+6. Testes do CA 3.1 (curva e ganho conhecidos recuperados, correlação baixa descartada, `default` byte a byte igual, nada guardado entre conexões, `color_sample` antes do `live` ignorado).
+7. No relatório: ΔE2000 antes e depois no iPhone do usuário e o custo por quadro.
+
+Sessão web:
+1. Hook em `media/` que, em `live` e paisagem, envia 5 `color_sample` (uma por segundo), e de novo a cada troca de câmera; em retrato, espera o paisagem. Montagem da mensagem em `data/`, com Vitest.
+2. Console: linha na área de detalhes com `console.color_matched` (`applied`) ou `console.color_default` (outros estados).
+3. e2e: a cada conexão o status chega a `applied` ou `default` com `deltaE` preenchido, e a conexão seguinte recomeça em `measuring`; SSIM acima de 0,98.
+
+Sessão vcam:
+1. Verificação de ponta a ponta para o teste final: quadro lido pelo Chrome na câmera WCam (`getUserMedia`) contra a amostra do celular do mesmo instante, ΔE2000 médio. Ferramenta de desenvolvimento, fora do produto; o método vai no relatório. Combine comigo o que precisar do agente (por exemplo, gravar amostras com horário quando uma variável de desenvolvimento estiver definida).

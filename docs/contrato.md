@@ -128,6 +128,8 @@ Do celular para o agente, JSON:
 - `{"type": "set_quality_preset", "preset": "<chave>"}` quando o usuário escolhe uma opção no celular. O agente aplica e responde com `quality_preset` (inclusive ao próprio celular), que é a fonte da verdade do que está em uso. Só vale com a sessão em `live`: antes do Confirmar o aparelho ainda não foi aceito, e a mensagem é ignorada com registro no log, sem resposta. O seletor do celular só aparece depois de `session_state` `live`;
 - `{"type": "camera_capabilities", "width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"]}` quando o canal abre e a cada troca de câmera. `width`, `height` e `frameRate` são os máximos de `getCapabilities()` da faixa em uso (`null` quando o navegador não informa); `facingMode` é `user`, `environment` ou `null`; `codecs` são os `mimeType` de vídeo de `RTCRtpSender.getCapabilities("video")`, sem repetição e sem `video/rtx`, `video/red` e `video/ulpfec`.
 
+- `{"type": "color_sample", "colorSpace": "display-p3", "width": 160, "height": 90, "rgb": "<base64>", "capturedAt": 1793991387130}` para a calibração de cor: o quadro que o visor do celular está exibindo, desenhado num canvas sem espelho e lido com `getImageData` no mesmo `colorSpace` (`display-p3` ou `srgb`). `rgb` é o base64 dos bytes R, G e B de cada pixel, sem alfa, linha a linha (`width × height × 3` bytes); `capturedAt` é `performance.timeOrigin + performance.now()` em ms. Enviada com a sessão em `live` e o celular em paisagem, uma por segundo, 5 vezes, e de novo a cada troca de câmera. Antes do `live` é ignorada com registro no log. Cabe no `max-message-size` de 65 536 bytes anunciado pelo agente.
+
 Mensagem com `type` desconhecido, JSON inválido ou campo fora do formato é ignorada pelo agente e registrada no log, sem encerrar a sessão.
 
 ## Opção de qualidade
@@ -183,7 +185,7 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
   },
   "qualityPreset": "balanced",
   "session": {
-    "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800, "codec": "H264", "framesScaled": 0, "colorRange": "full", "colorMatrix": "unspecified"},
+    "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800, "codec": "H264", "framesScaled": 0, "colorRange": "full", "colorMatrix": "unspecified", "colorCalibration": {"state": "applied", "deltaE": 1.2}},
     "cameraCapabilities": {"width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"]}
   },
   "process": {"cpuPercent": 12.5},
@@ -196,6 +198,7 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
 - `fallbackReason`: por que a câmera nativa não está em uso; `null` quando `backend` é `media_foundation`. Valores: `native_not_registered` (DLL não registrada), `windows_too_old` (build anterior a 22000), `native_error` (a DLL falhou ao iniciar) e `not_windows`. Só é preenchido quando `WCAM_VIRTUAL_CAMERA` é `auto` e a escolha caiu da câmera nativa para outro backend; com backend explícito é sempre `null`. Com `WCAM_VIRTUAL_CAMERA=media_foundation` explícito e falha, não há fallback: `state` `unavailable` com `reason` `driver_missing` (DLL ausente) ou `error` (`WcamCameraStart` falhou).
 - `source`: `phone` quando os quadros vêm do celular; `frozen` quando a câmera repete o último quadro do celular porque nenhum quadro novo chegou há mais de 0,5 s (até completar 3 s sem quadro; antes de 0,5 s continua `phone`, que é o intervalo normal entre quadros); `placeholder` em qualquer outro momento.
 - `session.video.colorRange`: faixa declarada pelo celular no quadro mais recente, `full`, `limited` ou `unspecified`. `colorMatrix`: matriz declarada, `bt709`, `bt601`, outro nome do FFmpeg ou `unspecified`. A câmera sempre entrega faixa limitada; quadro em faixa cheia é ajustado pelo agente (CA-2, emenda da v0.6.0).
+- `session.video.colorCalibration`: calibração de cor da conexão atual (spec v0.6.0 §1.1). `state`: `measuring` (esperando amostras `color_sample`), `applied` (curva de tom e saturação aplicadas) ou `default` (amostras insuficientes ou correção sem ganho; só a faixa é ajustada). `deltaE`: ΔE2000 médio entre as amostras do celular e a saída corrigida; `null` até medir. Recomeça em `measuring` a cada conexão e a cada troca de câmera; nada é guardado entre conexões.
 - `session.cameraCapabilities`: a última mensagem `camera_capabilities` do celular, sem o `type`; `null` até chegar a primeira.
 - `session.video.codec`: o codec negociado (`H264` ou `VP8`). `framesScaled`: quantos quadros precisaram ser redimensionados na sessão (o esperado é 0; ver "Formato de saída").
 - `process.cpuPercent`: uso de CPU do processo do agente, média da última janela de 1 s, via psutil.
