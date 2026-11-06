@@ -156,5 +156,20 @@ Rodada contra 71016d0, só esta sessão no compose, com a série do `/api/status
 | Carga do agente (`docker stats`) | média 64,9%, máximo 96,3% |
 | `liquida-producer` e `liquida-consumer` (outro projeto) | médias 0,1% e 0,9%, pico 36,7%; o consumer reiniciava em loop |
 
-O fps voltou ao normal. O SSIM caiu porque a calibração aproxima a saída da amostra do celular e a afasta da referência y4m (BT.601); antes do `applied`, a mesma referência dava 0,985. Decisão 8 da spec (opção b): o `QualityMeter` passa a comparar contra a referência passada pela mesma tabela de Y aplicada. **SSIM final pendente** até essa mudança do agente entrar e o e2e rodar de novo.
+O fps voltou ao normal. O SSIM caiu porque a calibração aproxima a saída da amostra do celular e a afasta da referência y4m (BT.601); antes do `applied`, a mesma referência dava 0,985. Decisão 8 da spec (opção b): o `QualityMeter` passa a comparar contra a referência passada pela mesma tabela de Y aplicada. A mudança do agente entrou em 3e581ab.
+
+Rodada final contra f5de19d (merge local b0ef7f1), só esta sessão no compose, com a série do `/api/status`, `docker stats` e `WCAM_COLOR_TRACE_DIR`: 14 passaram, cerca de 44 s.
+
+| Medida | Valor |
+|---|---|
+| Calibração, câmera falsa padrão, conexões 1 e 2 | `applied`, ΔE2000 0,16 e 0,22 |
+| Taxa em `balanced` antes da troca | 6 858 kbps |
+| Taxa depois de `light` | 5 411 kbps, em menos de 5 s |
+| Referência y4m depois do `applied` | 22,6 a 32,1 fps (29,2 na leitura do SSIM), 7 467 a 10 400 kbps |
+| Calibração com a referência y4m | `applied`, ΔE2000 4,56 a 4,57 (de matriz, fora do escopo, decisão 8) |
+| SSIM médio depois do `applied` | 0,9865 (mínimo 0,9856, 51 quadros), contra a referência passada pela tabela de Y aplicada |
+| Carga do agente (`docker stats`) | média 63,9% |
+| `liquida-producer` e `liquida-consumer` | médias 0,1% e 4,4%, pico 23,9% |
+
+CA 3.1 do lado web verificado no e2e. Fica pendente a verificação manual no iPhone: ΔE abaixo de 2 e as 5 amostras novas a cada troca de câmera.
 
