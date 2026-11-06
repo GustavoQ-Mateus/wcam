@@ -1,0 +1,71 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WCam color model</title>
+<body style="background:#111;color:#eee;font:14px monospace">
+<button id="go">Read WCam</button>
+<pre id="out">waiting</pre>
+<video id="video" playsinline muted style="width:480px"></video>
+<script>
+const FRAMES = 5;
+const FRAME_GAP_MS = 200;
+const SETTLE_MS = 1500;
+const out = document.getElementById("out");
+
+async function openCamera() {
+  (await navigator.mediaDevices.getUserMedia({video: true})).getTracks().forEach(track => track.stop());
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const camera = devices.find(device => device.kind === "videoinput" && device.label.includes("WCam"));
+  if (!camera) throw new Error("WCam not found: " + devices.map(device => device.label).join(", "));
+  return navigator.mediaDevices.getUserMedia({video: {deviceId: {exact: camera.deviceId}, width: 1920, height: 1080}});
+}
+
+function readPatches(video, windows, colorSpace) {
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const context = canvas.getContext("2d", {colorSpace, willReadFrequently: true});
+  context.drawImage(video, 0, 0);
+  return windows.map(([x, y, width, height]) => {
+    const data = context.getImageData(x, y, width, height, {colorSpace}).data;
+    const sum = [0, 0, 0];
+    for (let index = 0; index < data.length; index += 4) {
+      sum[0] += data[index]; sum[1] += data[index + 1]; sum[2] += data[index + 2];
+    }
+    return sum.map(value => value / (data.length / 4));
+  });
+}
+
+function average(frames) {
+  return frames[0].map((_, patch) => [0, 1, 2].map(channel =>
+    frames.reduce((total, frame) => total + frame[patch][channel], 0) / frames.length));
+}
+
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+document.getElementById("go").onclick = async () => {
+  try {
+    const windows = await (await fetch("/grid")).json();
+    const stream = await openCamera();
+    const video = document.getElementById("video");
+    video.srcObject = stream;
+    await video.play();
+    await delay(SETTLE_MS);
+    const srgb = [], displayP3 = [];
+    for (let frame = 0; frame < FRAMES; frame++) {
+      srgb.push(readPatches(video, windows, "srgb"));
+      displayP3.push(readPatches(video, windows, "display-p3"));
+      await delay(FRAME_GAP_MS);
+    }
+    const settings = stream.getVideoTracks()[0].getSettings();
+    stream.getTracks().forEach(track => track.stop());
+    const response = await fetch("/readings", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({srgb: average(srgb), displayP3: average(displayP3), settings}),
+    });
+    out.textContent = await response.text();
+  } catch (error) {
+    out.textContent = "error: " + error;
+  }
+};
+</script>
