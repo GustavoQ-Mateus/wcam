@@ -33,6 +33,8 @@ class VideoBody(CamelModel):
     bitrate_kbps: int
     codec: str | None
     frames_scaled: int
+    color_range: str
+    color_matrix: str
 
 
 class CameraCapabilitiesBody(CamelModel):
@@ -176,6 +178,8 @@ def video_body(video: VideoStats) -> VideoBody:
         bitrate_kbps=video.bitrate_kbps,
         codec=video.codec,
         frames_scaled=video.frames_scaled,
+        color_range=video.color_range,
+        color_matrix=video.color_matrix,
     )
 
 

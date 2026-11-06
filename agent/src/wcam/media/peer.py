@@ -111,7 +111,13 @@ class AiortcPeer:
         stats = self._meter.stats
         if stats is None:
             return None
-        return replace(stats, codec=video_codec(self._answer_sdp), frames_scaled=self._pipeline.frames_scaled)
+        return replace(
+            stats,
+            codec=video_codec(self._answer_sdp),
+            frames_scaled=self._pipeline.frames_scaled,
+            color_range=self._pipeline.color_range,
+            color_matrix=self._pipeline.color_matrix,
+        )
 
     async def answer(self, offer_sdp: str) -> None:
         self._connection.on("datachannel", self._handle_channel)
