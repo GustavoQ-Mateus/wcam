@@ -44,6 +44,8 @@ def full_to_limited_tables() -> tuple[I420Frame, I420Frame]:
 
 
 LUMA_TABLE, CHROMA_TABLE = full_to_limited_tables()
+LUMA_TRANSLATION = LUMA_TABLE.tobytes()
+CHROMA_TRANSLATION = CHROMA_TABLE.tobytes()
 
 
 def declared_range(frame: VideoFrame) -> ColorRange:
@@ -59,5 +61,11 @@ def declared_matrix(frame: VideoFrame) -> str:
 
 
 def limit_range(frame: I420Frame, height: int) -> None:
-    frame[:height] = LUMA_TABLE[frame[:height]]
-    frame[height:] = CHROMA_TABLE[frame[height:]]
+    translate_in_place(frame[:height], LUMA_TRANSLATION)
+    translate_in_place(frame[height:], CHROMA_TRANSLATION)
+
+
+def translate_in_place(plane: I420Frame, translation: bytes) -> None:
+    # bytes.translate looks up 256 entries in C, about twice as fast as numpy fancy indexing with intp indices.
+    view = memoryview(plane.reshape(-1))
+    view[:] = bytes(view).translate(translation)
