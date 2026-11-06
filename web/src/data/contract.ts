@@ -35,6 +35,12 @@ export interface Video {
   framesScaled: number;
   colorRange: "full" | "limited" | "unspecified";
   colorMatrix: string;
+  colorCalibration: ColorCalibration;
+}
+
+export interface ColorCalibration {
+  state: "measuring" | "applied" | "default";
+  deltaE: number | null;
 }
 
 export interface Session {

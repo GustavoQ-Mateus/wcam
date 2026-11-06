@@ -58,6 +58,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+.color {
+  color: var(--muted);
+}
+
 .warning {
   display: flex;
   align-items: flex-start;
