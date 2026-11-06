@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+from wcam.media.color_calibration import ColorSample
 from wcam.media.metrics import VideoStats
 from wcam.sessions.manager import MediaPeer, PeerEvents
 
@@ -39,6 +40,8 @@ class FakePeer:
         self.closed = False
         self.video: VideoStats | None = None
         self.max_bitrate_bps: int | None = None
+        self.color_samples: list[ColorSample] = []
+        self.color_calibration_restarts = 0
 
     @property
     def answer_sdp(self) -> str:
@@ -49,6 +52,12 @@ class FakePeer:
 
     def limit_bitrate(self, max_bitrate_bps: int) -> None:
         self.max_bitrate_bps = max_bitrate_bps
+
+    def add_color_sample(self, sample: ColorSample) -> None:
+        self.color_samples.append(sample)
+
+    def restart_color_calibration(self) -> None:
+        self.color_calibration_restarts += 1
 
     def send(self, message: dict[str, str]) -> None:
         self.sent.append(message)

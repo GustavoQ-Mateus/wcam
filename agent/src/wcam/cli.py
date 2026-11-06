@@ -11,6 +11,8 @@ from wcam.api.console_routes import pairing_url
 from wcam.app import create_servers, phone_page_url, run
 from wcam.config import Settings
 from wcam.i18n import Messages, load_messages, resolve_language, system_language_tag
+from wcam.media.color_calibrator import ColorCalibrator
+from wcam.media.color_trace import ColorTrace
 from wcam.media.episodes import open_episode_log
 from wcam.media.peer import aiortc_peer_factory
 from wcam.media.pipeline import FramePipeline
@@ -53,6 +55,7 @@ def main() -> None:
         selection.sink,
         quality_meter(settings),
         fallback_reason=selection.fallback_reason,
+        color_calibrator=color_calibrator(settings),
     )
     pipeline.open()
     manager = SessionManager(aiortc_peer_factory(lan.network, pipeline))
@@ -80,6 +83,11 @@ def quality_meter(settings: Settings) -> QualityMeter | None:
     if settings.quality_reference is None:
         return None
     return QualityMeter(read_y4m_luma(settings.quality_reference))
+
+
+def color_calibrator(settings: Settings) -> ColorCalibrator:
+    trace = None if settings.color_trace_dir is None else ColorTrace(settings.color_trace_dir)
+    return ColorCalibrator(trace)
 
 
 def print_virtual_camera(messages: Messages, selection: SinkSelection) -> None:
