@@ -66,6 +66,7 @@ def read_y4m_luma(path: Path) -> Luma:
 
 class QualityMeter:
     def __init__(self, reference: Luma) -> None:
+        self._original = reference
         self._reference = reference
         self._started_at: float | None = None
         self._total = 0.0
@@ -77,7 +78,8 @@ class QualityMeter:
         average = self._total / self._frames if self._frames else None
         return QualityReport(average, self._minimum, self._frames)
 
-    def restart(self, now: float) -> None:
+    def restart(self, now: float, luma_table: bytes | None = None) -> None:
+        self._reference = self._original if luma_table is None else translated(self._original, luma_table)
         self._started_at = now
         self._total = 0.0
         self._minimum = None
@@ -90,3 +92,7 @@ class QualityMeter:
         self._total += value
         self._minimum = value if self._minimum is None else min(self._minimum, value)
         self._frames += 1
+
+
+def translated(luma: Luma, table: bytes) -> Luma:
+    return np.frombuffer(luma.tobytes().translate(table), dtype=np.uint8).reshape(luma.shape)
