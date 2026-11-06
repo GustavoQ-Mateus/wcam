@@ -48,6 +48,7 @@ class FramePipeline:
         self._phone_active = False
         self._last_phone: I420Frame | None = None
         self._last_phone_at: float | None = None
+        self.portrait = False
         self.source = FrameSource.PLACEHOLDER
         self.frames_scaled = 0
         self.color_range = ColorRange.UNSPECIFIED
@@ -65,7 +66,8 @@ class FramePipeline:
         self.color_range = ColorRange.UNSPECIFIED
         self.color_matrix = UNSPECIFIED_MATRIX
         self._last_phone = None
-        self._last_phone_at = None
+        self._last_phone_at = self._clock()
+        self.portrait = False
         self._phone_active = True
         if self.quality is not None:
             self.quality.restart(self._clock())
@@ -73,6 +75,11 @@ class FramePipeline:
     def stop_phone(self) -> None:
         self._phone_active = False
         self._last_phone = None
+
+    def phone_frame_age(self) -> float | None:
+        if not self._phone_active or self._last_phone_at is None:
+            return None
+        return self._clock() - self._last_phone_at
 
     def submit(self, frame: VideoFrame) -> None:
         if self._pending.full():
@@ -122,12 +129,13 @@ class FramePipeline:
             return None
 
     def _accept_phone_frame(self, frame: VideoFrame, now: float) -> None:
-        self._last_phone_at = now
         self.color_range = declared_range(frame)
         self.color_matrix = declared_matrix(frame)
-        if frame.height > frame.width:
+        self.portrait = frame.height > frame.width
+        if self.portrait:
             self._last_phone = None
             return
+        self._last_phone_at = now
         if (frame.width, frame.height) == (OUTPUT_WIDTH, OUTPUT_HEIGHT):
             self._last_phone = limited_i420(frame, OUTPUT_WIDTH, OUTPUT_HEIGHT, self.color_range)
             return

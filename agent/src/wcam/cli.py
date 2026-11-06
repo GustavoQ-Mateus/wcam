@@ -11,6 +11,7 @@ from wcam.api.console_routes import pairing_url
 from wcam.app import create_servers, phone_page_url, run
 from wcam.config import Settings
 from wcam.i18n import Messages, load_messages, resolve_language, system_language_tag
+from wcam.media.episodes import open_episode_log
 from wcam.media.peer import aiortc_peer_factory
 from wcam.media.pipeline import FramePipeline
 from wcam.media.quality import QualityMeter, read_y4m_luma
@@ -44,6 +45,7 @@ def main() -> None:
         print(messages.text("terminal.no_lan"), file=sys.stderr)
         sys.exit(EXIT_NO_LAN)
     certificate = load_or_create_certificate(settings.data_dir, lan.ip)
+    open_episode_log(settings.data_dir)
     console_url = f"http://127.0.0.1:{settings.console_port}/"
     phone_url = phone_page_url(settings, lan)
     selection = select_sink(settings.virtual_camera, lambda: load_native_library(settings.vcam_dll))

@@ -14,9 +14,11 @@ from aiortc.rtcrtpreceiver import RTCRtpReceiver
 from aiortc.stats import RTCTransportStats
 from av import VideoFrame
 
+from wcam.media.episodes import EpisodeTracker, LinkSample, write_episode
 from wcam.media.frame_gate import FrameGate
 from wcam.media.metrics import VideoMeter, VideoStats
 from wcam.media.pipeline import FramePipeline
+from wcam.media.pipeline import FrameSource as OutputSource
 from wcam.media.quality_preset import DEFAULT_QUALITY_PRESET
 from wcam.media.recovering_jitter_buffer import STALLED_SECONDS, RecoveringJitterBuffer
 from wcam.media.sdp_filter import keep_candidates_in_network, video_codec
@@ -24,6 +26,7 @@ from wcam.sessions.manager import EndReason, MediaPeer, PeerEvents, PeerFactory
 
 CONTROL_CHANNEL = "control"
 CLOSE_FLUSH_SECONDS = 0.2
+EPISODE_SAMPLE_SECONDS = 0.1
 VIDEO_JITTER_BUFFER_PACKETS = 2048
 STALLED_BUFFER_SECONDS = STALLED_SECONDS
 AIORTC_JITTER_BUFFER_ATTRIBUTE = "_RTCRtpReceiver__jitter_buffer"
@@ -96,6 +99,8 @@ class AiortcPeer:
         self._channel: RTCDataChannel | None = None
         self._frame_task: asyncio.Task[None] | None = None
         self._jitter_buffers: list[RecoveringJitterBuffer] = []
+        self._episodes = EpisodeTracker(write_episode)
+        self._episode_task: asyncio.Task[None] | None = None
         self._answer_sdp = ""
         self.gate = FrameGate()
         self._meter = VideoMeter()
@@ -136,6 +141,7 @@ class AiortcPeer:
     def open_gate(self) -> None:
         self._pipeline.start_phone()
         self.gate.open()
+        self._episode_task = asyncio.get_running_loop().create_task(self._watch_episodes())
 
     def limit_bitrate(self, max_bitrate_bps: int) -> None:
         cap_video_estimate(self._connection, max_bitrate_bps)
@@ -145,6 +151,7 @@ class AiortcPeer:
             self._channel.send(json.dumps(message))
 
     async def close(self) -> None:
+        await self._stop_watching_episodes()
         if self.gate.is_open:
             self._pipeline.stop_phone()
         if self._frame_task is not None:
@@ -153,6 +160,36 @@ class AiortcPeer:
         if self._channel is not None and self._channel.readyState == "open":
             await asyncio.sleep(CLOSE_FLUSH_SECONDS)
         await self._connection.close()
+
+    async def _watch_episodes(self) -> None:
+        while True:
+            await asyncio.sleep(EPISODE_SAMPLE_SECONDS)
+            sample = self._link_sample()
+            if sample is not None:
+                self._episodes.observe(sample)
+
+    async def _stop_watching_episodes(self) -> None:
+        if self._episode_task is None:
+            return
+        self._episode_task.cancel()
+        await asyncio.gather(self._episode_task, return_exceptions=True)
+        sample = self._link_sample()
+        if sample is not None:
+            self._episodes.finish(sample)
+
+    def _link_sample(self) -> LinkSample | None:
+        frame_age = self._pipeline.phone_frame_age()
+        if frame_age is None:
+            return None
+        return LinkSample(
+            at=asyncio.get_running_loop().time(),
+            frame_age=frame_age,
+            portrait=self._pipeline.portrait,
+            black=self._pipeline.source is OutputSource.PLACEHOLDER,
+            rtp_bytes=sum(buffer.received_bytes for buffer in self._jitter_buffers),
+            keyframe_requests=sum(buffer.keyframe_requests for buffer in self._jitter_buffers),
+            stalls=sum(buffer.stalls for buffer in self._jitter_buffers),
+        )
 
     def _handle_channel(self, channel: RTCDataChannel) -> None:
         if channel.label != CONTROL_CHANNEL:

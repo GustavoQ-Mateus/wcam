@@ -1,9 +1,12 @@
 import asyncio
 import itertools
+import json
+import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
 from fractions import Fraction
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -23,6 +26,7 @@ from av.video.stream import VideoStream
 from tests.conftest import opened_pipeline
 from tests.integration.test_webrtc import wait_until
 from wcam.media import peer as peer_module
+from wcam.media.episodes import EPISODE_LOGGER, open_episode_log
 from wcam.media.peer import AiortcPeer, aiortc_peer_factory, video_jitter_buffer
 from wcam.media.pipeline import FramePipeline
 from wcam.network.lan import LanInterface, detect_lan_interface
@@ -161,6 +165,7 @@ def drop_through(transceiver: RTCRtpTransceiver, dropper: PacketDropper) -> None
 
 async def measure_stall(lan: LanInterface, clip: list[CodedPacket]) -> StallMeasurement:
     pipeline = RecordingPipeline()
+    delivering = asyncio.create_task(pipeline.run())
     channel_open = asyncio.Event()
     events = PeerEvents(channel_open.set, lambda _: None, lambda _: None)
     connection, transceiver, _ = phone_sender(clip)
@@ -169,6 +174,7 @@ async def measure_stall(lan: LanInterface, clip: list[CodedPacket]) -> StallMeas
     try:
         await connection.setRemoteDescription(RTCSessionDescription(peer.answer_sdp, "answer"))
         await asyncio.wait_for(channel_open.wait(), WAIT_SECONDS)
+        await wait_until(lambda: peer.gate.received > 0)
         peer.open_gate()
         dropper = PacketDropper()
         drop_through(transceiver, dropper)
@@ -181,6 +187,8 @@ async def measure_stall(lan: LanInterface, clip: list[CodedPacket]) -> StallMeas
     finally:
         await peer.close()
         await connection.close()
+        delivering.cancel()
+        await asyncio.gather(delivering, return_exceptions=True)
     bitrate = dropper.armed_media_bytes * BITS_PER_BYTE / OBSERVE_SECONDS
     return StallMeasurement(
         longest_gap_after(pipeline.submitted_at, armed_at),
@@ -204,6 +212,14 @@ def longest_gap_after(moments: list[float], start: float) -> float:
 @pytest.fixture
 def lan() -> LanInterface:
     return detect_lan_interface(None)
+
+
+@pytest.fixture
+def episode_log(tmp_path: Path) -> Iterator[Path]:
+    handler = open_episode_log(tmp_path)
+    yield Path(handler.baseFilename)
+    logging.getLogger(EPISODE_LOGGER).removeHandler(handler)
+    handler.close()
 
 
 async def test_video_returns_within_one_second_after_losing_a_packet_and_its_retransmission(
@@ -231,3 +247,25 @@ async def test_aiortc_buffer_alone_still_stalls_on_a_lost_packet(
     assert measurement.dropped[:2] == ["original", "retransmission"]
     assert measurement.stalls == 0
     assert measurement.longest_gap_seconds > STALL_WITHOUT_RECOVERY_SECONDS
+
+
+async def test_recovered_stall_is_logged_as_one_episode_without_addresses(
+    lan: LanInterface,
+    clip: list[CodedPacket],
+    episode_log: Path,
+) -> None:
+    await measure_stall(lan, clip)
+
+    content = read_log(episode_log)
+    episodes = [json.loads(line) for line in content.splitlines()]
+    assert len(episodes) == 1
+    assert (episodes[0]["cause"], episodes[0]["action"]) == ("stalled", "frozen")
+    assert episodes[0]["pliSent"] >= 1
+    assert episodes[0]["rtpBytes"] > 0
+    assert str(lan.ip) not in content
+    assert "#t=" not in content
+    assert "https://" not in content
+
+
+def read_log(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
