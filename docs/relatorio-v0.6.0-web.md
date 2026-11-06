@@ -101,3 +101,36 @@ Nenhuma.
 ## 8. Perguntas
 
 Nenhuma.
+
+## 9. Adendo: calibração de cor (spec §1.1, CA 3.1)
+
+Integração: `origin/feature/qualidade` em 8e40b78, com o agent da calibração.
+
+O que foi feito:
+- `data/color-sample.ts`: monta o `color_sample` do contrato (RGB sem alfa em base64, `capturedAt` em ms). Testes Vitest.
+- `media/use-color-sample.ts`:
+  - desenha o quadro do `<video>` do visor num canvas 160x90 sem espelho, em `display-p3` quando o contexto aceita, senão `srgb`, e lê com `getImageData` no mesmo espaço;
+  - envia 5 amostras, uma por segundo, com a sessão em `live`, em paisagem e fora da troca de câmera;
+  - a contagem recomeça a cada nova faixa da câmera; em retrato, pausa e continua ao voltar para paisagem.
+- `media/use-publisher.ts` expõe `sendControl`, e `cam/use-cam.ts` liga o hook. Sem texto nem elemento novo na tela.
+- Console: `colorCalibration` em `data/contract.ts`; `colorCalibrationKey` em `data/console-format.ts` (Vitest) escolhe `console.color_matched` em `applied` e `console.color_default` nos outros estados; a linha fica em `--muted` no painel da sessão, abaixo da linha do formato de vídeo.
+- O console não tolera agente sem `colorCalibration`: os dois lados saem juntos na v0.6.0 e o contrato garante o campo (decisão do orquestrador).
+- `e2e/color-calibration.spec.ts`: em duas conexões seguidas, o status chega a `applied` ou `default` com `deltaE` numérico, e a segunda começa em `measuring`.
+
+E2E no compose contra 8e40b78: 14 passaram, cerca de 45 s.
+
+| Medida | Valor |
+|---|---|
+| Calibração, primeira conexão | `applied`, ΔE2000 0,11 |
+| Calibração, segunda conexão | começou em `measuring`; `applied`, ΔE2000 0,16 |
+| Amostras por conexão | 5, a 1 000 ms uma da outra, `display-p3` (e2e temporário, não commitado) |
+| Taxa em `balanced` antes da troca | 6 505 kbps |
+| Taxa depois de `light` | 4 218 kbps, em menos de 5 s |
+| SSIM médio | 0,9854 |
+| SSIM mínimo | 0,9836 |
+| `quality.frames` | 31 |
+| `session.video` na leitura do SSIM | 1920x1080, 28,6 fps, 9 730 kbps, VP8, `framesScaled` 0, `colorRange` `limited`, `colorCalibration` `measuring` |
+
+**Ressalva do SSIM:** na leitura, a calibração ainda estava em `measuring`. O `QualityMeter` do agente acumula desde o início da sessão, então o SSIM acima é o da saída sem a curva aplicada. Medir o SSIM só com a calibração aplicada pede mudança no agente; levado ao orquestrador.
+
+**Verificação manual pendente:** as 5 amostras novas a cada troca de câmera. A câmera falsa do Chromium não troca de faixa, então isso fica para o teste no iPhone do usuário.
