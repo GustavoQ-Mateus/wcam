@@ -16,6 +16,7 @@ const REASON_KEYS: Readonly<Record<VirtualCameraUnavailableReason, MessageKey>> 
 };
 const SOURCE_KEYS: Readonly<Record<VirtualCamera["source"], MessageKey>> = {
   phone: "console.source_phone",
+  frozen: "console.source_frozen",
   placeholder: "console.source_placeholder",
 };
 
