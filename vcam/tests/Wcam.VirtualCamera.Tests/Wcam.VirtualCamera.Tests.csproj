@@ -13,6 +13,18 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\src\Wcam.VirtualCamera.Probe\TestPattern.cs" Link="Probe\TestPattern.cs" />
+    <Compile Include="..\..\src\Wcam.VirtualCamera.Probe\PatchGrid.cs" Link="Probe\PatchGrid.cs" />
+    <Compile Include="..\..\tools\Wcam.ColorVerify\ChromeModel.cs" Link="ColorVerify\ChromeModel.cs" />
+    <Compile Include="..\..\tools\Wcam.ColorVerify\ColorScience.cs" Link="ColorVerify\ColorScience.cs" />
+    <Compile Include="..\..\tools\Wcam.ColorVerify\ColorTrace.cs" Link="ColorVerify\ColorTrace.cs" />
+    <Compile Include="..\..\tools\Wcam.ColorVerify\PlaneTables.cs" Link="ColorVerify\PlaneTables.cs" />
+    <Compile Include="..\..\tools\Wcam.ColorVerify\SampleComparison.cs" Link="ColorVerify\SampleComparison.cs" />
+    <Compile Include="..\..\tools\Wcam.ColorVerify\YuvPlanes.cs" Link="ColorVerify\YuvPlanes.cs" />
+    <Compile Include="..\..\tools\Wcam.ColorVerify\Lab.cs" Link="ColorVerify\Lab.cs" />
+    <Compile Include="..\..\tools\Wcam.ColorVerify\ModelFit.cs" Link="ColorVerify\ModelFit.cs" />
+    <Compile Include="..\..\tools\Wcam.ColorVerify\PatchReading.cs" Link="ColorVerify\PatchReading.cs" />
+    <Compile Include="..\..\tools\Wcam.ColorVerify\Rgb.cs" Link="ColorVerify\Rgb.cs" />
+    <Compile Include="..\..\tools\Wcam.ColorVerify\RgbColorSpace.cs" Link="ColorVerify\RgbColorSpace.cs" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

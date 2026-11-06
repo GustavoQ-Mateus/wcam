@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\Wcam.VirtualCamera\VideoFormat.cs" Link="Shared\VideoFormat.cs" />
+    <Compile Include="..\..\src\Wcam.VirtualCamera.Probe\PatchGrid.cs" Link="Shared\PatchGrid.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="chrome-model.html" LogicalName="chrome-model.html" />
+  </ItemGroup>
+</Project>
