@@ -1,6 +1,6 @@
 # Spec v0.6.0, Fidelidade de imagem
 
-Status: Draft
+Status: Aprovada (2026-11-06)
 Branch de integração: `feature/qualidade`
 Sessões: `agent`, `web`, `vcam`
 Referências: `docs/planejamento.md` §1 (CA-2), §5.4; ADRs 0011 e 0012; changelog da v0.5.0 (diagnóstico da faixa de cor); diagnóstico da reunião de 2026-11-04 (imagem preta por alguns segundos)
@@ -110,9 +110,11 @@ Chaves novas em `locales/en.json` e `locales/pt-BR.json` no mesmo commit, na bra
 11. O e2e de qualidade continua com SSIM de pelo menos 0,98; CI verde nos cinco jobs; versão 0.6.0 no agente, no web e no projeto .NET.
 12. Contrato 0.6.0 e emenda do CA-2 no planejamento registrados antes do código.
 
-## Decisões em aberto para o usuário
+## Decisões registradas
 
-1. Padrão da opção de qualidade: Equilibrada (como hoje) ou Máxima. Recomendo Equilibrada até o CA 7 provar a Máxima no seu Wi-Fi.
-2. Tempo de congelamento antes do preto: 3 s.
+1. Aprovação do usuário em 2026-11-06, com a emenda do CA-2 (ajustar a faixa de cor, sem tocar em resolução nem matiz).
+2. Opção de qualidade padrão: Equilibrada. Pode passar para Máxima se o CA 7 provar a Máxima no Wi-Fi do usuário; a mudança passa pelo usuário.
+3. Congelamento de 3 s antes do preto.
+4. Faixa e matriz são as declaradas pelo celular em cada quadro, nunca supostas pelo modelo do aparelho.
 
 ## Changelog

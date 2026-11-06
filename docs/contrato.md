@@ -1,6 +1,6 @@
 # Contrato entre web e agent
 
-Versão: 0.5.0
+Versão: 0.6.0
 
 Fonte da verdade da comunicação entre `web` e `agent`. Mudou aqui, muda na spec da versão antes do código.
 
@@ -71,6 +71,7 @@ Nos dois servidores.
 | `POST /api/pairing` | nenhum | `201 {"url","qrSvg","expiresAt"}` | `409 session_already_active` |
 | `DELETE /api/pairing` | nenhum | `204` | nenhum |
 | `GET /api/status` | nenhum | `200` (abaixo) | nenhum |
+| `PUT /api/quality-preset` | `{"preset"}` | `204` | `422 invalid_request` |
 | `POST /api/sessions/current/confirm` | nenhum | `204` | `409 no_session_awaiting_confirmation` |
 | `POST /api/sessions/current/reject` | nenhum | `204` | `409 no_session_awaiting_confirmation` |
 | `DELETE /api/sessions/current` | nenhum | `204` | `404 no_active_session` |
@@ -119,15 +120,33 @@ Do agente para o celular, JSON:
 
 - `{"type": "session_state", "state": "awaiting_confirmation"}` quando a conexão sobe;
 - `{"type": "session_state", "state": "live"}` depois do Confirmar;
-- `{"type": "session_state", "state": "ended", "reason": "<motivo de lastEnded>"}` antes de fechar.
+- `{"type": "session_state", "state": "ended", "reason": "<motivo de lastEnded>"}` antes de fechar;
+- `{"type": "quality_preset", "preset": "<chave>"}` quando o canal abre e a cada mudança de opção, venha ela do console ou do próprio celular.
 
-O celular não envia mensagens nesta versão.
+Do celular para o agente, JSON:
+
+- `{"type": "set_quality_preset", "preset": "<chave>"}` quando o usuário escolhe uma opção no celular. O agente aplica e responde com `quality_preset` (inclusive ao próprio celular), que é a fonte da verdade do que está em uso;
+- `{"type": "camera_capabilities", "width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"]}` quando o canal abre e a cada troca de câmera. `width`, `height` e `frameRate` são os máximos de `getCapabilities()` da faixa em uso (`null` quando o navegador não informa); `facingMode` é `user`, `environment` ou `null`; `codecs` são os `mimeType` de vídeo de `RTCRtpSender.getCapabilities("video")`, sem repetição e sem `video/rtx`, `video/red` e `video/ulpfec`.
+
+Mensagem com `type` desconhecido, JSON inválido ou campo fora do formato é ignorada pelo agente e registrada no log, sem encerrar a sessão.
+
+## Opção de qualidade
+
+| Chave | Nome | Taxa máxima |
+|---|---|---|
+| `maximum` | Máxima | 20 000 000 bit/s |
+| `balanced` | Equilibrada (padrão) | 10 000 000 bit/s |
+| `light` | Leve | 5 000 000 bit/s |
+
+- `PUT /api/quality-preset` com `{"preset": "<chave>"}` muda a opção; vale para a sessão atual e as próximas, até o agente fechar. Chave desconhecida: `422 invalid_request`. Com sessão aberta, o agente envia `quality_preset` ao celular.
+- O celular aplica a taxa em `maxBitrate` do envio com `setParameters`, sem renegociar; o agente ajusta o teto da estimativa de banda (REMB) ao mesmo valor.
+- `qualityPreset` no primeiro nível de `GET /api/status`, sempre presente.
 
 ## WebRTC
 
 - Os dois lados sem STUN e sem TURN: `iceServers: []` no navegador e `RTCConfiguration(iceServers=[])` no aiortc (o aiortc usa um STUN público quando a configuração é omitida; omitir é proibido).
 - O agente descarta, antes de `setRemoteDescription`, toda linha `a=candidate` da oferta cujo endereço não esteja na sub-rede da LAN (inclui nomes `.local`), e remove da resposta os candidatos das suas outras interfaces (WSL, Hyper-V, Docker).
-- Celular: uma faixa de vídeo, `contentHint = "detail"`, `maxBitrate` de 10 000 000 e `degradationPreference` `maintain-resolution` quando o navegador aceitar (o que não for aceito é registrado no relatório, não é erro).
+- Celular: uma faixa de vídeo, `contentHint = "detail"`, `maxBitrate` da opção de qualidade em uso (ver "Opção de qualidade"; padrão 10 000 000) e `degradationPreference` `maintain-resolution` quando o navegador aceitar (o que não for aceito é registrado no relatório, não é erro).
 - Codecs: os que o navegador e o aiortc têm em comum (H.264 ou VP8); o relatório registra qual foi negociado no aparelho real.
 
 ## Código de confirmação
@@ -162,8 +181,10 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
     "output": {"width": 1920, "height": 1080, "fps": 30},
     "source": "phone"
   },
+  "qualityPreset": "balanced",
   "session": {
-    "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800, "codec": "H264", "framesScaled": 0}
+    "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800, "codec": "H264", "framesScaled": 0, "colorRange": "full", "colorMatrix": "unspecified"},
+    "cameraCapabilities": {"width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"]}
   },
   "process": {"cpuPercent": 12.5},
   "quality": null
@@ -173,7 +194,9 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
 - `virtualCamera.state`: `active` ou `unavailable`. `reason` (só com `unavailable`): `driver_missing`, `device_in_use` ou `error`.
 - `backend`: `media_foundation` (câmera nativa "WCam", ADR 0011), `obs` (fallback) ou `fake`.
 - `fallbackReason`: por que a câmera nativa não está em uso; `null` quando `backend` é `media_foundation`. Valores: `native_not_registered` (DLL não registrada), `windows_too_old` (build anterior a 22000), `native_error` (a DLL falhou ao iniciar) e `not_windows`. Só é preenchido quando `WCAM_VIRTUAL_CAMERA` é `auto` e a escolha caiu da câmera nativa para outro backend; com backend explícito é sempre `null`. Com `WCAM_VIRTUAL_CAMERA=media_foundation` explícito e falha, não há fallback: `state` `unavailable` com `reason` `driver_missing` (DLL ausente) ou `error` (`WcamCameraStart` falhou).
-- `source`: `phone` quando os quadros vêm do celular; `placeholder` em qualquer outro momento.
+- `source`: `phone` quando os quadros vêm do celular; `frozen` quando a câmera repete o último quadro do celular porque nenhum quadro novo chegou (até 3 s); `placeholder` em qualquer outro momento.
+- `session.video.colorRange`: faixa declarada pelo celular no quadro mais recente, `full`, `limited` ou `unspecified`. `colorMatrix`: matriz declarada, `bt709`, `bt601`, outro nome do FFmpeg ou `unspecified`. A câmera sempre entrega faixa limitada; quadro em faixa cheia é ajustado pelo agente (CA-2, emenda da v0.6.0).
+- `session.cameraCapabilities`: a última mensagem `camera_capabilities` do celular, sem o `type`; `null` até chegar a primeira.
 - `session.video.codec`: o codec negociado (`H264` ou `VP8`). `framesScaled`: quantos quadros precisaram ser redimensionados na sessão (o esperado é 0; ver "Formato de saída").
 - `process.cpuPercent`: uso de CPU do processo do agente, média da última janela de 1 s, via psutil.
 - `quality`: só existe com `WCAM_QUALITY_REFERENCE` definido (desenvolvimento e e2e); fora disso é sempre `null`. Ver "Qualidade".
