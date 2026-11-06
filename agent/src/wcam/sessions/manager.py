@@ -8,6 +8,7 @@ from enum import StrEnum
 from typing import Any, Protocol
 
 from wcam.clock import Clock, utc_now
+from wcam.media.color_calibration import ColorSample
 from wcam.media.metrics import VideoStats
 from wcam.media.quality_preset import DEFAULT_QUALITY_PRESET, QualityPreset
 from wcam.media.sdp_filter import is_publishable_offer, sha256_fingerprint
@@ -22,13 +23,19 @@ from wcam.sessions.errors import (
     SessionAlreadyActiveError,
     TooManyAttemptsError,
 )
-from wcam.sessions.phone_messages import CameraCapabilitiesMessage, SetQualityPresetMessage, parse_phone_message
+from wcam.sessions.phone_messages import (
+    CameraCapabilitiesMessage,
+    ColorSampleMessage,
+    SetQualityPresetMessage,
+    parse_phone_message,
+)
 
 CONFIRMATION_TIMEOUT_SECONDS = 120.0
 ID_BYTES = 16
 COUNTED_FAILURES = (PairingTokenInvalidError, PairingTokenExpiredError, PairingWindowClosedError)
 IGNORED_PHONE_MESSAGE = "Ignored a phone message outside the contract"
 PRESET_BEFORE_LIVE = "Ignored a quality preset change from a phone that is not live yet"
+COLOR_SAMPLE_BEFORE_LIVE = "Ignored a color sample from a phone that is not live yet"
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +71,10 @@ class MediaPeer(Protocol):
     def open_gate(self) -> None: ...
 
     def limit_bitrate(self, max_bitrate_bps: int) -> None: ...
+
+    def add_color_sample(self, sample: ColorSample) -> None: ...
+
+    def restart_color_calibration(self) -> None: ...
 
     def send(self, message: dict[str, str]) -> None: ...
 
@@ -248,6 +259,9 @@ class SessionManager:
         message = parse_phone_message(data)
         if isinstance(message, CameraCapabilitiesMessage):
             session.camera_capabilities = message
+            session.peer.restart_color_calibration()
+        elif isinstance(message, ColorSampleMessage):
+            self._apply_color_sample(session, message)
         elif isinstance(message, SetQualityPresetMessage):
             self._apply_phone_preset(session, message.preset)
         else:
@@ -258,6 +272,12 @@ class SessionManager:
             logger.warning(PRESET_BEFORE_LIVE)
             return
         self.set_quality_preset(preset)
+
+    def _apply_color_sample(self, session: Session, message: ColorSampleMessage) -> None:
+        if session.state is not SessionState.LIVE:
+            logger.warning(COLOR_SAMPLE_BEFORE_LIVE)
+            return
+        session.peer.add_color_sample(message.to_sample())
 
     def _current(self, sessions: list[Session]) -> Session | None:
         return next((session for session in sessions if session is self._session), None)

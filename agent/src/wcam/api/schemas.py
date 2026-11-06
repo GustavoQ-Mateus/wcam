@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
+from wcam.media.color_calibrator import CalibrationStatus
 from wcam.media.metrics import VideoStats
 from wcam.media.pipeline import FramePipeline
 from wcam.media.quality import QualityReport
@@ -26,6 +27,11 @@ class PairingBody(CamelModel):
     expires_at: str
 
 
+class ColorCalibrationBody(CamelModel):
+    state: str
+    delta_e: float | None
+
+
 class VideoBody(CamelModel):
     width: int
     height: int
@@ -35,6 +41,7 @@ class VideoBody(CamelModel):
     frames_scaled: int
     color_range: str
     color_matrix: str
+    color_calibration: ColorCalibrationBody
 
 
 class CameraCapabilitiesBody(CamelModel):
@@ -180,7 +187,12 @@ def video_body(video: VideoStats) -> VideoBody:
         frames_scaled=video.frames_scaled,
         color_range=video.color_range,
         color_matrix=video.color_matrix,
+        color_calibration=color_calibration_body(video.color_calibration),
     )
+
+
+def color_calibration_body(status: CalibrationStatus) -> ColorCalibrationBody:
+    return ColorCalibrationBody(state=status.state, delta_e=status.delta_e)
 
 
 def last_ended_body(last_ended: LastEnded) -> LastEndedBody:

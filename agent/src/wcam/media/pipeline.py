@@ -8,7 +8,15 @@ import numpy as np
 from av import VideoFrame
 from av.video.reformatter import ColorRange as DeclaredRange
 
-from wcam.media.color_range import UNSPECIFIED_MATRIX, ColorRange, declared_matrix, declared_range, limit_range
+from wcam.media.color_calibration import ColorTables, applied_tables, can_reduce
+from wcam.media.color_calibrator import ColorCalibrator
+from wcam.media.color_range import (
+    UNSPECIFIED_MATRIX,
+    ColorRange,
+    declared_matrix,
+    declared_range,
+    translate_in_place,
+)
 from wcam.media.placeholder import black_i420
 from wcam.media.quality import QualityMeter, QualityReport
 from wcam.virtualcam.sink import OUTPUT_FPS, OUTPUT_HEIGHT, OUTPUT_WIDTH, CameraState, I420Frame, VirtualCameraSink
@@ -35,10 +43,12 @@ class FramePipeline:
         quality: QualityMeter | None = None,
         clock: Callable[[], float] = time.monotonic,
         fallback_reason: str | None = None,
+        color_calibrator: ColorCalibrator | None = None,
     ) -> None:
         self.sink = sink
         self.fallback_reason = fallback_reason
         self.quality = quality
+        self.color_calibrator = color_calibrator or ColorCalibrator()
         self._clock = clock
         self._placeholder = black_i420(OUTPUT_WIDTH, OUTPUT_HEIGHT)
         self._pending: asyncio.Queue[VideoFrame] = asyncio.Queue(maxsize=1)
@@ -68,6 +78,7 @@ class FramePipeline:
         self._last_phone = None
         self._last_phone_at = self._clock()
         self.portrait = False
+        self.color_calibrator.restart()
         self._phone_active = True
         if self.quality is not None:
             self.quality.restart(self._clock())
@@ -75,6 +86,7 @@ class FramePipeline:
     def stop_phone(self) -> None:
         self._phone_active = False
         self._last_phone = None
+        self.color_calibrator.restart()
 
     def phone_frame_age(self) -> float | None:
         if not self._phone_active or self._last_phone_at is None:
@@ -95,6 +107,7 @@ class FramePipeline:
         finally:
             self._worker.shutdown(wait=True)
             self._quality_worker.shutdown(wait=True)
+            self.color_calibrator.close()
             self.sink.close()
 
     def deliver(self, frame: VideoFrame | None) -> None:
@@ -137,7 +150,7 @@ class FramePipeline:
             return
         self._last_phone_at = now
         if (frame.width, frame.height) == (OUTPUT_WIDTH, OUTPUT_HEIGHT):
-            self._last_phone = limited_i420(frame, OUTPUT_WIDTH, OUTPUT_HEIGHT, self.color_range)
+            self._last_phone = self._converted(frame, OUTPUT_WIDTH, OUTPUT_HEIGHT)
             return
         self._last_phone = self._letterboxed(frame)
         self.frames_scaled += 1
@@ -146,17 +159,26 @@ class FramePipeline:
         scale = min(OUTPUT_WIDTH / frame.width, OUTPUT_HEIGHT / frame.height)
         width = even(frame.width * scale)
         height = even(frame.height * scale)
-        scaled = limited_i420(frame, width, height, self.color_range)
+        scaled = self._converted(frame, width, height)
         canvas = self._placeholder.copy()
         paste_i420(canvas, scaled, width, height)
         return canvas
 
+    def _converted(self, frame: VideoFrame, width: int, height: int) -> I420Frame:
+        array = i420_array(frame, width, height, self.color_range)
+        calibrator = self.color_calibrator
+        if calibrator.collecting and can_reduce(width, height):
+            calibrator.remember(i420_planes(array, width, height), self.color_range)
+        apply_color_tables(array, height, applied_tables(calibrator.correction, self.color_range))
+        return array
 
-def limited_i420(frame: VideoFrame, width: int, height: int, color_range: ColorRange) -> I420Frame:
-    array = i420_array(frame, width, height, color_range)
-    if color_range is ColorRange.FULL:
-        limit_range(array, height)
-    return array
+
+def apply_color_tables(frame: I420Frame, height: int, tables: ColorTables | None) -> None:
+    if tables is None:
+        return
+    luma_table, chroma_table = tables
+    translate_in_place(frame[:height], luma_table)
+    translate_in_place(frame[height:], chroma_table)
 
 
 def i420_array(frame: VideoFrame, width: int, height: int, color_range: ColorRange) -> I420Frame:
