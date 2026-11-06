@@ -200,3 +200,20 @@ def test_unopened_sink_receives_nothing() -> None:
     pipeline.deliver(None)
 
     assert sink.frames_sent == 0
+
+
+def test_frozen_frame_is_sent_on_every_tick_until_black() -> None:
+    clock = SteppingClock()
+    pipeline, sink = live_pipeline(clock)
+    pipeline.deliver(phone_frame())
+    frozen = sink.last_frame
+    ticks = round((FREEZE_SECONDS - FREEZE_TOLERANCE_SECONDS) * OUTPUT_FPS)
+
+    sent: list[I420Frame | None] = []
+    for _ in range(ticks):
+        clock.now += 1 / OUTPUT_FPS
+        pipeline.deliver(None)
+        sent.append(sink.last_frame)
+
+    assert sink.frames_sent == ticks + 1
+    assert all(frame is frozen for frame in sent)
