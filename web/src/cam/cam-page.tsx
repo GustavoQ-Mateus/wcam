@@ -22,11 +22,13 @@ export default function CamPage() {
         <LiveLayer
           state={state}
           showNotice={cam.wakeLockUnavailable && !noticeDismissed}
+          qualityPreset={cam.qualityPreset}
           onDismissNotice={() => {
             setNoticeDismissed(true);
           }}
           onSwitchCamera={cam.switchCamera}
           onTogglePreview={cam.togglePreview}
+          onChooseQuality={cam.chooseQualityPreset}
         />
       ) : (
         <MessageLayer state={state} onStart={cam.start} />

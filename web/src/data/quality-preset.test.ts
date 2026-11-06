@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_QUALITY_PRESET, isQualityPreset, maxBitrate, maxBitrateMbps, QUALITY_PRESETS } from "./quality-preset";
+import {
+  DEFAULT_QUALITY_PRESET,
+  isQualityPreset,
+  maxBitrate,
+  maxBitrateMbps,
+  QUALITY_PRESETS,
+  qualityHintKey,
+  qualityLevel,
+  qualityNameKey,
+} from "./quality-preset";
 
 describe("quality preset", () => {
   it("each preset has the contract bitrate", () => {
@@ -24,5 +33,21 @@ describe("quality preset", () => {
       false,
       false,
     ]);
+  });
+
+  it("presets are offered from maximum to light", () => {
+    expect(QUALITY_PRESETS).toEqual(["maximum", "balanced", "light"]);
+  });
+
+  it("each preset has its own name and hint text", () => {
+    expect(QUALITY_PRESETS.map((preset) => [qualityNameKey(preset), qualityHintKey(preset)])).toEqual([
+      ["quality.maximum", "quality.maximum_hint"],
+      ["quality.balanced", "quality.balanced_hint"],
+      ["quality.light", "quality.light_hint"],
+    ]);
+  });
+
+  it("icon level fills one segment per step from light to maximum", () => {
+    expect(QUALITY_PRESETS.map(qualityLevel)).toEqual([3, 2, 1]);
   });
 });
