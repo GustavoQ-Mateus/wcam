@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cpuPercentValue, secondsUntil, svgDataUrl, videoFormatValues } from "./console-format";
+import type { Video } from "./contract";
 
 const NOW = Date.parse("2026-11-01T18:00:00Z");
 
@@ -13,7 +14,16 @@ describe("console format", () => {
   });
 
   it("video values show fps with one decimal and bitrate in megabits", () => {
-    const video = { width: 1920, height: 1080, fps: 29.94, bitrateKbps: 9800, codec: "H264", framesScaled: 0 };
+    const video: Video = {
+      width: 1920,
+      height: 1080,
+      fps: 29.94,
+      bitrateKbps: 9800,
+      codec: "H264",
+      framesScaled: 0,
+      colorRange: "full",
+      colorMatrix: "unspecified",
+    };
 
     expect(videoFormatValues(video)).toEqual({ width: "1920", height: "1080", fps: "29.9", bitrate: "9.8" });
   });

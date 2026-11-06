@@ -1,3 +1,6 @@
+import type { CameraCapabilitiesMessage } from "./camera-capabilities";
+import type { QualityPreset } from "./quality-preset";
+
 export type Surface = "console" | "phone";
 
 export interface Health {
@@ -30,6 +33,8 @@ export interface Video {
   bitrateKbps: number;
   codec: string;
   framesScaled: number;
+  colorRange: "full" | "limited" | "unspecified";
+  colorMatrix: string;
 }
 
 export interface Session {
@@ -40,16 +45,17 @@ export interface Session {
   startedAt: string;
   confirmationCode: string | null;
   video: Video | null;
+  cameraCapabilities: Omit<CameraCapabilitiesMessage, "type"> | null;
 }
 
 export type VirtualCameraUnavailableReason = "driver_missing" | "device_in_use" | "error";
 
 export interface VirtualCamera {
   state: "active" | "unavailable";
-  backend: "obs" | "fake";
+  backend: "media_foundation" | "obs" | "fake";
   reason: VirtualCameraUnavailableReason | null;
   output: { width: number; height: number; fps: number };
-  source: "phone" | "placeholder";
+  source: "phone" | "frozen" | "placeholder";
 }
 
 export interface Quality {
@@ -63,6 +69,7 @@ export interface Status {
   session: Session | null;
   lastEnded: { reason: EndReason; at: string } | null;
   virtualCamera: VirtualCamera;
+  qualityPreset: QualityPreset;
   process: { cpuPercent: number };
   quality: Quality | null;
 }
@@ -81,4 +88,9 @@ export interface CreateSessionResponse {
 export type ControlMessage =
   | { type: "session_state"; state: "awaiting_confirmation" }
   | { type: "session_state"; state: "live" }
-  | { type: "session_state"; state: "ended"; reason: string };
+  | { type: "session_state"; state: "ended"; reason: string }
+  | { type: "quality_preset"; preset: QualityPreset };
+
+export interface QualityPresetRequest {
+  preset: QualityPreset;
+}

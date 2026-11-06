@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, requestJson } from "./api-client";
+import { ApiError, changeQualityPreset, requestJson } from "./api-client";
 
 const FORBIDDEN_STATUS = 403;
+const NO_CONTENT_STATUS = 204;
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -22,5 +23,18 @@ describe("api client", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
 
     await expect(requestJson("/api/health")).rejects.toMatchObject({ code: "network_error" });
+  });
+
+  it("quality preset change is a PUT with the preset in the body", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: NO_CONTENT_STATUS }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await changeQualityPreset({ preset: "light" });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/quality-preset", {
+      method: "PUT",
+      body: '{"preset":"light"}',
+      headers: { "Content-Type": "application/json" },
+    });
   });
 });
