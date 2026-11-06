@@ -125,7 +125,7 @@ Do agente para o celular, JSON:
 
 Do celular para o agente, JSON:
 
-- `{"type": "set_quality_preset", "preset": "<chave>"}` quando o usuário escolhe uma opção no celular. O agente aplica e responde com `quality_preset` (inclusive ao próprio celular), que é a fonte da verdade do que está em uso;
+- `{"type": "set_quality_preset", "preset": "<chave>"}` quando o usuário escolhe uma opção no celular. O agente aplica e responde com `quality_preset` (inclusive ao próprio celular), que é a fonte da verdade do que está em uso. Só vale com a sessão em `live`: antes do Confirmar o aparelho ainda não foi aceito, e a mensagem é ignorada com registro no log, sem resposta. O seletor do celular só aparece depois de `session_state` `live`;
 - `{"type": "camera_capabilities", "width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"]}` quando o canal abre e a cada troca de câmera. `width`, `height` e `frameRate` são os máximos de `getCapabilities()` da faixa em uso (`null` quando o navegador não informa); `facingMode` é `user`, `environment` ou `null`; `codecs` são os `mimeType` de vídeo de `RTCRtpSender.getCapabilities("video")`, sem repetição e sem `video/rtx`, `video/red` e `video/ulpfec`.
 
 Mensagem com `type` desconhecido, JSON inválido ou campo fora do formato é ignorada pelo agente e registrada no log, sem encerrar a sessão.
