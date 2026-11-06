@@ -4,11 +4,12 @@ internal static class Program
 {
     private const string DllOption = "--dll";
     private const string PatternOption = "--pattern";
-    private const string Usage = "usage: Wcam.VirtualCamera.Probe [--dll <path>] [--pattern]";
+    private const string PatchesOption = "--patches";
+    private const string Usage = "usage: Wcam.VirtualCamera.Probe [--dll <path>] [--pattern | --patches]";
 
     private static int Main(string[] args)
     {
-        if (!TryParse(args, out string? dllPath, out bool pattern))
+        if (!TryParse(args, out string? dllPath, out FrameRenderer? render))
         {
             Console.Error.WriteLine(Usage);
             return 2;
@@ -27,7 +28,7 @@ internal static class Program
         {
             return 1;
         }
-        using (PatternPublisher? publisher = pattern ? new PatternPublisher(library) : null)
+        using (PatternPublisher? publisher = render is null ? null : new PatternPublisher(library, render))
         {
             Console.WriteLine("camera \"WCam\" is running; press Enter to stop");
             Console.ReadLine();
@@ -37,16 +38,19 @@ internal static class Program
         return status < 0 ? 1 : 0;
     }
 
-    private static bool TryParse(string[] args, out string? dllPath, out bool pattern)
+    private static bool TryParse(string[] args, out string? dllPath, out FrameRenderer? render)
     {
         dllPath = null;
-        pattern = false;
+        render = null;
         for (int index = 0; index < args.Length; index++)
         {
             switch (args[index])
             {
-                case PatternOption:
-                    pattern = true;
+                case PatternOption when render is null:
+                    render = new TestPattern().Render;
+                    break;
+                case PatchesOption when render is null:
+                    render = (frame, _) => PatchGrid.Render(frame);
                     break;
                 case DllOption when index + 1 < args.Length:
                     dllPath = Path.GetFullPath(args[++index]);

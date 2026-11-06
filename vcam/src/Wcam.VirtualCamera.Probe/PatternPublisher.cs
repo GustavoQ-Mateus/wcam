@@ -6,14 +6,15 @@ internal sealed class PatternPublisher : IDisposable
     private static readonly TimeSpan FrameInterval = TimeSpan.FromTicks(VideoFormat.FrameDurationTicks);
 
     private readonly CameraLibrary _library;
-    private readonly TestPattern _pattern = new();
+    private readonly FrameRenderer _render;
     private readonly byte[] _frame = new byte[VideoFormat.FrameSize];
     private readonly Thread _thread;
     private volatile bool _stopping;
 
-    public PatternPublisher(CameraLibrary library)
+    public PatternPublisher(CameraLibrary library, FrameRenderer render)
     {
         _library = library;
+        _render = render;
         _thread = new Thread(Run) { IsBackground = true, Name = "WCam probe pattern" };
         _thread.Start();
     }
@@ -28,7 +29,7 @@ internal sealed class PatternPublisher : IDisposable
     {
         for (long frameNumber = 0; !_stopping; frameNumber++)
         {
-            _pattern.Render(_frame, frameNumber);
+            _render(_frame, frameNumber);
             int status = _library.Publish(_frame);
             if (status != 0 || frameNumber % ReportEveryFrames == 0)
             {
