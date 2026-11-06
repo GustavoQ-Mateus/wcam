@@ -134,3 +134,27 @@ E2E no compose contra 8e40b78: 14 passaram, cerca de 45 s.
 **Ressalva do SSIM:** na leitura, a calibração ainda estava em `measuring`. O `QualityMeter` do agente acumula desde o início da sessão, então o SSIM acima é o da saída sem a curva aplicada. Medir o SSIM só com a calibração aplicada pede mudança no agente; levado ao orquestrador.
 
 **Verificação manual pendente:** as 5 amostras novas a cada troca de câmera. A câmera falsa do Chromium não troca de faixa, então isso fica para o teste no iPhone do usuário.
+
+### 9.1 Rodadas seguintes da calibração
+
+O `quality.spec` passou a esperar `colorCalibration` `applied` ou `default` antes de exigir os 30 quadros (e80035a). O `color-calibration` exige ΔE abaixo de 2 com a câmera falsa padrão do Chromium (8b26564), e o canvas da amostra reduz com `imageSmoothingQuality` `high` (a568f52).
+
+Rodada contra 8e40b78, com o agente antes de 9d5a3a6: no projeto `quality`, com a referência y4m, o vídeo caiu para 5,8 a 6,1 fps e de 2 673 a 3 846 kbps, e o `light-quality` falhou na pré-condição (sem passar de 5 500 kbps em `balanced`). Com o celular sem mandar `color_sample`, a mesma imagem do agente passou. A queda vinha do processamento da calibração no agente, corrigido em 9d5a3a6 (tabela sem dependência de conteúdo e máscara de detalhe).
+
+Rodada contra 71016d0, só esta sessão no compose, com a série do `/api/status` a cada segundo, `docker stats` e `WCAM_COLOR_TRACE_DIR`: 13 de 14 passaram.
+
+| Medida | Valor |
+|---|---|
+| Calibração, câmera falsa padrão, conexões 1 e 2 | `applied`, ΔE2000 0,16 e 0,22 |
+| Taxa em `balanced` antes da troca | 6 112 kbps |
+| Taxa depois de `light` | 4 654 kbps, em menos de 5 s |
+| Referência y4m depois do `applied` | 29,5 a 31 fps, 8 747 a 9 479 kbps |
+| Calibração com a referência y4m | `applied`, ΔE2000 4,36 |
+| SSIM médio depois do `applied` | 0,9730 (mínimo 0,9726, 35 quadros): falha |
+| Correlação das 20 amostras do trace | 0,897 a 0,990, todas aceitas |
+| Tabela aplicada contra a de faixa | Y de −32 a +18 códigos; U e V de −15 a +16 |
+| Carga do agente (`docker stats`) | média 64,9%, máximo 96,3% |
+| `liquida-producer` e `liquida-consumer` (outro projeto) | médias 0,1% e 0,9%, pico 36,7%; o consumer reiniciava em loop |
+
+O fps voltou ao normal. O SSIM caiu porque a calibração aproxima a saída da amostra do celular e a afasta da referência y4m (BT.601); antes do `applied`, a mesma referência dava 0,985. Decisão 8 da spec (opção b): o `QualityMeter` passa a comparar contra a referência passada pela mesma tabela de Y aplicada. **SSIM final pendente** até essa mudança do agente entrar e o e2e rodar de novo.
+
