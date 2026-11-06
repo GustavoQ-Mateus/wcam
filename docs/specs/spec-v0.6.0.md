@@ -60,7 +60,10 @@ Console:
 - Na área de detalhes, uma linha: `console.color_matched` quando a calibração foi aplicada, `console.color_default` nos outros casos. Nada na mensagem principal.
 
 Vcam:
-- Verificação de ponta a ponta, no teste final: o quadro que o Chrome lê da câmera WCam (`getUserMedia`, como no Meet) comparado com a amostra do celular do mesmo instante, por ΔE2000. O relatório descreve o método e registra o número, incluindo o desvio conhecido do azul no Chromium.
+- Verificação de ponta a ponta, sem nenhum passo do usuário além de conectar o celular, com a ferramenta `vcam/tools/Wcam.ColorVerify` (fora da DLL e do publish AOT):
+  - leitura do Chrome: o probe publica uma grade de cores YUV conhecidas, a ferramenta lê o que o Chrome entrega (`getUserMedia`, como no Meet, canvas em `display-p3` e `srgb`) e ajusta o modelo YUV para RGB do Chrome, registrando o desvio conhecido do azul;
+  - do agente, com `WCAM_COLOR_TRACE_DIR` (desenvolvimento, vazia por padrão): cada `color_sample`, o quadro casado e as tabelas aplicadas;
+  - resultado: ΔE2000 médio entre cada amostra do celular e o que o Chrome mostraria do quadro casado, antes e depois da correção. O relatório descreve o método e registra os números.
 
 ## 2. Imagem preta por alguns segundos
 
@@ -136,7 +139,7 @@ Calibração: `console.color_matched` ("Cor igual à do celular" / "Color matche
 1. Faixa de cor: teste unitário confirma a tabela de normalização (0 vira 16, 255 vira 235, 128 de croma fica 128) e que quadro de faixa limitada passa sem mudança. Com um quadro real do iPhone em pouca luz, nenhum pixel que era acima de 0 na origem vira 16 ou menos na saída. O status mostra `colorRange` e `colorMatrix` declarados; o relatório registra os valores de cada aparelho testado (o iPhone do usuário, e um Android se houver um disponível).
 2. A WCam declara faixa, matriz, primária e transferência; o relatório da vcam mostra a medição das barras de cor que escolheu a matriz.
 3. O usuário compara lado a lado, no mesmo ambiente com pouca luz, a prévia do celular e a WCam no app Câmera do Windows, e aprova que sombras e cores estão no mesmo nível.
-3.1. Calibração: em toda conexão do iPhone do usuário, `colorCalibration.state` chega a `applied` sem nenhuma ação dele, com `deltaE` abaixo de 2. Na verificação de ponta a ponta da vcam, o quadro lido pelo Chrome na câmera WCam fica com ΔE2000 médio abaixo de 2 contra a amostra do celular. Testes: o ajuste recupera uma curva e um ganho conhecidos a partir de amostras sintéticas; amostra com correlação baixa é descartada; sem 3 amostras válidas o estado é `default` e a saída é byte a byte a da v0.6.0 sem calibração; ao encerrar a sessão nada fica guardado e a conexão seguinte começa em `measuring`; `color_sample` antes do `live` é ignorado. O e2e com a câmera falsa do Chromium mede e aplica a calibração a cada conexão, e o SSIM continua acima de 0,98.
+3.1. Calibração: em toda conexão do iPhone do usuário, `colorCalibration.state` chega a `applied` sem nenhuma ação dele, com `deltaE` abaixo de 2. Na verificação de ponta a ponta da vcam (§1.1), o que o Chrome mostra da câmera WCam fica com ΔE2000 médio abaixo de 2 contra as amostras do celular. Testes: o ajuste recupera uma curva e um ganho conhecidos a partir de amostras sintéticas; amostra com correlação baixa é descartada; sem 3 amostras válidas o estado é `default` e a saída é byte a byte a da v0.6.0 sem calibração; ao encerrar a sessão nada fica guardado e a conexão seguinte começa em `measuring`; `color_sample` antes do `live` é ignorado. O e2e com a câmera falsa do Chromium mede e aplica a calibração a cada conexão, e o SSIM continua acima de 0,98.
 3.2. Nenhum valor ligado a modelo, marca ou aparelho no código; conferido na revisão do orquestrador.
 4. Congelar: sem quadro novo, a câmera repete o último quadro bom por 3 s (tolerância de 0,2 s) e então mostra preto (Y=16, UV=128). Teste automatizado e verificação no Frame Server.
 5. Recuperação: no teste de laboratório, com um pacote e o seu reenvio perdidos a 5 Mbit/s, o vídeo volta em até 1 s.

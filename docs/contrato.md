@@ -211,6 +211,7 @@ Variáveis de ambiente (somam-se à tabela abaixo):
 | `WCAM_VIRTUAL_CAMERA` | `auto` | `auto` (Windows 22000 ou maior com a DLL registrada usa `media_foundation`; senão `obs`; fora do Windows, `fake`), `media_foundation`, `obs` ou `fake` |
 | `WCAM_VCAM_DLL` | `%ProgramFiles%\WCam\Wcam.VirtualCamera.dll` | caminho da DLL da câmera nativa |
 | `WCAM_QUALITY_REFERENCE` | vazio | caminho de um arquivo `.y4m` de referência; liga a medição de SSIM |
+| `WCAM_COLOR_TRACE_DIR` | vazio | pasta de desenvolvimento; grava cada `color_sample`, o quadro casado e as tabelas da calibração de cor (spec v0.6.0 §1.1). Vazia, nada vai para o disco |
 
 ## Qualidade (`quality`)
 
