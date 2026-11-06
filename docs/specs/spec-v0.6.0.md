@@ -94,6 +94,7 @@ Chaves novas em `locales/en.json` e `locales/pt-BR.json` no mesmo commit, na bra
 - Console definitivo, SSE e revisão de linguagem de todas as superfícies (v0.8.0).
 - Guardar a escolha entre reinícios (persistência).
 - Reconexão automática depois de queda longa (robustez).
+- Falha de segurança achada no teste final (2026-11-06), existente desde a v0.3.0: o celular envia vídeo, e as capacidades, assim que conecta, e o agente recebe e decodifica os quadros antes do Confirmar; o portão só impede que cheguem à câmera. Um falso computador receberia o vídeo antes da comparação do código. Por decisão do usuário, a correção (confirmação nos dois lados, nada sai do celular antes) vai para a v0.8.0, registrada no planejamento §6.
 
 ## Critérios de aceitação
 
