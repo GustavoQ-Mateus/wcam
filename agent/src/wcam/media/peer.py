@@ -10,7 +10,7 @@ from aiortc import MediaStreamTrack, RTCConfiguration, RTCDataChannel, RTCPeerCo
 from aiortc.clock import current_ms
 from aiortc.jitterbuffer import JitterBuffer
 from aiortc.mediastreams import MediaStreamError
-from aiortc.rate import RemoteBitrateEstimator
+from aiortc.rate import AimdRateControl, BandwidthUsage, RemoteBitrateEstimator
 from aiortc.rtcrtpreceiver import RTCRtpReceiver
 from aiortc.stats import RTCTransportStats
 from av import VideoFrame
@@ -18,6 +18,7 @@ from av import VideoFrame
 from wcam.media.frame_gate import FrameGate
 from wcam.media.metrics import VideoMeter, VideoStats
 from wcam.media.pipeline import FramePipeline
+from wcam.media.quality_preset import DEFAULT_QUALITY_PRESET
 from wcam.media.sdp_filter import keep_candidates_in_network, video_codec
 from wcam.sessions.manager import EndReason, MediaPeer, PeerEvents, PeerFactory
 
@@ -26,7 +27,6 @@ CLOSE_FLUSH_SECONDS = 0.2
 VIDEO_JITTER_BUFFER_PACKETS = 2048
 AIORTC_JITTER_BUFFER_ATTRIBUTE = "_RTCRtpReceiver__jitter_buffer"
 AIORTC_BITRATE_ESTIMATOR_ATTRIBUTE = "_RTCRtpReceiver__remote_bitrate_estimator"
-PHONE_MAX_BITRATE_BPS = 10_000_000
 ICE_RECEIVE_BUFFER_BYTES = 4 * 1024 * 1024
 AIORTC_ICE_CONNECTION_ATTRIBUTE = "_connection"
 AIOICE_PROTOCOLS_ATTRIBUTE = "_protocols"
@@ -40,6 +40,28 @@ logger = logging.getLogger(__name__)
 
 class FrameSource(Protocol):
     async def recv(self) -> object: ...
+
+
+class CappedRateControl(AimdRateControl):
+    def __init__(self, max_bitrate_bps: int) -> None:
+        super().__init__()
+        self.max_bitrate_bps = max_bitrate_bps
+        self.set_estimate(max_bitrate_bps, current_ms())
+
+    def limit(self, max_bitrate_bps: int) -> None:
+        self.max_bitrate_bps = max_bitrate_bps
+        self.set_estimate(max_bitrate_bps, current_ms())
+
+    def update(
+        self,
+        bandwidth_usage: BandwidthUsage,
+        estimated_throughput: int | None,
+        now_ms: int,
+    ) -> int | None:
+        if super().update(bandwidth_usage, estimated_throughput, now_ms) is None:
+            return None
+        self.current_bitrate = min(self.current_bitrate, self.max_bitrate_bps)
+        return self.current_bitrate
 
 
 class StunProtocol(Protocol):
@@ -98,7 +120,7 @@ class AiortcPeer:
         offer = RTCSessionDescription(keep_candidates_in_network(offer_sdp, self._network), "offer")
         await self._connection.setRemoteDescription(offer)
         enlarge_video_jitter_buffers(self._connection)
-        start_video_estimate_at_max_bitrate(self._connection)
+        cap_video_estimate(self._connection, DEFAULT_QUALITY_PRESET.max_bitrate_bps)
         await self._connection.setLocalDescription(await self._connection.createAnswer())
         enlarge_ice_receive_buffers(self._connection)
         self._answer_sdp = keep_candidates_in_network(self._connection.localDescription.sdp, self._network)
@@ -106,6 +128,9 @@ class AiortcPeer:
     def open_gate(self) -> None:
         self._pipeline.start_phone()
         self.gate.open()
+
+    def limit_bitrate(self, max_bitrate_bps: int) -> None:
+        cap_video_estimate(self._connection, max_bitrate_bps)
 
     def send(self, message: dict[str, str]) -> None:
         if self._channel is not None and self._channel.readyState == "open":
@@ -126,6 +151,7 @@ class AiortcPeer:
             return
         self._channel = channel
         channel.on("close", lambda: self._events.on_lost(EndReason.DISCONNECTED_BY_PHONE))
+        channel.on("message", self._events.on_message)
         self._events.on_connected()
 
     def _handle_track(self, track: MediaStreamTrack) -> None:
@@ -163,12 +189,17 @@ def enlarge_video_jitter_buffers(connection: RTCPeerConnection) -> None:
             setattr(transceiver.receiver, AIORTC_JITTER_BUFFER_ATTRIBUTE, buffer)
 
 
-def start_video_estimate_at_max_bitrate(connection: RTCPeerConnection) -> None:
-    # aiortc starts its REMB from the first measured throughput and grows it 8% per second, which keeps the
-    # phone near 0.5 Mbit/s for the first minute; congestion still lowers it from here.
+def cap_video_estimate(connection: RTCPeerConnection, max_bitrate_bps: int) -> None:
+    # aiortc starts its REMB from the first measured throughput, grows it 8% per second and has no ceiling, which
+    # keeps the phone near 0.5 Mbit/s for the first minute; it starts at the ceiling and congestion lowers it.
     for transceiver in connection.getTransceivers():
-        if transceiver.kind == "video":
-            video_bitrate_estimator(transceiver.receiver).rate_control.set_estimate(PHONE_MAX_BITRATE_BPS, current_ms())
+        if transceiver.kind != "video":
+            continue
+        estimator = video_bitrate_estimator(transceiver.receiver)
+        if isinstance(estimator.rate_control, CappedRateControl):
+            estimator.rate_control.limit(max_bitrate_bps)
+        else:
+            estimator.rate_control = CappedRateControl(max_bitrate_bps)
 
 
 def video_bitrate_estimator(receiver: RTCRtpReceiver) -> RemoteBitrateEstimator:

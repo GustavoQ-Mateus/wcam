@@ -133,3 +133,28 @@ async def test_session_body_without_sdp_is_invalid_request(settings: Settings) -
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "invalid_request"
+
+
+async def test_quality_preset_is_balanced_in_status_by_default(settings: Settings) -> None:
+    async with console_client(console_app(settings)) as console:
+        body = (await console.get("/api/status")).json()
+
+    assert body["qualityPreset"] == "balanced"
+
+
+async def test_quality_preset_change_is_shown_in_status(settings: Settings) -> None:
+    manager = SessionManager(FakePeerFactory())
+    async with console_client(console_app(settings, manager)) as console:
+        response = await console.put("/api/quality-preset", json={"preset": "maximum"})
+        body = (await console.get("/api/status")).json()
+
+    assert response.status_code == 204
+    assert body["qualityPreset"] == "maximum"
+
+
+async def test_unknown_quality_preset_is_an_invalid_request(settings: Settings) -> None:
+    async with console_client(console_app(settings)) as console:
+        response = await console.put("/api/quality-preset", json={"preset": "ultra"})
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_request"

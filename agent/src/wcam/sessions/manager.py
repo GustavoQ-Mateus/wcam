@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import secrets
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
@@ -8,6 +9,7 @@ from typing import Any, Protocol
 
 from wcam.clock import Clock, utc_now
 from wcam.media.metrics import VideoStats
+from wcam.media.quality_preset import DEFAULT_QUALITY_PRESET, QualityPreset
 from wcam.media.sdp_filter import is_publishable_offer, sha256_fingerprint
 from wcam.pairing.attempts import AttemptLimiter
 from wcam.pairing.confirmation_code import confirmation_code
@@ -20,10 +22,15 @@ from wcam.sessions.errors import (
     SessionAlreadyActiveError,
     TooManyAttemptsError,
 )
+from wcam.sessions.phone_messages import CameraCapabilitiesMessage, SetQualityPresetMessage, parse_phone_message
 
 CONFIRMATION_TIMEOUT_SECONDS = 120.0
 ID_BYTES = 16
 COUNTED_FAILURES = (PairingTokenInvalidError, PairingTokenExpiredError, PairingWindowClosedError)
+IGNORED_PHONE_MESSAGE = "Ignored a phone message outside the contract"
+PRESET_BEFORE_LIVE = "Ignored a quality preset change from a phone that is not live yet"
+
+logger = logging.getLogger(__name__)
 
 
 class SessionState(StrEnum):
@@ -44,6 +51,7 @@ class EndReason(StrEnum):
 class PeerEvents:
     on_connected: Callable[[], None]
     on_lost: Callable[[EndReason], None]
+    on_message: Callable[[str | bytes], None]
 
 
 class MediaPeer(Protocol):
@@ -54,6 +62,8 @@ class MediaPeer(Protocol):
     def video(self) -> VideoStats | None: ...
 
     def open_gate(self) -> None: ...
+
+    def limit_bitrate(self, max_bitrate_bps: int) -> None: ...
 
     def send(self, message: dict[str, str]) -> None: ...
 
@@ -87,6 +97,7 @@ class SessionView:
     started_at: datetime
     confirmation_code: str | None
     video: VideoStats | None
+    camera_capabilities: CameraCapabilitiesMessage | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +111,7 @@ class Status:
     pairing_expires_at: datetime | None
     session: SessionView | None
     last_ended: LastEnded | None
+    quality_preset: QualityPreset
 
 
 @dataclass(slots=True)
@@ -110,6 +122,7 @@ class Session:
     confirmation_code: str
     peer: MediaPeer
     state: SessionState = SessionState.CONNECTING
+    camera_capabilities: CameraCapabilitiesMessage | None = None
 
 
 class SessionManager:
@@ -127,6 +140,7 @@ class SessionManager:
         self._session: Session | None = None
         self._creating = False
         self._last_ended: LastEnded | None = None
+        self._quality_preset = DEFAULT_QUALITY_PRESET
         self._confirmation_timer: asyncio.Task[None] | None = None
         self._background: set[asyncio.Task[None]] = set()
 
@@ -138,7 +152,13 @@ class SessionManager:
         self._pairing.close()
 
     def status(self) -> Status:
-        return Status(self._pairing.expires_at, self._view(), self._last_ended)
+        return Status(self._pairing.expires_at, self._view(), self._last_ended, self._quality_preset)
+
+    def set_quality_preset(self, preset: QualityPreset) -> None:
+        self._quality_preset = preset
+        if self._session is not None:
+            self._session.peer.limit_bitrate(preset.max_bitrate_bps)
+            self._session.peer.send(quality_preset_message(preset))
 
     async def create_session(self, request: SessionRequest) -> SessionOffer:
         if self._attempts.is_blocked(request.remote_ip):
@@ -193,11 +213,13 @@ class SessionManager:
         events = PeerEvents(
             on_connected=lambda: self._handle_connected(sessions),
             on_lost=lambda reason: self._handle_lost(sessions, reason),
+            on_message=lambda data: self._handle_message(sessions, data),
         )
         try:
             peer = await self._peer_factory(request.offer_sdp, events)
         except ValueError as error:
             raise InvalidOfferError from error
+        peer.limit_bitrate(self._quality_preset.max_bitrate_bps)
         agent_fingerprint = sha256_fingerprint(peer.answer_sdp) or ""
         code = confirmation_code(nonce, phone_fingerprint, agent_fingerprint)
         session = Session(secrets.token_hex(ID_BYTES), request, self._clock(), code, peer)
@@ -211,12 +233,31 @@ class SessionManager:
             return
         session.state = SessionState.AWAITING_CONFIRMATION
         session.peer.send(state_message(SessionState.AWAITING_CONFIRMATION))
+        session.peer.send(quality_preset_message(self._quality_preset))
         self._confirmation_timer = asyncio.get_running_loop().create_task(self._expire_confirmation(session))
 
     def _handle_lost(self, sessions: list[Session], reason: EndReason) -> None:
         session = self._current(sessions)
         if session is not None:
             self._run_in_background(self._end(session, reason))
+
+    def _handle_message(self, sessions: list[Session], data: str | bytes) -> None:
+        session = self._current(sessions)
+        if session is None:
+            return
+        message = parse_phone_message(data)
+        if isinstance(message, CameraCapabilitiesMessage):
+            session.camera_capabilities = message
+        elif isinstance(message, SetQualityPresetMessage):
+            self._apply_phone_preset(session, message.preset)
+        else:
+            logger.warning(IGNORED_PHONE_MESSAGE)
+
+    def _apply_phone_preset(self, session: Session, preset: QualityPreset) -> None:
+        if session.state is not SessionState.LIVE:
+            logger.warning(PRESET_BEFORE_LIVE)
+            return
+        self.set_quality_preset(preset)
 
     def _current(self, sessions: list[Session]) -> Session | None:
         return next((session for session in sessions if session is self._session), None)
@@ -265,8 +306,13 @@ class SessionManager:
             session.started_at,
             code,
             session.peer.video,
+            session.camera_capabilities,
         )
 
 
 def state_message(state: SessionState) -> dict[str, str]:
     return {"type": "session_state", "state": state}
+
+
+def quality_preset_message(preset: QualityPreset) -> dict[str, str]:
+    return {"type": "quality_preset", "preset": preset}
