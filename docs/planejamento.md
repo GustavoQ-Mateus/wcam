@@ -396,7 +396,7 @@ O WCam será usado por quem nunca vai ler o código. A interface fala de coisas 
 | câmera virtual | "a câmera do WCam" ou "OBS Virtual Camera", que é o nome que os apps mostram |
 | fps, bitrate, codec, CPU, SHA-256 | só em "Detalhes" no console, nunca na mensagem principal |
 
-Levantamento de 2026-11-01: `console.status_checking`, `console.status_running`, `console.cpu`, `errors.network_error`, `errors.internal_error`, `errors.invalid_request`, `errors.web_not_built` e `errors.pairing_window_closed` usam termos internos; `terminal.fingerprint` e `console.video_format` mostram detalhe técnico fora de uma área de detalhes. A revisão completa, com um teste que falha se um termo proibido aparecer em `locales/`, entra na v0.6.0, junto com o console definitivo.
+Levantamento de 2026-11-01: `console.status_checking`, `console.status_running`, `console.cpu`, `errors.network_error`, `errors.internal_error`, `errors.invalid_request`, `errors.web_not_built` e `errors.pairing_window_closed` usam termos internos; `terminal.fingerprint` e `console.video_format` mostram detalhe técnico fora de uma área de detalhes. A revisão completa, com um teste que falha se um termo proibido aparecer em `locales/`, entra na v0.8.0, junto com o console definitivo.
 
 ## 6. Roteiro de specs
 
@@ -409,10 +409,12 @@ Cada linha vira uma spec `docs/specs/spec-vX.Y.Z.md` com CA verificáveis. Uma s
 | 0.3.0 | Pareamento e WebRTC | tokens com hash, janela de pareamento, checagem de sub-rede, limite de tentativas, `POST /api/sessions`, peer aiortc, bitrate e `maintain-resolution`, `docs/contrato.md` | agente recebe 1080p30; todos os testes de pareamento do CA-4 verdes; teste de integração aiortc com aiortc |
 | 0.4.0 | Câmera virtual (MVP) | pipeline sem redimensionar nem converter cor, sink real e falso, quadros "aguardando" e "sem sinal" | tabela inteira do CA-1 verificada; SSIM de pelo menos 0,98 e teste de 10 min do CA-2 |
 | 0.5.0 | Câmera nativa | câmera virtual Media Foundation do Windows 11 (`MFCreateVirtualCamera`) com media source própria em C++, nome "WCam", sem depender do OBS; build no CI; substitui a ADR 0005 | CA-1 completo, incluindo o novo Teams e o Opera, que falharam com o driver do OBS na v0.4.0; SSIM do CA-2 mantido |
-| 0.6.0 | Console | QR no console, SSE, prévia por MediaRelay com liga e desliga, métricas numa área de detalhes, controles via DataChannel, revisão de linguagem de todas as superfícies (§5.7) | CA-3 completo; trocar câmera pelo console muda a imagem no Meet |
-| 0.7.0 | Persistência | SQLite, migrations, preferências, histórico de sessões e métricas | preferências sobrevivem a reinício; histórico visível no console |
-| 0.8.0 | Robustez | reconexão com token de sessão, troca de rede, tela do celular bloqueada, encerramento limpo | Wi-Fi do celular fora por 10 s volta sozinho; fora por mais de 60 s exige novo QR |
-| 0.9.0 | Polimento do front | passada completa de `impeccable audit`, `emil-design-eng`, Playwright e2e | auditoria sem pendência crítica; e2e verde no CI |
+| 0.6.0 | Fidelidade de imagem | faixa de cor normalizada para a câmera, matriz declarada, congelar a última imagem numa falha curta e recuperar o vídeo, registro de episódios, escolha de taxa (Máxima, Equilibrada, Leve) no celular e no console, QR fora de arquivo de log, medição de capacidades do celular e do custo de decodificação | sombras e cores da WCam no nível da prévia do celular; reunião de 30 min sem preto |
+| 0.7.0 | Resolução e fps | o usuário escolhe resolução e fps entre os que o celular entrega e o PC sustenta; a câmera WCam anuncia o formato escolhido; ADR nova e CA-2 reescrito | cada formato oferecido funciona de ponta a ponta sem redimensionar |
+| 0.8.0 | Console | QR no console, SSE, prévia por MediaRelay com liga e desliga, métricas numa área de detalhes, controles via DataChannel, revisão de linguagem de todas as superfícies (§5.7) | CA-3 completo; trocar câmera pelo console muda a imagem no Meet |
+| 0.9.0 | Persistência | SQLite, migrations, preferências, histórico de sessões e métricas | preferências sobrevivem a reinício; histórico visível no console |
+| 0.10.0 | Robustez | reconexão com token de sessão, troca de rede, tela do celular bloqueada, encerramento limpo | Wi-Fi do celular fora por 10 s volta sozinho; fora por mais de 60 s exige novo QR |
+| 0.11.0 | Polimento do front | passada completa de `impeccable audit`, `emil-design-eng`, Playwright e2e | auditoria sem pendência crítica; e2e verde no CI |
 | 1.0.0 | App Windows | executável PyInstaller, bandeja, janela WebView2, instalador único nas Releases do GitHub que, com um só pedido de administrador, copia os arquivos, registra a câmera "WCam" e cria a regra de firewall (desinstalar remove tudo; o usuário final nunca roda script nem PowerShell), README com GIF de demonstração, guia de solução de problemas, varredura `nmap` do CA-4 | instalação limpa num Windows sem o repositório funciona do zero; celular não instala nada |
 | 1.x | Futuro | Linux, macOS | cada uma com ADR própria |
 
