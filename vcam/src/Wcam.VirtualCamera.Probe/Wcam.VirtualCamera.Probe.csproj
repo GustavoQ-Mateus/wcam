@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PublishAot>true</PublishAot>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Wcam.VirtualCamera\CameraIdentity.cs" Link="Shared\CameraIdentity.cs" />
+    <Compile Include="..\Wcam.VirtualCamera\VideoFormat.cs" Link="Shared\VideoFormat.cs" />
+  </ItemGroup>
+</Project>

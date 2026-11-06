@@ -19,10 +19,16 @@ from wcam.network.lan import NoLanInterfaceError, detect_lan_interface
 from wcam.process_monitor import CpuMonitor
 from wcam.services import AgentServices
 from wcam.sessions.manager import SessionManager
-from wcam.virtualcam.factory import create_sink
-from wcam.virtualcam.sink import CameraState, SinkStatus
+from wcam.virtualcam.factory import FallbackReason, SinkSelection, select_sink
+from wcam.virtualcam.media_foundation_sink import load_native_library
+from wcam.virtualcam.sink import CameraState
 
 EXIT_NO_LAN = 2
+OBS_FALLBACK_REASONS = (
+    FallbackReason.NATIVE_NOT_REGISTERED,
+    FallbackReason.WINDOWS_TOO_OLD,
+    FallbackReason.NATIVE_ERROR,
+)
 
 
 def main() -> None:
@@ -40,13 +46,18 @@ def main() -> None:
     certificate = load_or_create_certificate(settings.data_dir, lan.ip)
     console_url = f"http://127.0.0.1:{settings.console_port}/"
     phone_url = phone_page_url(settings, lan)
-    pipeline = FramePipeline(create_sink(settings.virtual_camera), quality_meter(settings))
+    selection = select_sink(settings.virtual_camera, lambda: load_native_library(settings.vcam_dll))
+    pipeline = FramePipeline(
+        selection.sink,
+        quality_meter(settings),
+        fallback_reason=selection.fallback_reason,
+    )
     pipeline.open()
     manager = SessionManager(aiortc_peer_factory(lan.network, pipeline))
     services = AgentServices(manager, pipeline, CpuMonitor())
     ticket = manager.open_pairing()
     print_banner(messages, console_url, phone_url, certificate)
-    print_virtual_camera(messages, pipeline.sink.status)
+    print_virtual_camera(messages, selection)
     print_pairing_qr(messages, pairing_url(phone_url, ticket.token))
     asyncio.run(run(create_servers(settings, lan, certificate, services), services))
     print(messages.text("terminal.stopped"))
@@ -70,9 +81,12 @@ def quality_meter(settings: Settings) -> QualityMeter | None:
     return QualityMeter(read_y4m_luma(settings.quality_reference))
 
 
-def print_virtual_camera(messages: Messages, status: SinkStatus) -> None:
+def print_virtual_camera(messages: Messages, selection: SinkSelection) -> None:
+    if selection.fallback_reason in OBS_FALLBACK_REASONS:
+        print(messages.text("terminal.virtual_camera_fallback"))
+    status = selection.sink.status
     if status.state is CameraState.ACTIVE:
-        print(messages.text("terminal.virtual_camera_active"))
+        print(messages.text("terminal.virtual_camera_active", name=selection.sink.name))
         return
     reason = messages.text(f"console.virtual_camera_{status.reason}")
     print(messages.text("terminal.virtual_camera_unavailable", reason=reason))
