@@ -6,6 +6,7 @@ const QUALITY_SPEC = /quality\.spec\.ts/;
 export default defineConfig({
   testDir: "e2e",
   forbidOnly: Boolean(process.env.CI),
+  workers: 1,
   reporter: "list",
   use: {
     ignoreHTTPSErrors: true,

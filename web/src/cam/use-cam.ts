@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, type RefObject } from "react";
 import { camReducer, initialCamState, isFinal, isSession, type CamState, type Facing } from "../data/cam-state";
 import { consumePairingToken } from "../data/pairing";
+import type { QualityPreset } from "../data/quality-preset";
 import { useCameraStream } from "../media/use-camera-stream";
 import { useOrientation } from "../media/use-orientation";
 import { usePublisher } from "../media/use-publisher";
@@ -12,9 +13,11 @@ export interface Cam {
   facing: Facing;
   switching: boolean;
   wakeLockUnavailable: boolean;
+  qualityPreset: QualityPreset | null;
   start: () => void;
   switchCamera: () => void;
   togglePreview: () => void;
+  chooseQualityPreset: (preset: QualityPreset) => void;
 }
 
 export function useCam(hasPairing: boolean): Cam {
@@ -25,7 +28,7 @@ export function useCam(hasPairing: boolean): Cam {
   const final = isFinal(state);
   const wakeLock = useWakeLock(capturing || isSession(state));
   useOrientation(videoRef, dispatch);
-  usePublisher({
+  const publisher = usePublisher({
     track: camera.track,
     shouldStart: capturing,
     keepAlive: isSession(state),
@@ -46,6 +49,7 @@ export function useCam(hasPairing: boolean): Cam {
     facing: camera.facing,
     switching: camera.opening,
     wakeLockUnavailable: wakeLock.unavailable,
+    qualityPreset: publisher.qualityPreset,
     start: () => {
       dispatch({ type: "start" });
       camera.open();
@@ -54,5 +58,6 @@ export function useCam(hasPairing: boolean): Cam {
     togglePreview: () => {
       dispatch({ type: "preview_toggled" });
     },
+    chooseQualityPreset: publisher.chooseQualityPreset,
   };
 }
