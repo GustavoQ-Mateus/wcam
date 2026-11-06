@@ -65,7 +65,15 @@ Medição de 2026-11-06, Google Chrome 156.0.8078.80, coeficientes [offset, Y−
 - No canvas `display-p3`, os coeficientes são os mesmos com diferença de até 0,003 (U→B 2,110 com GPU e 1,998 sem). O resíduo máximo sobe para cerca de 4 códigos nos patches saturados, pelo arredondamento da conversão para P3.
 - **Dois caminhos de decodificação.** Com GPU, o Chrome decodifica BT.709 exato. Sem GPU, ele converte pelo libyuv, com U→B 2,0 em vez de 2,112.
 - **O Chrome do usuário estava sem GPU.** As barras de cor medidas no Chrome dele pela manhã (amarelo 254,255,12; azul 1,0,243) se repetem exatamente no Chrome do Playwright com `--disable-gpu`. Sem a flag, saem 709 exato, como no app Câmera. É o mesmo binário, então a diferença está no perfil (aceleração gráfica desligada ou GPU bloqueada); não confirmado no `chrome://gpu` dele.
-- A parte 2 calcula o ΔE2000 com os dois modelos.
+- O número do CA 3.1 usa o caminho que o Chrome do usuário usa no teste final. Se as barras não puderem ser repetidas no Chrome dele, vale o caminho sem GPU, o pior caso e o que ele mostrou de manhã. O relatório registra os dois.
+
+## Calibração de cor: verificação de ponta a ponta (CA 3.1, parte 2)
+
+`Wcam.ColorVerify verify <pasta do trace> --model gpu=<arquivo> --model software=<arquivo>` lê o trace do agente gravado com `WCAM_COLOR_TRACE_DIR`:
+- `color-sample-<n>.json`: a mensagem `color_sample` como chegou, mais `receivedAt`, `calibrationState`, `correlation`, `mirrored`, `colorRange` e `matchedFrame` (Y, U e V do quadro casado, do tamanho da amostra, antes de qualquer tabela).
+- `color-calibration.json`: `state`, `deltaE`, `rangeTables` (só faixa) e `appliedTables` (faixa composta com a calibração).
+
+Para cada amostra e cada modelo, o comando aplica as tabelas ao quadro casado (espelhado quando `mirrored`), passa o resultado pelo modelo do Chrome do `colorSpace` da amostra e calcula o ΔE2000 médio por pixel contra a amostra. Isso sai "antes" (`rangeTables`) e "depois" (`appliedTables`), por amostra e na média. Testes: amostra gerada do próprio quadro dá ΔE abaixo de 0,3; o espelho é respeitado; uma correção conhecida dá ΔE baixo depois e alto antes; display-p3 equivale a sRGB; e o JSON do agente é lido. Pendente: rodar com o trace real no teste final.
 
 ## Quadro real do iPhone (item 3 do handoff)
 
@@ -80,7 +88,7 @@ Pendente, no teste final: com o agente da v0.6.0 e o iPhone do usuário, compara
 ## Verificação
 
 - `dotnet build`: 0 avisos.
-- `dotnet test`: 90 de 90 (32 da câmera e 58 da ferramenta de cor e da grade).
+- `dotnet test`: 96 de 96 (32 da câmera e 64 da ferramenta de cor e da grade).
 - `dotnet publish -r win-x64 -c Release` da DLL: 0 avisos (com o `vswhere` no PATH).
 - No Frame Server, com cada DLL registrada pelo usuário e o probe publicando: Chrome e app Câmera a 1920x1080 e 30 fps, barras limpas e contador andando.
 - DLL final do commit 903e779: SHA-256 `ab70df1dd112ba2209092bc4c53c55b65bcb5ce064d2c109043bb865ada8414f`. Re-registrada pelo usuário: o hash instalado em `C:\Program Files\WCam` confere, e o `InprocServer32` aponta para ela.
