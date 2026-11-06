@@ -136,7 +136,7 @@ Commits:
 | 8 | Parcial (agent) | O lado do agente está coberto. Teste com DataChannel real: `set_quality_preset` do celular gera eco, e o `PUT` do console chega ao celular como `quality_preset`. O teto do REMB por opção foi verificado nas três opções (o primeiro REMB fica em pelo menos 90% do teto, e nenhum passa dele). O e2e de menos de 300 ms e da taxa em até 5 s é da web. |
 | 9 | Verificado | Com a saída redirecionada, sai só a orientação do console e nenhum `#t=`, e a janela de pareamento nem é aberta (teste). |
 | 10 | Parcial (agent) | O benchmark desta máquina está acima. As capacidades e os codecs do iPhone dependem da web e do usuário. |
-| 11 (agent) | Parcial | Em `agent/`, no estado final com o merge: `ruff check` e `ruff format --check` limpos, `pyright` com 0 erros, `pytest` com 215 passed e 1 skipped (o teste da DLL real, opcional). Versão 0.6.0. CI não verificado. |
+| 11 (agent) | Parcial | Em `agent/`, no estado final com o merge: `ruff check` e `ruff format --check` limpos, `pyright` com 0 erros, `pytest` com 221 passed e 1 skipped, em duas rodadas seguidas no estado de `71016d0` (o teste da DLL real, opcional). Versão 0.6.0. CI não verificado. |
 
 ## 3. Decisões e pontos para registrar
 
