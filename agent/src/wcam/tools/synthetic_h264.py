@@ -8,7 +8,7 @@ from av import VideoFrame
 
 ENCODER_NAME = "libx264"
 DECODER_NAME = "h264"
-ENCODER_OPTIONS = {"preset": "ultrafast", "tune": "zerolatency"}
+ENCODER_OPTIONS = {"preset": "ultrafast", "tune": "zerolatency", "g": "100000"}
 I420_FORMAT = "yuv420p"
 SEED = 20261106
 SHIFT_PIXELS_PER_FRAME = 4
@@ -44,7 +44,7 @@ def h264_encoder(
     context.time_base = Fraction(1, fps)
     context.framerate = Fraction(fps)
     context.bit_rate = bitrate_bps
-    context.options = {**ENCODER_OPTIONS, "keyint": "infinite"}
+    context.options = {**ENCODER_OPTIONS, "maxrate": str(bitrate_bps), "bufsize": str(bitrate_bps)}
     return cast(VideoEncoder, context)
 
 

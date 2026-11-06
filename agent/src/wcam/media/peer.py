@@ -8,7 +8,6 @@ from typing import Protocol, cast
 
 from aiortc import MediaStreamTrack, RTCConfiguration, RTCDataChannel, RTCPeerConnection, RTCSessionDescription
 from aiortc.clock import current_ms
-from aiortc.jitterbuffer import JitterBuffer
 from aiortc.mediastreams import MediaStreamError
 from aiortc.rate import AimdRateControl, BandwidthUsage, RemoteBitrateEstimator
 from aiortc.rtcrtpreceiver import RTCRtpReceiver
@@ -19,12 +18,14 @@ from wcam.media.frame_gate import FrameGate
 from wcam.media.metrics import VideoMeter, VideoStats
 from wcam.media.pipeline import FramePipeline
 from wcam.media.quality_preset import DEFAULT_QUALITY_PRESET
+from wcam.media.recovering_jitter_buffer import STALLED_SECONDS, RecoveringJitterBuffer
 from wcam.media.sdp_filter import keep_candidates_in_network, video_codec
 from wcam.sessions.manager import EndReason, MediaPeer, PeerEvents, PeerFactory
 
 CONTROL_CHANNEL = "control"
 CLOSE_FLUSH_SECONDS = 0.2
 VIDEO_JITTER_BUFFER_PACKETS = 2048
+STALLED_BUFFER_SECONDS = STALLED_SECONDS
 AIORTC_JITTER_BUFFER_ATTRIBUTE = "_RTCRtpReceiver__jitter_buffer"
 AIORTC_BITRATE_ESTIMATOR_ATTRIBUTE = "_RTCRtpReceiver__remote_bitrate_estimator"
 ICE_RECEIVE_BUFFER_BYTES = 4 * 1024 * 1024
@@ -94,6 +95,7 @@ class AiortcPeer:
         self._events = events
         self._channel: RTCDataChannel | None = None
         self._frame_task: asyncio.Task[None] | None = None
+        self._jitter_buffers: list[RecoveringJitterBuffer] = []
         self._answer_sdp = ""
         self.gate = FrameGate()
         self._meter = VideoMeter()
@@ -125,7 +127,7 @@ class AiortcPeer:
         self._connection.on("connectionstatechange", self._handle_connection_state)
         offer = RTCSessionDescription(keep_candidates_in_network(offer_sdp, self._network), "offer")
         await self._connection.setRemoteDescription(offer)
-        enlarge_video_jitter_buffers(self._connection)
+        self._jitter_buffers = install_recovering_jitter_buffers(self._connection)
         cap_video_estimate(self._connection, DEFAULT_QUALITY_PRESET.max_bitrate_bps)
         await self._connection.setLocalDescription(await self._connection.createAnswer())
         enlarge_ice_receive_buffers(self._connection)
@@ -173,6 +175,9 @@ class AiortcPeer:
         elif state == "closed":
             self._events.on_lost(EndReason.DISCONNECTED_BY_PHONE)
 
+    def _admits_after_recovery(self, frame: VideoFrame) -> bool:
+        return all(buffer.admits_decoded(frame.key_frame) for buffer in self._jitter_buffers)
+
     async def _consume_frames(self, track: FrameSource, receiver: RTCRtpReceiver) -> None:
         loop = asyncio.get_running_loop()
         while True:
@@ -180,19 +185,24 @@ class AiortcPeer:
                 frame = await track.recv()
             except MediaStreamError:
                 return
-            if not self.gate.admit() or not isinstance(frame, VideoFrame):
+            if not isinstance(frame, VideoFrame) or not self._admits_after_recovery(frame):
+                continue
+            if not self.gate.admit():
                 continue
             self._pipeline.submit(frame)
             self._meter.record_frame(loop.time(), frame.width, frame.height, await bytes_received(receiver))
 
 
-def enlarge_video_jitter_buffers(connection: RTCPeerConnection) -> None:
+def install_recovering_jitter_buffers(connection: RTCPeerConnection) -> list[RecoveringJitterBuffer]:
     # aiortc 1.15 fixes the video jitter buffer at 128 packets and has no option for it; a detailed 1080p
     # keyframe needs more, so it would never be assembled.
+    buffers: list[RecoveringJitterBuffer] = []
     for transceiver in connection.getTransceivers():
         if transceiver.kind == "video":
-            buffer = JitterBuffer(capacity=VIDEO_JITTER_BUFFER_PACKETS, is_video=True)
+            buffer = RecoveringJitterBuffer(VIDEO_JITTER_BUFFER_PACKETS, STALLED_BUFFER_SECONDS)
             setattr(transceiver.receiver, AIORTC_JITTER_BUFFER_ATTRIBUTE, buffer)
+            buffers.append(buffer)
+    return buffers
 
 
 def cap_video_estimate(connection: RTCPeerConnection, max_bitrate_bps: int) -> None:
@@ -213,8 +223,8 @@ def video_bitrate_estimator(receiver: RTCRtpReceiver) -> RemoteBitrateEstimator:
     return estimator
 
 
-def video_jitter_buffer(receiver: RTCRtpReceiver) -> JitterBuffer:
-    buffer: JitterBuffer = getattr(receiver, AIORTC_JITTER_BUFFER_ATTRIBUTE)
+def video_jitter_buffer(receiver: RTCRtpReceiver) -> RecoveringJitterBuffer:
+    buffer: RecoveringJitterBuffer = getattr(receiver, AIORTC_JITTER_BUFFER_ATTRIBUTE)
     return buffer
 
 
