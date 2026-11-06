@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, createSession } from "../data/api-client";
 import type { CamEvent } from "../data/cam-state";
 import { confirmationCode, sdpFingerprint } from "../data/confirmation-code";
@@ -17,11 +17,13 @@ interface PublisherOptions {
 export interface Publisher {
   qualityPreset: QualityPreset | null;
   chooseQualityPreset: (preset: QualityPreset) => void;
+  sendControl: (data: string) => void;
 }
 
 interface PublisherSession {
   replaceTrack: (track: MediaStreamTrack) => void;
   chooseQualityPreset: (preset: QualityPreset) => void;
+  sendControl: (data: string) => void;
   close: () => void;
 }
 
@@ -42,6 +44,9 @@ const FAILED_CONNECTION_STATES: ReadonlySet<RTCPeerConnectionState> = new Set(["
 export function usePublisher({ track, shouldStart, keepAlive, takeToken, onEvent }: PublisherOptions): Publisher {
   const sessionRef = useRef<PublisherSession | null>(null);
   const [qualityPreset, setQualityPreset] = useState<QualityPreset | null>(null);
+  const sendControl = useCallback((data: string) => {
+    sessionRef.current?.sendControl(data);
+  }, []);
 
   useEffect(() => {
     if (!shouldStart || !track || sessionRef.current) {
@@ -81,6 +86,7 @@ export function usePublisher({ track, shouldStart, keepAlive, takeToken, onEvent
     chooseQualityPreset: (preset) => {
       sessionRef.current?.chooseQualityPreset(preset);
     },
+    sendControl,
   };
 }
 
@@ -176,6 +182,7 @@ function startSession(
     chooseQualityPreset: (preset) => {
       sendControl(setQualityPresetMessage(preset));
     },
+    sendControl,
     close: () => {
       closed = true;
       channel.close();

@@ -3,6 +3,7 @@ import { camReducer, initialCamState, isFinal, isSession, type CamState, type Fa
 import { consumePairingToken } from "../data/pairing";
 import type { QualityPreset } from "../data/quality-preset";
 import { useCameraStream } from "../media/use-camera-stream";
+import { useColorSample } from "../media/use-color-sample";
 import { useOrientation } from "../media/use-orientation";
 import { usePublisher } from "../media/use-publisher";
 import { useWakeLock } from "../media/use-wake-lock";
@@ -35,6 +36,8 @@ export function useCam(hasPairing: boolean): Cam {
     takeToken: consumePairingToken,
     onEvent: dispatch,
   });
+  const sampling = state.kind === "live" && !state.portrait && !camera.opening;
+  useColorSample(videoRef, camera.track, sampling, publisher.sendControl);
 
   const { stop } = camera;
   useEffect(() => {
