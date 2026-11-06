@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cpuPercentValue, secondsUntil, svgDataUrl, videoFormatValues } from "./console-format";
+import { colorCalibrationKey, cpuPercentValue, secondsUntil, svgDataUrl, videoFormatValues } from "./console-format";
 import type { Video } from "./contract";
 
 const NOW = Date.parse("2026-11-01T18:00:00Z");
@@ -23,6 +23,7 @@ describe("console format", () => {
       framesScaled: 0,
       colorRange: "full",
       colorMatrix: "unspecified",
+      colorCalibration: { state: "measuring", deltaE: null },
     };
 
     expect(videoFormatValues(video)).toEqual({ width: "1920", height: "1080", fps: "29.9", bitrate: "9.8" });
@@ -36,5 +37,14 @@ describe("console format", () => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>';
 
     expect(decodeURIComponent(svgDataUrl(svg))).toBe(`data:image/svg+xml;charset=utf-8,${svg}`);
+  });
+
+  it("color calibration shows matched only when it was applied", () => {
+    expect(colorCalibrationKey({ state: "applied", deltaE: 1.2 })).toBe("console.color_matched");
+  });
+
+  it("color calibration shows default while measuring or when not applied", () => {
+    expect(colorCalibrationKey({ state: "measuring", deltaE: null })).toBe("console.color_default");
+    expect(colorCalibrationKey({ state: "default", deltaE: 2.4 })).toBe("console.color_default");
   });
 });

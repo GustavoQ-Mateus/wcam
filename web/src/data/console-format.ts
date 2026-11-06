@@ -1,4 +1,5 @@
-import type { Video } from "./contract";
+import type { ColorCalibration, Video } from "./contract";
+import type { MessageKey } from "./i18n";
 
 const MILLISECONDS_PER_SECOND = 1000;
 const KILOBITS_PER_MEGABIT = 1000;
@@ -17,6 +18,10 @@ export function videoFormatValues(video: Video): Readonly<Record<string, string>
     fps: video.fps.toFixed(FPS_DECIMALS),
     bitrate: (video.bitrateKbps / KILOBITS_PER_MEGABIT).toFixed(BITRATE_DECIMALS),
   };
+}
+
+export function colorCalibrationKey(calibration: ColorCalibration): MessageKey {
+  return calibration.state === "applied" ? "console.color_matched" : "console.color_default";
 }
 
 export function cpuPercentValue(cpuPercent: number): string {

@@ -1,5 +1,5 @@
 import type { Session } from "../data/contract";
-import { videoFormatValues } from "../data/console-format";
+import { colorCalibrationKey, videoFormatValues } from "../data/console-format";
 import type { MessageKey } from "../data/i18n";
 import { t } from "../data/language";
 import { ConsoleButton } from "./console-button";
@@ -47,6 +47,7 @@ export function SessionPanel({ session, onConfirm, onReject, onDisconnect }: Ses
           <span>{session.video.codec}</span>
         </p>
       )}
+      {session.video && <p className={styles.color}>{t(colorCalibrationKey(session.video.colorCalibration))}</p>}
       {session.video && session.video.framesScaled > 0 && (
         <p className={styles.warning}>
           <span className={styles.warningMark} aria-hidden="true" />
