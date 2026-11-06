@@ -130,7 +130,7 @@ class ColorCalibrator:
     def _apply(self, result: CalibrationResult | None) -> None:
         self.correction = None if result is None else result.correction
         state = CalibrationState.DEFAULT if self.correction is None else CalibrationState.APPLIED
-        delta_e = None if result is None else round(result.delta_e, DELTA_E_DIGITS)
+        delta_e = None if result is None or result.delta_e is None else round(result.delta_e, DELTA_E_DIGITS)
         self.status = CalibrationStatus(state, delta_e)
         if self._trace is not None:
             self._worker.submit(
