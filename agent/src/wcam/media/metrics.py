@@ -13,6 +13,8 @@ class VideoStats:
     bitrate_kbps: int
     codec: str | None = None
     frames_scaled: int = 0
+    color_range: str = "unspecified"
+    color_matrix: str = "unspecified"
 
 
 class VideoMeter:

@@ -11,6 +11,7 @@ from wcam.api.console_routes import pairing_url
 from wcam.app import create_servers, phone_page_url, run
 from wcam.config import Settings
 from wcam.i18n import Messages, load_messages, resolve_language, system_language_tag
+from wcam.media.episodes import open_episode_log
 from wcam.media.peer import aiortc_peer_factory
 from wcam.media.pipeline import FramePipeline
 from wcam.media.quality import QualityMeter, read_y4m_luma
@@ -44,6 +45,7 @@ def main() -> None:
         print(messages.text("terminal.no_lan"), file=sys.stderr)
         sys.exit(EXIT_NO_LAN)
     certificate = load_or_create_certificate(settings.data_dir, lan.ip)
+    open_episode_log(settings.data_dir)
     console_url = f"http://127.0.0.1:{settings.console_port}/"
     phone_url = phone_page_url(settings, lan)
     selection = select_sink(settings.virtual_camera, lambda: load_native_library(settings.vcam_dll))
@@ -55,10 +57,9 @@ def main() -> None:
     pipeline.open()
     manager = SessionManager(aiortc_peer_factory(lan.network, pipeline))
     services = AgentServices(manager, pipeline, CpuMonitor())
-    ticket = manager.open_pairing()
     print_banner(messages, console_url, phone_url, certificate)
     print_virtual_camera(messages, selection)
-    print_pairing_qr(messages, pairing_url(phone_url, ticket.token))
+    announce_pairing(messages, manager, phone_url, console_url, sys.stdout)
     asyncio.run(run(create_servers(settings, lan, certificate, services), services))
     print(messages.text("terminal.stopped"))
 
@@ -92,8 +93,21 @@ def print_virtual_camera(messages: Messages, selection: SinkSelection) -> None:
     print(messages.text("terminal.virtual_camera_unavailable", reason=reason))
 
 
-def print_pairing_qr(messages: Messages, url: str) -> None:
-    print(messages.text("terminal.scan_with_token"))
-    print(messages.text("terminal.scan_hint"))
-    segno.make(url, error="m").terminal(compact=True)
-    print(messages.text("terminal.stop_hint"))
+def announce_pairing(
+    messages: Messages,
+    manager: SessionManager,
+    phone_url: str,
+    console_url: str,
+    output: TextIO,
+) -> None:
+    if output.isatty():
+        print_pairing_qr(messages, pairing_url(phone_url, manager.open_pairing().token), output)
+    else:
+        print(messages.text("terminal.scan_in_console", url=console_url), file=output)
+    print(messages.text("terminal.stop_hint"), file=output)
+
+
+def print_pairing_qr(messages: Messages, url: str, output: TextIO) -> None:
+    print(messages.text("terminal.scan_with_token"), file=output)
+    print(messages.text("terminal.scan_hint"), file=output)
+    segno.make(url, error="m").terminal(out=output, compact=True)

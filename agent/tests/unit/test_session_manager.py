@@ -61,7 +61,10 @@ async def test_connected_session_awaits_confirmation_with_contract_code() -> Non
     assert session.confirmation_code == confirmation_code(
         offer.confirmation_nonce, PHONE_FINGERPRINT, AGENT_FINGERPRINT
     )
-    assert factory.last.sent == [{"type": "session_state", "state": "awaiting_confirmation"}]
+    assert factory.last.sent == [
+        {"type": "session_state", "state": "awaiting_confirmation"},
+        {"type": "quality_preset", "preset": "balanced"},
+    ]
 
 
 async def test_confirm_opens_gate_and_goes_live() -> None:

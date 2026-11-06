@@ -1,10 +1,22 @@
 import io
 
-import pytest
-
-from wcam.cli import print_pairing_qr, use_utf8_output
+from tests.fakes import FakePeerFactory
+from wcam.cli import announce_pairing, use_utf8_output
 from wcam.config import Settings
-from wcam.i18n import load_messages
+from wcam.i18n import Messages, load_messages
+from wcam.sessions.manager import SessionManager
+
+PHONE_URL = "https://192.168.0.10:8443/cam"
+CONSOLE_URL = "http://127.0.0.1:8080/"
+
+
+class TerminalOutput(io.StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
+def english() -> Messages:
+    return load_messages(Settings().locales_dir, "en")
 
 
 def test_redirected_output_is_switched_to_utf8() -> None:
@@ -15,11 +27,27 @@ def test_redirected_output_is_switched_to_utf8() -> None:
     assert stream.encoding == "utf-8"
 
 
-def test_pairing_qr_is_announced_with_token_and_certificate_hints(capsys: pytest.CaptureFixture[str]) -> None:
-    messages = load_messages(Settings().locales_dir, "en")
+def test_terminal_shows_the_qr_code_with_token_and_certificate_hints() -> None:
+    manager = SessionManager(FakePeerFactory())
+    output = TerminalOutput()
 
-    print_pairing_qr(messages, "https://192.168.0.10:8443/cam#t=secret-token")
+    announce_pairing(english(), manager, PHONE_URL, CONSOLE_URL, output)
 
-    output = capsys.readouterr().out
-    assert output.splitlines()[:2] == [messages.text("terminal.scan_with_token"), messages.text("terminal.scan_hint")]
-    assert "secret-token" not in output
+    lines = output.getvalue().splitlines()
+    assert lines[:2] == [english().text("terminal.scan_with_token"), english().text("terminal.scan_hint")]
+    assert manager.status().pairing_expires_at is not None
+    assert "#t=" not in output.getvalue()
+
+
+def test_redirected_output_gets_the_console_address_and_no_pairing_link() -> None:
+    manager = SessionManager(FakePeerFactory())
+    output = io.StringIO()
+
+    announce_pairing(english(), manager, PHONE_URL, CONSOLE_URL, output)
+
+    assert output.getvalue().splitlines() == [
+        english().text("terminal.scan_in_console", url=CONSOLE_URL),
+        english().text("terminal.stop_hint"),
+    ]
+    assert "#t=" not in output.getvalue()
+    assert manager.status().pairing_expires_at is None

@@ -38,6 +38,7 @@ class FakePeer:
         self.gate_open = False
         self.closed = False
         self.video: VideoStats | None = None
+        self.max_bitrate_bps: int | None = None
 
     @property
     def answer_sdp(self) -> str:
@@ -45,6 +46,9 @@ class FakePeer:
 
     def open_gate(self) -> None:
         self.gate_open = True
+
+    def limit_bitrate(self, max_bitrate_bps: int) -> None:
+        self.max_bitrate_bps = max_bitrate_bps
 
     def send(self, message: dict[str, str]) -> None:
         self.sent.append(message)
