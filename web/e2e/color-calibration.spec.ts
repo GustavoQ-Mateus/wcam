@@ -4,6 +4,7 @@ import { colorCalibration, endSession, goLive, waitForColorCalibration } from ".
 
 const CALIBRATION_TIMEOUT_MS = 15_000;
 const TEST_TIMEOUT_MS = 60_000;
+const MAXIMUM_DELTA_E = 2;
 
 test.describe.configure({ mode: "serial" });
 test.use({ hasTouch: true, viewport: PHONE_LANDSCAPE });
@@ -27,6 +28,6 @@ test("every connection measures the color again and settles with a delta E", asy
 async function expectSettled(request: APIRequestContext): Promise<void> {
   await waitForColorCalibration(request, CALIBRATION_TIMEOUT_MS);
   const settled = await colorCalibration(request);
-  expect(settled?.deltaE).toEqual(expect.any(Number));
+  expect(settled?.deltaE ?? Infinity).toBeLessThan(MAXIMUM_DELTA_E);
   console.log(`color calibration ${settled?.state ?? ""}, delta E ${String(settled?.deltaE)}`);
 }
