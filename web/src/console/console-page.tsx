@@ -4,6 +4,7 @@ import { useConsole } from "../data/use-console";
 import { useHealth, type HealthState } from "../data/use-health";
 import styles from "./console-page.module.scss";
 import { PairingPanel } from "./pairing-panel";
+import { QualityPanel } from "./quality-panel";
 import { SessionPanel } from "./session-panel";
 import { VirtualCameraPanel } from "./virtual-camera-panel";
 
@@ -34,6 +35,7 @@ export default function ConsolePage() {
           onNewPairing={data.newPairing}
         />
       )}
+      {data.status && <QualityPanel preset={data.status.qualityPreset} onChoose={data.chooseQualityPreset} />}
       {data.errorCode && (
         <p className={styles.error} role="alert">
           {t(errorMessageKey(data.errorCode))}

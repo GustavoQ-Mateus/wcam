@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
-import { ApiError, confirmSession, disconnectSession, fetchStatus, openPairing, rejectSession } from "./api-client";
+import {
+  ApiError,
+  changeQualityPreset,
+  confirmSession,
+  disconnectSession,
+  fetchStatus,
+  openPairing,
+  rejectSession,
+} from "./api-client";
 import type { PairingWindow, Status } from "./contract";
+import type { QualityPreset } from "./quality-preset";
 
 export interface ConsoleData {
   status: Status | null;
@@ -11,9 +20,10 @@ export interface ConsoleData {
   confirm: () => void;
   reject: () => void;
   disconnect: () => void;
+  chooseQualityPreset: (preset: QualityPreset) => void;
 }
 
-const POLL_INTERVAL_MS = 1000;
+const POLL_INTERVAL_MS = 250;
 const UNKNOWN_ERROR_CODE = "unknown";
 
 export function useConsole(): ConsoleData {
@@ -74,6 +84,9 @@ export function useConsole(): ConsoleData {
     },
     disconnect: () => {
       run(disconnectSession);
+    },
+    chooseQualityPreset: (preset) => {
+      run(() => changeQualityPreset({ preset }));
     },
   };
 }
