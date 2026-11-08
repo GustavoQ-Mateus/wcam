@@ -128,7 +128,7 @@ Só com `WCAM_DEV_TOOLS=1`; sem a variável, todas as rotas abaixo respondem `40
   "requestedAt": "2026-11-07T21:50:00.120Z",
   "phone": {"capturedAt": "2026-11-07T21:50:00.240Z", "colorSpace": "display-p3", "width": 1920, "height": 1080},
   "pc": {"receivedAt": "2026-11-07T21:50:00.180Z", "width": 1920, "height": 1080},
-  "calibration": {"state": "applied", "deltaE": 1.01, "tables": {"y": [0], "u": [0], "v": [0]}},
+  "correction": {"state": "applied", "transfer": "bt709", "display": "apple", "tables": {"y": [0], "u": [0], "v": [0]}},
   "difference": {
     "captureGapMs": 60, "correlation": 0.97, "mirrored": false,
     "deltaE2000": {"mean": 3.2, "median": 2.9, "p90": 6.1},
@@ -139,7 +139,7 @@ Só com `WCAM_DEV_TOOLS=1`; sem a variável, todas as rotas abaixo respondem `40
 ```
 
 - `state`: `pending` (esperando uma das imagens), `ready` ou `failed`. `reason` (só em `failed`): `phone_timeout` (celular sem resposta em 10 s), `phone_invalid` (pedaços faltando ou tamanho errado), `pc_missing` (imagem do PC não chegou em 10 s), `session_ended`.
-- `phone` e `pc` são `null` até cada imagem chegar; `difference` é `null` até as duas. `calibration.tables` são as tabelas Y, U e V em uso (256 inteiros cada); `grid.deltaE2000` tem `columns × rows` valores, linha a linha.
+- `phone` e `pc` são `null` até cada imagem chegar; `difference` é `null` até as duas. `correction.tables` são as tabelas Y, U e V em uso (256 inteiros cada); `grid.deltaE2000` tem `columns × rows` valores, linha a linha.
 - `screen` é `null` até o print chegar; com ele, `{"receivedAt", "width", "height", "colorSpace"}` (do perfil ICC; sem perfil, `srgb`), e `screenDifference` traz `{"phone": <mesmo formato de difference>, "pc": <mesmo formato>}`: print contra o canvas do celular e print contra a imagem do PC. O print só é aceito com a comparação `ready`.
 - O agente guarda só as últimas 5 comparações, em memória.
 
@@ -164,9 +164,8 @@ Do agente para o celular, JSON:
 Do celular para o agente, JSON:
 
 - `{"type": "set_quality_preset", "preset": "<chave>"}` quando o usuário escolhe uma opção no celular. O agente aplica e responde com `quality_preset` (inclusive ao próprio celular), que é a fonte da verdade do que está em uso. Só vale com a sessão em `live`: antes do Confirmar o aparelho ainda não foi aceito, e a mensagem é ignorada com registro no log, sem resposta. O seletor do celular só aparece depois de `session_state` `live`;
-- `{"type": "camera_capabilities", "width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"]}` quando o canal abre e a cada troca de câmera. `width`, `height` e `frameRate` são os máximos de `getCapabilities()` da faixa em uso (`null` quando o navegador não informa); `facingMode` é `user`, `environment` ou `null`; `codecs` são os `mimeType` de vídeo de `RTCRtpSender.getCapabilities("video")`, sem repetição e sem `video/rtx`, `video/red` e `video/ulpfec`.
+- `{"type": "camera_capabilities", "width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"], "colorSpace": {"primaries": "bt709", "transfer": "bt709", "matrix": "bt709", "fullRange": true}}` quando o canal abre e a cada troca de câmera. `width`, `height` e `frameRate` são os máximos de `getCapabilities()` da faixa em uso (`null` quando o navegador não informa); `facingMode` é `user`, `environment` ou `null`; `codecs` são os `mimeType` de vídeo de `RTCRtpSender.getCapabilities("video")`, sem repetição e sem `video/rtx`, `video/red` e `video/ulpfec`; `colorSpace` é o `VideoFrame.colorSpace` de um quadro da câmera em uso (`primaries`, `transfer`, `matrix` com os nomes do WebCodecs, `fullRange` booleano; campo `null` quando o navegador não informa) ou `null` quando o navegador não expõe `VideoFrame` (spec v0.6.0 §1.1).
 
-- `{"type": "color_sample", "colorSpace": "display-p3", "width": 160, "height": 90, "rgb": "<base64>", "capturedAt": 1793991387130}` para a calibração de cor: o quadro que o visor do celular está exibindo, desenhado num canvas sem espelho e lido com `getImageData` no mesmo `colorSpace` (`display-p3` ou `srgb`). `rgb` é o base64 dos bytes R, G e B de cada pixel, sem alfa, linha a linha (`width × height × 3` bytes); `capturedAt` é `performance.timeOrigin + performance.now()` em ms. Enviada com a sessão em `live` e o celular em paisagem, uma por segundo, 5 vezes, e de novo a cada troca de câmera. Antes do `live` é ignorada com registro no log. Cabe no `max-message-size` de 65 536 bytes anunciado pelo agente.
 
 Comparação lado a lado (só com `WCAM_DEV_TOOLS=1`; sem a variável, o agente não envia `snapshot_request` e ignora as respostas com log):
 
@@ -229,7 +228,7 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
   },
   "qualityPreset": "balanced",
   "session": {
-    "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800, "codec": "H264", "framesScaled": 0, "colorRange": "full", "colorMatrix": "unspecified", "colorCalibration": {"state": "applied", "deltaE": 1.2}},
+    "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800, "codec": "H264", "framesScaled": 0, "colorRange": "full", "colorMatrix": "unspecified", "colorCorrection": {"state": "applied", "transfer": "bt709", "display": "apple"}},
     "cameraCapabilities": {"width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"]}
   },
   "process": {"cpuPercent": 12.5},
@@ -242,7 +241,7 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
 - `fallbackReason`: por que a câmera nativa não está em uso; `null` quando `backend` é `media_foundation`. Valores: `native_not_registered` (DLL não registrada), `windows_too_old` (build anterior a 22000), `native_error` (a DLL falhou ao iniciar) e `not_windows`. Só é preenchido quando `WCAM_VIRTUAL_CAMERA` é `auto` e a escolha caiu da câmera nativa para outro backend; com backend explícito é sempre `null`. Com `WCAM_VIRTUAL_CAMERA=media_foundation` explícito e falha, não há fallback: `state` `unavailable` com `reason` `driver_missing` (DLL ausente) ou `error` (`WcamCameraStart` falhou).
 - `source`: `phone` quando os quadros vêm do celular; `frozen` quando a câmera repete o último quadro do celular porque nenhum quadro novo chegou há mais de 0,5 s (até completar 3 s sem quadro; antes de 0,5 s continua `phone`, que é o intervalo normal entre quadros); `placeholder` em qualquer outro momento.
 - `session.video.colorRange`: faixa declarada pelo celular no quadro mais recente, `full`, `limited` ou `unspecified`. `colorMatrix`: matriz declarada, `bt709`, `bt601`, outro nome do FFmpeg ou `unspecified`. A câmera sempre entrega faixa limitada; quadro em faixa cheia é ajustado pelo agente (CA-2, emenda da v0.6.0).
-- `session.video.colorCalibration`: calibração de cor da conexão atual (spec v0.6.0 §1.1). `state`: `measuring` (esperando amostras `color_sample`), `applied` (curva de tom e saturação aplicadas) ou `default` (amostras insuficientes ou correção sem ganho; só a faixa é ajustada). `deltaE`: ΔE2000 médio entre as amostras do celular e a saída corrigida; `null` até medir. Recomeça em `measuring` a cada conexão e a cada troca de câmera; nada é guardado entre conexões.
+- `session.video.colorCorrection`: correção de cor da conexão atual, derivada do `colorSpace` declarado pela câmera em `camera_capabilities` (spec v0.6.0 §1.1). `state`: `applied` (curva de exibição aplicada ao Y) ou `default` (só a faixa: sem `colorSpace`, transferência `srgb`, HDR ou convenção `standard`). `transfer`: o declarado, ou `null`. `display`: convenção de exibição do celular pela plataforma do `User-Agent`, `apple` (iPhone, iPad, Safari no macOS) ou `standard`. Recalculada a cada `camera_capabilities`; nada é guardado entre conexões.
 - `session.cameraCapabilities`: a última mensagem `camera_capabilities` do celular, sem o `type`; `null` até chegar a primeira.
 - `session.video.codec`: o codec negociado (`H264` ou `VP8`). `framesScaled`: quantos quadros precisaram ser redimensionados na sessão (o esperado é 0; ver "Formato de saída").
 - `process.cpuPercent`: uso de CPU do processo do agente, média da última janela de 1 s, via psutil.
@@ -255,7 +254,6 @@ Variáveis de ambiente (somam-se à tabela abaixo):
 | `WCAM_VIRTUAL_CAMERA` | `auto` | `auto` (Windows 22000 ou maior com a DLL registrada usa `media_foundation`; senão `obs`; fora do Windows, `fake`), `media_foundation`, `obs` ou `fake` |
 | `WCAM_VCAM_DLL` | `%ProgramFiles%\WCam\Wcam.VirtualCamera.dll` | caminho da DLL da câmera nativa |
 | `WCAM_QUALITY_REFERENCE` | vazio | caminho de um arquivo `.y4m` de referência; liga a medição de SSIM |
-| `WCAM_COLOR_TRACE_DIR` | vazio | pasta de desenvolvimento; grava cada `color_sample`, o quadro casado e as tabelas da calibração de cor (spec v0.6.0 §1.1). Vazia, nada vai para o disco |
 | `WCAM_DEV_TOOLS` | vazio | `1` liga a comparação lado a lado no console (spec v0.6.0 §6); qualquer outro valor deixa desligada |
 
 ## Qualidade (`quality`)

@@ -123,3 +123,20 @@ Sessão agent:
 5. Ruff e pyright no que tocar; teste de laboratório antes de qualquer pedido ao usuário.
 
 As duas sessões avisam o orquestrador ao terminar. O usuário só conecta o celular, troca de câmera uma vez e encerra.
+
+## Adendo: correção de cor pela câmera (2026-11-08)
+
+Spec §1.1 reescrita, CA 3.1 e 3.2, decisão 10. Contrato: `colorSpace` em `camera_capabilities`, `session.video.colorCorrection`, `correction` no relatório da comparação; saem `color_sample`, `colorCalibration` e `WCAM_COLOR_TRACE_DIR`. Planejamento §1 (emenda do CA-2) revisto. Textos `console.color_matched` e `console.color_default` continuam. Os spikes `spike/camera-color` e `spike/camera-color-agent` são referência, não código de produto.
+
+Sessão agent (na `feature/qualidade-agent`, depois de `git merge origin/feature/qualidade`):
+1. Remover a calibração por imagem: anel, ajuste, `color_sample`, `colorCalibration`, `WCAM_COLOR_TRACE_DIR`, o trace e os testes ligados a eles. Os itens (a), (b) e (c) da vcam deixam de existir.
+2. Convenção de exibição pela plataforma do `User-Agent`: `apple` para iPhone, iPad e Safari no macOS; `standard` para o resto.
+3. Tabela de Y composta com a de faixa, calculada a cada `camera_capabilities`: `sRGB_OETF(E^1,961)` no Y normalizado com `transfer` `bt709` ou `smpte170m` e convenção `apple`; senão só a faixa (`default`); HDR em `default` com log. Faixa do `colorSpace` quando declarada; senão a do quadro.
+4. `session.video.colorCorrection`; `correction` no relatório da comparação; QualityMeter com a tabela de Y aplicada (decisão 8).
+5. Testes do CA 3.1.
+
+Sessão web (na `feature/qualidade-web`, depois de `git merge origin/feature/qualidade`):
+1. Remover o envio de `color_sample`.
+2. `colorSpace` em `camera_capabilities`, lido de `new VideoFrame(<video do visor>)` (com `MediaStreamTrackProcessor` de alternativa), `null` quando não houver; leitura em `media/`, montagem em `data/` com Vitest.
+3. Console: `colorCorrection` no lugar de `colorCalibration` (`console.color_matched` em `applied`); comparação com `correction`.
+4. e2e: o Chromium com câmera falsa (`smpte170m`, `standard`) fica em `default`; SSIM acima de 0,98; a comparação continua passando.
