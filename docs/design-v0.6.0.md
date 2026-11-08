@@ -104,3 +104,27 @@ O handoff põe o seletor "no painel da sessão", mas também pede que ele funcio
 2. Leitura do status a cada 250 ms, sem mudança de contrato, até o SSE da v0.8.0 (§3.1).
 3. Linha de detalhe em `--faint` no próprio painel, sem chave nova (§3.1).
 4. Ícone do trilho: medidor de três segmentos iguais na horizontal, em vez de barras de altura crescente (§2.1).
+
+## 6. Comparação lado a lado (ferramenta de desenvolvimento, 2026-11-07)
+
+Spec §6, CA 3.3, decisão 9. Modo **Operate**: quem usa é o desenvolvedor (o usuário, validando a calibração), com o console aberto num monitor ao lado do celular. Só existe com `devTools` no status; o produto não muda.
+
+### 6.1 Console
+
+- **Botão no painel da sessão**, `console.dev_compare`, secundário (`--raised`), depois do Desconectar, só com `devTools` e sessão `live` (função pura `comparisonAvailable`, com Vitest). Não compete com a ação principal do painel. **[shape] [spec]**
+- **Painel próprio, largura total da página**, em `--surface` como os outros painéis (elevação só por luminosidade, `true-black-flat`). As imagens precisam de largura; o `--measure` dos outros painéis as deixaria pequenas demais para comparar cor. **[taste-skill] [shape]**
+- **Imagens lado a lado no mesmo tamanho**: grade `auto-fit` com mínimo de `--comparison-image-min` (24rem); em tela estreita empilham. Cada imagem num quadro com a proporção dela (`aspect-ratio`), fundo `--ground`, `object-fit: contain`. Legenda embaixo: nome em peso forte e o horário da captura em `--muted`, números tabulares, com milissegundos, porque a diferença entre as capturas importa. **[taste-skill] [spec]**
+- **Grade 8x4 sobre a imagem do PC** (decisão do orquestrador): linhas finas em `--reference`, número em cada célula sobre um fundo `--scrim` pequeno, só atrás do número, sem preencher a imagem. Célula com ΔE acima de 2 (pelo valor mostrado, para o número e o contorno nunca discordarem) ganha contorno `--warning` mais grosso e número em `--warning` e peso forte: forma, número e cor, nunca só cor. A grade é uma lista (`aria-label` `console.dev_compare_grid`). **[shape] [orq] [emil-design-eng]**
+- **Dados na área de detalhes**, em grupos com título: "Celular / Câmera WCam no computador" e, com o print, "Tela do celular / Celular" e "Tela do celular / Câmera WCam no computador". Linhas em `--text-meta` `--muted`, números tabulares, sinal explícito em ΔL* e matiz. Métricas técnicas só aqui, como manda o glossário. **[spec] [taste-skill]**
+- **Downloads** como links (`<a download>`) com a forma do botão secundário: imagem do celular (rota do agente), imagem do PC (o PNG capturado, por `blob:`), print (rota do agente) e o JSON do relatório (`data:` com o relatório como chegou). Nada passa pelo disco do agente. **[spec]**
+- **Print pelo console**: rótulo com a forma do botão secundário envolvendo um `input type=file` escondido (`accept="image/png"`), dica `console.dev_compare_screen_hint` em `--faint` ligada por `aria-describedby`. Some quando o print chega. **[spec] [shape]**
+- **Espera**: anel pulsando em `--muted` com `console.dev_compare_pending` (`role="status"`), o mesmo anel da escolha de qualidade; sem animação com `prefers-reduced-motion`. **Falha**: quadrado `--negative` mais `console.dev_compare_failed` com o motivo do agente (`role="alert"`); o quadrado repete a forma de erro do console. **[emil-design-eng] [shape]**
+- Sem animação de entrada no painel: é ferramenta usada em sequência, e o conteúdo chegando já é a resposta. **[emil-design-eng]**
+
+### 6.2 Celular
+
+- **Botão `cam.dev_send_screenshot`** só depois de um `snapshot_request` (só existe com as ferramentas de desenvolvimento), no canto inferior direito, abaixo do trilho: é onde o polegar direito já está, segurando o celular em paisagem, e não cobre o centro do visor. Pílula pequena em `--scrim`, `--text-meta` em peso forte, altura mínima de 44 px. **[mobile-native] [orq]**
+- `touch-action: manipulation`, sem seleção de texto no toque longo, `scale(0.97)` no `:active`, foco visível pelo `:has(:focus-visible)`. Abre o seletor de arquivo do iOS (`accept="image/png"`). **[mobile-native] [emil-design-eng]**
+- **Resultado ao lado do botão**, na mesma linha, por 3 s: `cam.dev_screenshot_sent`, ou `cam.dev_screenshot_failed` em `--warning` (o texto já diz o que houve, então a cor não é o único sinal). Ao lado e não acima, para não encostar no trilho em telas de 390 px de altura. `role="status"`. **[mobile-native] [shape]**
+- O arquivo só é enviado se começar pela assinatura PNG (`isPng`, com Vitest); um JPEG renomeado também é recusado. **[spec]**
+
