@@ -84,7 +84,35 @@ Esta máquina: Intel Core i5-8500 a 3,0 GHz, 6 núcleos.
 
 O tempo de parede por quadro fica abaixo do tempo de CPU por quadro porque o FFmpeg decodifica em várias threads. Para a v0.7.0, o custo que cresce com o formato é o do worker: extração, tabela de faixa e NV12, cerca de 6,4 ms em 1080p. Em 4K a área é 4 vezes maior, o que daria cerca de 26 ms por quadro, perto do orçamento de 16,7 ms a 60 fps num worker só. Isso é estimativa, não medição.
 
-### Calibração de cor (adendo de 2026-11-06)
+### Correção de cor pela câmera (adendo de 2026-11-08, substitui a calibração por imagem)
+- Spike `spike/camera-color-agent` (só local; `spike/camera-color` já estava no worktree da web):
+  - o quadro cru da câmera do iPhone (`VideoFrame.copyTo`, NV12, `bt709` em primárias, transferência e matriz, faixa cheia, frontal e traseira) foi comparado com o quadro decodificado no PC;
+  - Y com ganho de 0,995 e PSNR de 36,6 a 38,6 dB; croma sem viés (diferença média de cerca de 0);
+  - os ganhos de croma de 0,94 a 0,99 são suavização do codec sobre um croma fraco (desvio de 5 a 12 códigos): um desfoque de 2x2 do próprio quadro cru já dá de 0,97 a 0,99, e o plano afetado troca entre capturas;
+  - a captura da traseira logo depois da troca era um quadro cru preto (Y de 0 a 7), com a câmera ainda ligando;
+  - no laboratório, o detector reconheceu a conversão de faixa (ganho de 0,858 e offset de 16, exatamente 219/255 e +16).
+- Conclusão: o que chega ao PC é o que a câmera produziu, menos a compressão. A redução de saturação de 19% da calibração por imagem vinha do canvas do Safari, não do codificador nem da exibição.
+- Correção determinística:
+  - convenção de exibição pelo `User-Agent` (`apple` para iPhone e iPad em qualquer navegador e Safari no macOS; `standard` para o resto);
+  - com `transfer` `bt709` ou `smpte170m` e convenção `apple`, a tabela de Y aplica `sRGB_OETF(E^1,961)` ao Y normalizado, composta com a faixa; U e V só com a tabela de faixa. O resto fica em `default`, só com a faixa, e HDR (`pq`, `hlg`) vai para o log;
+  - a faixa declarada no `colorSpace` tem prioridade sobre a do quadro;
+  - recalculada a cada `camera_capabilities`; a conexão começa em `default` com a convenção dela, e nada passa para a seguinte.
+- Erro do modelo só em Y (croma inalterado) contra o modelo exato por canal: ΔE2000 médio de 0,67 a 0,95 nas capturas reais (sem correção, de 2,7 a 3,0) e 0,86 numa grade de 480 cores saturadas. Uma tabela 2D Y×croma tiraria mais 0,4 a 0,7 nas cenas reais, por cerca de 8 ms a mais por quadro (medido: 10,6 ms); fica fora até uma medição pedir.
+- Custo por quadro no worker, com um quadro cru real do iPhone: 4,97 ms só com a faixa e 4,72 ms com a correção aplicada (mediana). É o mesmo `translate`.
+- A tabela de Y não tem pontos fixos arredondados (cada um anda 1 código em direção ao valor exato), para o custo não depender do conteúdo.
+- Saíram: o anel de quadros, o ajuste por amostras, `color_sample`, `colorCalibration`, o trace e `WCAM_COLOR_TRACE_DIR`, com os seus testes. As funções de redução que a comparação usa foram para `media/image_reduction.py`.
+- Comparação lado a lado: `correction` no lugar de `calibration` (estado, `transfer`, `display` e as tabelas em uso). QualityMeter: a referência passa pela tabela de Y quando a correção está `applied` (decisão 8).
+- Testes (30):
+  - a tabela bate com `sRGB_OETF(E^1,961)` nos 256 valores, em faixa cheia e limitada, com no máximo 1 código de diferença;
+  - preto e branco preservados e croma só com a faixa;
+  - `colorSpace` ausente ou vazio, `srgb`, `iec61966-2-1`, `pq`, `hlg` e convenção `standard` dão `default`, com saída byte a byte igual à de só faixa; HDR registrado no log;
+  - a faixa declarada vence a do quadro, nos dois sentidos;
+  - a convenção sai do `User-Agent` (iPhone com Safari e com Chrome, iPad e Safari no macOS dão `apple`; Chrome no macOS, Android e Windows dão `standard`);
+  - cada `camera_capabilities` reaplica; a conexão seguinte começa só com `default`; parar o celular descarta a correção;
+  - status com `colorCorrection` e `cameraCapabilities.colorSpace`.
+  No fluxo WebRTC real (cliente aiortc, `smpte170m`, `standard`), `colorCorrection` fica `default`.
+
+### Calibração de cor (adendo de 2026-11-06, substituída em 2026-11-08; histórico)
 - `color_sample` é validado pelo contrato: `colorSpace` `display-p3` ou `srgb`, `width` e `height` positivos, e `rgb` em base64 com exatamente `width × height × 3` bytes. Fora disso, a mensagem é ignorada com o log de mensagem fora do contrato. Antes do `live`, é ignorada com log próprio. `camera_capabilities` (enviada a cada troca de câmera) recomeça a medição.
 - Anel dos últimos 60 quadros (2 s), reduzidos a 320x180 e normalizados pela faixa declarada. Fica ativo só enquanto faltam amostras: até 5 amostras da medição atual ou 30 s sem amostra.
 - Cada amostra é comparada 0,7 s depois de chegar, porque a mensagem chega antes do quadro correspondente. O quadro escolhido é o de maior correlação de luminância, com e sem espelho; abaixo de 0,8, a amostra é descartada.
@@ -166,8 +194,8 @@ Commits:
 | CA | Estado | Evidência |
 |---|---|---|
 | 1 | Parcial (agent) | Testes de unidade: a tabela leva 0 a 16 e 255 a 235, e o croma 128 fica 128 (0 vira 16, 255 vira 240). Todo Y acima de 0 sai acima de 16. Faixa limitada e não declarada saem byte a byte iguais. Faixa cheia com letterbox é convertida uma vez só. Um quadro codificado em `yuvj420p` pelo libx264 e decodificado pelo `h264` sai `yuvj420p`, `color_range` 2, matriz não declarada (o mesmo perfil medido no iPhone) e é reconhecido como faixa cheia. `colorRange` e `colorMatrix` aparecem no status (teste com WebRTC real). Faltam o quadro real do iPhone em pouca luz e os valores declarados por cada aparelho. |
-| 3.1 | Parcial (agent) | Testes: o ajuste recupera curva e saturação conhecidas (erro abaixo de 0,03 em cada ponto, ΔE abaixo de 1); amostra de outra cena é descartada; sem 3 amostras válidas o estado é `default` e a saída é a tabela de faixa byte a byte; ao recomeçar, nada fica guardado; `color_sample` antes do `live` é ignorado; o trace grava o formato combinado. No laboratório, as duas conexões chegam a `applied` com ΔE2000 de 0,17. e2e da web (14 de 14): ΔE2000 de 0,16 e 0,22 com a câmera padrão do Chromium e SSIM de 0,9865 depois do `applied` (decisão 8). Faltam o iPhone do usuário (ΔE abaixo de 2 em toda conexão) e a verificação da vcam. |
-| 3.2 | Para revisão | Nenhum valor por modelo, marca ou aparelho no código do agente. A correção só depende das amostras da conexão. |
+| 3.1 | Parcial (agent) | Os 30 testes da correção pela câmera acima, mais o fluxo WebRTC real em `default` com a convenção `standard`. Custo por quadro igual ao de só faixa. Faltam o iPhone do usuário (`applied` com `bt709` e `apple` na frontal e na traseira), a comparação lado a lado com ΔE abaixo de 2 contra o print da tela e o e2e da web. |
+| 3.2 | Para revisão | Nenhum valor por modelo ou aparelho no código do agente. A única regra por plataforma é a convenção de exibição da decisão 10 (`apple` ou `standard` pelo `User-Agent`). |
 | 3.3 | Parcial (agent) | Lado do agente coberto pelos 19 testes acima: remontagem (inclusive pedaço faltando e tamanho errado), prazo de 10 s, limite de 5 comparações, relatório com diferença conhecida entre imagens sintéticas, rota `404` sem a variável, mais o print. Faltam o e2e da web e o uso pelo usuário no iPhone. |
 | 4 | Parcial (agent) | Teste com relógio controlado: congelado em 2,8 s, preto (Y=16, UV=128) em 3,2 s, e o mesmo quadro enviado ao sink em cada tick a 30 fps durante todo o intervalo. Falta a verificação no Frame Server, que depende da DLL nova da vcam. |
 | 5 | Verificado | Laboratório a 4,9 Mbit/s com um pacote e o reenvio perdidos: o vídeo volta em 0,57 a 0,60 s (antes, 3,86 a 3,92 s). O teste falha acima de 1 s. |
@@ -175,7 +203,7 @@ Commits:
 | 8 | Parcial (agent) | O lado do agente está coberto. Teste com DataChannel real: `set_quality_preset` do celular gera eco, e o `PUT` do console chega ao celular como `quality_preset`. O teto do REMB por opção foi verificado nas três opções (o primeiro REMB fica em pelo menos 90% do teto, e nenhum passa dele). O e2e de menos de 300 ms e da taxa em até 5 s é da web. |
 | 9 | Verificado | Com a saída redirecionada, sai só a orientação do console e nenhum `#t=`, e a janela de pareamento nem é aberta (teste). |
 | 10 | Parcial (agent) | O benchmark desta máquina está acima. As capacidades e os codecs do iPhone dependem da web e do usuário. |
-| 11 (agent) | Parcial | Em `agent/`, no estado final com o merge: `ruff check` e `ruff format --check` limpos, `pyright` com 0 erros, `pytest` com 223 passed e 1 skipped no estado de `3e581ab` (221 em duas rodadas seguidas em `71016d0`) (o teste da DLL real, opcional). Versão 0.6.0. CI não verificado. |
+| 11 (agent) | Parcial | Em `agent/`, no estado final com o merge: `ruff check` e `ruff format --check` limpos, `pyright` com 0 erros, `pytest` com 247 passed e 1 skipped no estado de `24b8263` (o teste da DLL real, opcional). Versão 0.6.0. CI não verificado. |
 
 ## 3. Decisões e pontos para registrar
 
