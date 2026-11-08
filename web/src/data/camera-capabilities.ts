@@ -7,6 +7,21 @@ export interface CameraCapabilitiesMessage {
   frameRate: number | null;
   facingMode: Facing | null;
   codecs: string[];
+  colorSpace: CameraColorSpace | null;
+}
+
+export interface CameraColorSpace {
+  primaries: string | null;
+  transfer: string | null;
+  matrix: string | null;
+  fullRange: boolean | null;
+}
+
+export interface DeclaredColorSpace {
+  primaries?: string | null;
+  transfer?: string | null;
+  matrix?: string | null;
+  fullRange?: boolean | null;
 }
 
 interface Range {
@@ -26,6 +41,7 @@ export function cameraCapabilitiesMessage(
   capabilities: TrackCapabilities,
   facingMode: string | undefined,
   codecMimeTypes: readonly string[],
+  colorSpace: DeclaredColorSpace | null,
 ): CameraCapabilitiesMessage {
   return {
     type: "camera_capabilities",
@@ -34,6 +50,16 @@ export function cameraCapabilitiesMessage(
     frameRate: capabilities.frameRate?.max ?? null,
     facingMode: FACINGS.find((facing) => facing === facingMode) ?? null,
     codecs: mediaCodecs(codecMimeTypes),
+    colorSpace: colorSpace && cameraColorSpace(colorSpace),
+  };
+}
+
+function cameraColorSpace({ primaries, transfer, matrix, fullRange }: DeclaredColorSpace): CameraColorSpace {
+  return {
+    primaries: primaries ?? null,
+    transfer: transfer ?? null,
+    matrix: matrix ?? null,
+    fullRange: fullRange ?? null,
   };
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  colorCalibrationKey,
+  colorCorrectionKey,
   comparisonAvailable,
   cpuPercentValue,
   secondsUntil,
@@ -30,7 +30,7 @@ describe("console format", () => {
       framesScaled: 0,
       colorRange: "full",
       colorMatrix: "unspecified",
-      colorCalibration: { state: "measuring", deltaE: null },
+      colorCorrection: { state: "default", transfer: null, display: "standard" },
     };
 
     expect(videoFormatValues(video)).toEqual({ width: "1920", height: "1080", fps: "29.9", bitrate: "9.8" });
@@ -46,13 +46,14 @@ describe("console format", () => {
     expect(decodeURIComponent(svgDataUrl(svg))).toBe(`data:image/svg+xml;charset=utf-8,${svg}`);
   });
 
-  it("color calibration shows matched only when it was applied", () => {
-    expect(colorCalibrationKey({ state: "applied", deltaE: 1.2 })).toBe("console.color_matched");
+  it("color correction shows matched when it was applied", () => {
+    expect(colorCorrectionKey({ state: "applied", transfer: "bt709", display: "apple" })).toBe("console.color_matched");
   });
 
-  it("color calibration shows default while measuring or when not applied", () => {
-    expect(colorCalibrationKey({ state: "measuring", deltaE: null })).toBe("console.color_default");
-    expect(colorCalibrationKey({ state: "default", deltaE: 2.4 })).toBe("console.color_default");
+  it("color correction shows default when only the range is adjusted", () => {
+    expect(colorCorrectionKey({ state: "default", transfer: "smpte170m", display: "standard" })).toBe(
+      "console.color_default",
+    );
   });
 
   it("comparison is offered only with dev tools on and a live session", () => {

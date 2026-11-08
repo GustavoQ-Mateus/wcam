@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, createComparison, fetchComparison, uploadComparisonImage } from "../data/api-client";
 import type { Comparison } from "../data/contract";
-import { captureWcamFrame } from "../media/wcam-camera";
+import { openWcamCamera, WcamCameraError } from "../media/wcam-camera";
 
 export type ComparisonView =
   | { kind: "idle" }
   | { kind: "pending" }
   | { kind: "failed"; reason: string }
-  | { kind: "ready"; comparison: Comparison; pcImageUrl: string | null; screen: ScreenUpload };
+  | { kind: "ready"; comparison: Comparison; pcImageUrl: string; screen: ScreenUpload };
 
 export type ScreenUpload = { kind: "none" } | { kind: "sending" } | { kind: "failed"; code: string };
 
@@ -122,15 +122,16 @@ export function useComparison(): ComparisonControls {
   return { view, capture, addScreen };
 }
 
-async function runComparison(isCurrent: () => boolean): Promise<{ comparison: Comparison; pcImageUrl: string | null }> {
-  const frame = captureWcamFrame().catch(() => null);
-  const { id } = await createComparison();
-  const pcFrame = await frame;
-  if (pcFrame) {
+async function runComparison(isCurrent: () => boolean): Promise<{ comparison: Comparison; pcImageUrl: string }> {
+  const camera = await openWcamCamera();
+  try {
+    const [{ id }, pcFrame] = await Promise.all([createComparison(), camera.capture()]);
     await uploadComparisonImage(id, "pc", pcFrame.png);
+    const comparison = await waitFor(id, isCurrent, (current) => current.state !== "pending");
+    return { comparison, pcImageUrl: URL.createObjectURL(pcFrame.png) };
+  } finally {
+    camera.close();
   }
-  const comparison = await waitFor(id, isCurrent, (current) => current.state !== "pending");
-  return { comparison, pcImageUrl: pcFrame ? URL.createObjectURL(pcFrame.png) : null };
 }
 
 async function sendScreen(id: string, file: File, isCurrent: () => boolean): Promise<Comparison> {
@@ -168,5 +169,8 @@ function revoke(url: string | null): void {
 }
 
 function errorCodeOf(error: unknown): string {
+  if (error instanceof WcamCameraError) {
+    return error.problem;
+  }
   return error instanceof ApiError ? error.code : UNKNOWN_ERROR_CODE;
 }

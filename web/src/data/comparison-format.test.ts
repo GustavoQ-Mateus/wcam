@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { captureTime, differenceLines, gridCells, reportDataUrl } from "./comparison-format";
+import { captureTime, comparisonFailureKey, differenceLines, gridCells, reportDataUrl } from "./comparison-format";
 import type { ImageDifference } from "./contract";
 
 const DIFFERENCE: ImageDifference = {
@@ -56,5 +56,37 @@ describe("reportDataUrl", () => {
     const url = reportDataUrl({ id: "c1" });
 
     expect(JSON.parse(decodeURIComponent(url.slice(url.indexOf(",") + 1)))).toEqual({ id: "c1" });
+  });
+});
+
+describe("comparisonFailureKey", () => {
+  it("turns each failure reason of the contract into its own text", () => {
+    const reasons = ["phone_timeout", "phone_invalid", "pc_missing", "session_ended", "no_live_session"];
+
+    expect(reasons.map(comparisonFailureKey)).toEqual([
+      "console.dev_compare_phone_timeout",
+      "console.dev_compare_phone_invalid",
+      "console.dev_compare_pc_missing",
+      "console.dev_compare_session_ended",
+      "console.dev_compare_not_live",
+    ]);
+  });
+
+  it("turns each camera problem on the computer into its own text", () => {
+    const problems = ["camera_denied", "camera_missing", "camera_busy", "camera_failed"];
+
+    expect(problems.map(comparisonFailureKey)).toEqual([
+      "console.dev_compare_camera_denied",
+      "console.dev_compare_camera_missing",
+      "console.dev_compare_camera_busy",
+      "console.dev_compare_camera_failed",
+    ]);
+  });
+
+  it("falls back to the shared error text and never shows the raw code", () => {
+    expect([comparisonFailureKey("network_error"), comparisonFailureKey("something_new")]).toEqual([
+      "errors.network_error",
+      "errors.unknown",
+    ]);
   });
 });
