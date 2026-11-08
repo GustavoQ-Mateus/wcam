@@ -10,6 +10,7 @@ interface SessionPanelProps {
   onConfirm: () => void;
   onReject: () => void;
   onDisconnect: () => void;
+  onCompare?: (() => void) | undefined;
 }
 
 const CODE_SEPARATOR = "-";
@@ -19,7 +20,7 @@ const TITLE_KEYS: Readonly<Record<Session["state"], MessageKey>> = {
   live: "console.state_live",
 };
 
-export function SessionPanel({ session, onConfirm, onReject, onDisconnect }: SessionPanelProps) {
+export function SessionPanel({ session, onConfirm, onReject, onDisconnect, onCompare }: SessionPanelProps) {
   const awaiting = session.state === "awaiting_confirmation";
   return (
     <section className={styles.panel} data-state={session.state}>
@@ -65,9 +66,16 @@ export function SessionPanel({ session, onConfirm, onReject, onDisconnect }: Ses
             </ConsoleButton>
           </>
         ) : (
-          <ConsoleButton variant="secondary" onClick={onDisconnect}>
-            {t("console.disconnect")}
-          </ConsoleButton>
+          <>
+            <ConsoleButton variant="secondary" onClick={onDisconnect}>
+              {t("console.disconnect")}
+            </ConsoleButton>
+            {onCompare && (
+              <ConsoleButton variant="secondary" onClick={onCompare}>
+                {t("console.dev_compare")}
+              </ConsoleButton>
+            )}
+          </>
         )}
       </div>
     </section>
