@@ -1,5 +1,5 @@
 import type { ImageDifference } from "./contract";
-import type { MessageKey } from "./i18n";
+import { errorMessageKey, type MessageKey } from "./i18n";
 
 export interface DifferenceLine {
   key: MessageKey;
@@ -13,6 +13,18 @@ export interface GridCell {
 
 export const VISIBLE_DELTA_E = 2;
 
+const FAILURE_KEYS: Readonly<Record<string, MessageKey>> = {
+  camera_denied: "console.dev_compare_camera_denied",
+  camera_missing: "console.dev_compare_camera_missing",
+  camera_busy: "console.dev_compare_camera_busy",
+  camera_failed: "console.dev_compare_camera_failed",
+  phone_timeout: "console.dev_compare_phone_timeout",
+  phone_invalid: "console.dev_compare_phone_invalid",
+  pc_missing: "console.dev_compare_pc_missing",
+  timeout: "console.dev_compare_pc_missing",
+  session_ended: "console.dev_compare_session_ended",
+  no_live_session: "console.dev_compare_not_live",
+};
 const DELTA_E_DECIMALS = 1;
 const TONE_DECIMALS = 1;
 const CHROMA_DECIMALS = 2;
@@ -43,6 +55,10 @@ export function gridCells(grid: ImageDifference["grid"]): GridCell[] {
     const text = value.toFixed(DELTA_E_DECIMALS);
     return { text, overLimit: Number(text) > VISIBLE_DELTA_E };
   });
+}
+
+export function comparisonFailureKey(reason: string): MessageKey {
+  return FAILURE_KEYS[reason] ?? errorMessageKey(reason);
 }
 
 export function captureTime(isoTime: string): string {

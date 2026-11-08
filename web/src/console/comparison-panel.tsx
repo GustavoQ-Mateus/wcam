@@ -1,5 +1,5 @@
 import { comparisonImageUrl } from "../data/api-client";
-import { captureTime, reportDataUrl } from "../data/comparison-format";
+import { captureTime, comparisonFailureKey, reportDataUrl } from "../data/comparison-format";
 import type { Comparison } from "../data/contract";
 import { errorMessageKey } from "../data/i18n";
 import { t } from "../data/language";
@@ -29,7 +29,7 @@ export function ComparisonPanel({ view, onAddScreen }: ComparisonPanelProps) {
           {t("console.dev_compare_pending")}
         </p>
       )}
-      {view.kind === "failed" && <FailedLine text={t("console.dev_compare_failed", { reason: view.reason })} />}
+      {view.kind === "failed" && <FailedLine text={t(comparisonFailureKey(view.reason))} />}
       {view.kind === "ready" && (
         <ReadyComparison
           comparison={view.comparison}
@@ -44,7 +44,7 @@ export function ComparisonPanel({ view, onAddScreen }: ComparisonPanelProps) {
 
 interface ReadyComparisonProps {
   comparison: Comparison;
-  pcImageUrl: string | null;
+  pcImageUrl: string;
   screen: ScreenUpload;
   onAddScreen: (file: File) => void;
 }
@@ -68,7 +68,7 @@ function ReadyComparison({ comparison, pcImageUrl, screen, onAddScreen }: ReadyC
             height={phone.height}
           />
         )}
-        {pc && pcImageUrl && (
+        {pc && (
           <ComparisonImage
             label={pcName}
             time={captureTime(pc.receivedAt)}
@@ -101,11 +101,9 @@ function ReadyComparison({ comparison, pcImageUrl, screen, onAddScreen }: ReadyC
         <DownloadLink href={phoneUrl} fileName={`wcam-${id}-phone.png`}>
           {t("console.dev_compare_download_phone")}
         </DownloadLink>
-        {pcImageUrl && (
-          <DownloadLink href={pcImageUrl} fileName={`wcam-${id}-pc.png`}>
-            {t("console.dev_compare_download_pc")}
-          </DownloadLink>
-        )}
+        <DownloadLink href={pcImageUrl} fileName={`wcam-${id}-pc.png`}>
+          {t("console.dev_compare_download_pc")}
+        </DownloadLink>
         {comparison.screen && (
           <DownloadLink href={screenUrl} fileName={`wcam-${id}-screen.png`}>
             {t("console.dev_compare_download_screen")}
