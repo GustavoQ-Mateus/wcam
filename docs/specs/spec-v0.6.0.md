@@ -1,6 +1,6 @@
 # Spec v0.6.0, Fidelidade de imagem
 
-Status: Aprovada (2026-11-06; §1.1 revista em 2026-11-08: correção de cor pela câmera)
+Status: Entregue (2026-11-08)
 Branch de integração: `feature/qualidade`
 Sessões: `agent`, `web`, `vcam`
 Referências: `docs/planejamento.md` §1 (CA-2), §5.4; ADRs 0011 e 0012; changelog da v0.5.0 (diagnóstico da faixa de cor); diagnóstico da reunião de 2026-11-04 (imagem preta por alguns segundos)
@@ -187,5 +187,36 @@ Calibração: `console.color_matched` ("Cor igual à do celular" / "Color matche
 9. Ferramenta de comparação lado a lado (§6) entra na v0.6.0, aprovada pelo usuário em 2026-11-07, porque é o instrumento de verificação do CA 3.
 10. Correção de cor pela câmera (§1.1), aprovada pelo usuário em 2026-11-08, substitui a calibração por imagem da decisão 5. Inclui a regra por plataforma da convenção de exibição (Apple com a curva 1,961 do ColorSync; os demais com sRGB), aprovada explicitamente pelo usuário como exceção ao CA 3.2. App nativo no celular descartado pelo usuário em 2026-11-08.
 11. CA 7 aceito com a reunião de 2026-11-06 no Google Meet (navegador), não no Teams, por decisão do usuário em 2026-11-08: sessão `live` das 15:40:19 às 16:28:20 UTC (48 min) na opção Máxima, mediana de 18,5 Mbit/s, nenhum episódio `silence` ou `stalled` e dois pretos de 1,4 s por celular em retrato (`portrait`), o comportamento definido. O Teams desktop foi usado pelo usuário em outras reuniões, com bom funcionamento relatado, sem registro de duração.
+12. CA 3.1 aceito pelo usuário em 2026-11-08 com ΔE2000 médio de 2,69 entre o print do iPhone e a câmera WCam (mediana 2,10, saturação 0,98), acima do limite de 2, pelas condições da medição (print 24 s depois da captura, LED colorido do microfone mudando a luz da cena, pequeno movimento) e pela aprovação visual dele (CA 3). As regiões sem LED nem rosto ficaram entre 1,2 e 2,3.
 
 ## Changelog
+
+### 0.6.0, 2026-11-08
+
+Entregue pelas sessões `agent` (`feature/qualidade-agent`), `web` (`feature/qualidade-web`) e `vcam` (`feature/qualidade-vcam`), integradas em `feature/qualidade`. Relatórios em `docs/relatorio-v0.6.0-agent.md`, `docs/relatorio-v0.6.0-web.md` e `docs/relatorio-v0.6.0-vcam.md`. A §1.1 passou por duas versões: calibração por amostras da imagem (2026-11-06) e correção pela configuração de cor declarada pela câmera (2026-11-08, decisão 10), depois que a primeira tirou 19% de saturação da WCam.
+
+| CA | Resultado | Evidência |
+|---|---|---|
+| 1 | Verificado | Tabela de faixa testada. iPhone do usuário: SPS com `video_full_range_flag` 1 e matriz, primária e transferência não especificadas; status `colorRange` `full`, `colorMatrix` `unspecified`; `VideoFrame.colorSpace` `bt709` em faixa cheia nas câmeras frontal e traseira; nenhum Y acima de 0 vira 16. Nenhum Android testado. |
+| 2 | Verificado | WCam declara faixa 16 a 235, matriz, primárias e transferência BT.709, escolhidos pela medição de barras de cor no app Câmera (exato) e no Chrome (com GPU exato; sem GPU, U para B limitado a 2,0 pelo libyuv). |
+| 3 | Verificado | Aprovação visual do usuário em 2026-11-08, com a comparação lado a lado. |
+| 3.1 | Aceito com ressalva | Correção `applied` com `bt709` e convenção `apple` em toda conexão. Câmera WCam contra o quadro do celular: ΔE2000 1,80 (capturas a 10 ms). Print da tela contra a WCam: 2,69 (mediana 2,10, saturação 0,98), contra 4,43 e saturação 0,78 com a calibração por imagem. Decisão 12. |
+| 3.2 | Verificado | Revisão do orquestrador: a única regra por plataforma é a convenção de exibição (iPhone, iPad, Safari no macOS), decisão 10. |
+| 3.3 | Verificado | Comparação lado a lado testada (agent e e2e, inclusive permissão de câmera negada) e usada pelo usuário duas vezes no iPhone. |
+| 4 | Verificado | Frame Server lido no Chrome: último quadro repetido por 3,00, 3,03 e 3,03 s e então preto (RGB 0,0,0, Y=16, UV=128); `source` `phone`, `frozen` e `placeholder` nos tempos do contrato. |
+| 5 | Verificado | Laboratório com pacote e reenvio perdidos: de 3,9 s para 0,55 a 0,60 s sem quadro a 4,9 Mbit/s. |
+| 6 | Verificado | `episodes.log` com todos os campos; teste sem token, URL de pareamento ou IP. |
+| 7 | Verificado, com ressalva | Reunião de 48 min no Google Meet (2026-11-06) na Máxima, sem `silence` nem `stalled`; dois pretos de 1,4 s por celular em retrato. Decisão 11 (Meet no lugar do Teams). |
+| 8 | Verificado | e2e: mudança da opção nos dois sentidos em menos de 300 ms; taxa em `light` abaixo de 5 500 kbps em até 5 s. Usado pelo usuário no iPhone. |
+| 9 | Verificado | Teste com saída redirecionada: nenhuma URL com `#t=`. |
+| 10 | Verificado | iPhone (frontal): 4032x3024, 60 fps, H264, H265, VP8, VP9 e AV1. Benchmark de decodificação nesta máquina (i5-8500): 1,8% em 720p30 a 12,4% em 4K60. |
+| 11 | Verificado | Estado final da branch (depois de `git merge origin/main`): ruff, format e pyright limpos, pytest 251 passados e 1 pulado (DLL real); web build, lint e Vitest 76; vcam build sem avisos, 96 testes e publish Native AOT sem avisos; e2e no compose 16 de 16, SSIM 0,9837 (mínimo 0,9830). Versão 0.6.0 nos três projetos. CI no PR. |
+| 12 | Verificado | Contrato 0.6.0 e emenda do CA-2 no planejamento registrados antes do código, e revistos antes de cada mudança. |
+
+Achados registrados:
+- Seletor de qualidade: só a taxa de dados muda nesta versão, e o usuário não viu diferença na imagem; o pedido real é escolher resolução e fps até o que a câmera captura. Vai para a v0.7.0. O painel de qualidade do console foi achado "feio" pelo usuário; será refeito na v0.7.0.
+- Celular em retrato mostra preto até voltar à paisagem; a v0.7.0 avalia mostrar a imagem com faixas laterais.
+- Falha de segurança (vídeo decodificado antes do Confirmar) planejada para a v0.8.0.
+- Textos de interface com "agente" (`console.status_running`, `errors.network_error`) ficam para a revisão de linguagem da v0.8.0.
+- O rótulo de versão do console mostra 0.5.0 quando o venv usa metadados antigos da instalação editável; o código é 0.6.0.
+- App nativo no celular descartado pelo usuário (2026-11-08).
