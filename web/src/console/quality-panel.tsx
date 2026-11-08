@@ -41,8 +41,10 @@ export function QualityPanel({ preset, onChoose }: QualityPanelProps) {
           </label>
         ))}
       </div>
-      <p className={styles.hint}>{t(qualityHintKey(preset))}</p>
-      <p className={styles.detail}>{t("quality.bitrate_limit", { mbps: String(maxBitrateMbps(preset)) })}</p>
+      <div className={styles.explanation}>
+        <p className={styles.hint}>{t(qualityHintKey(preset))}</p>
+        <p className={styles.detail}>{t("quality.bitrate_limit", { mbps: String(maxBitrateMbps(preset)) })}</p>
+      </div>
     </section>
   );
 }
