@@ -109,6 +109,42 @@ O tempo de parede por quadro fica abaixo do tempo de CPU por quadro porque o FFm
 - SSIM com a calibração (decisão 8 da spec): o SSIM mede perda de detalhe, não a correção de cor, que é intencional. Em `applied`, a referência passa pela mesma tabela de Y aplicada ao vídeo; em `measuring` e `default`, continua a referência original. Teste: uma tabela conhecida aplicada ao vídeo e à referência dá SSIM 1,0, e o pipeline reinicia a medição com a tabela de Y da calibração em `applied` e sem tabela em `default`.
 - e2e da web na integração `5eabd76` (14 de 14): SSIM de 0,9865 depois do `applied`, contra a referência corrigida, a 29 fps; ΔE2000 de 0,16 e 0,22 com a câmera falsa padrão do Chromium. Antes da decisão 8, o SSIM contra a referência original era 0,985 em `measuring` e 0,973 depois do `applied`. A queda para cerca de 6 fps vista numa rodada anterior não se repetiu.
 
+### Teste final no iPhone (trace de 2026-11-07)
+- 15 amostras em três medições, todas com `colorRange` full, `display-p3` e sem espelho.
+  - 00:44:52 a 00:44:56: correlação de 0,992 a 0,993, `applied`.
+  - 00:45:40 a 00:45:44, provavelmente a troca de câmera: correlação de 0,43 a 0,86 em quatro amostras de cena quase lisa; com só 2 válidas, a medição não fechou.
+  - 00:46:08 a 00:46:12: correlação de 0,92 a 0,99, `applied` com `deltaE` 1,01.
+- Por amostra, nas células lisas, com a saída lida como o Windows lê (709 limitada em sRGB): ΔE2000 de 1,2 a 1,9 só com a faixa e de 0,8 a 1,6 com a tabela aplicada. Lido como BT.601, quase igual, então a matriz não explica a diferença.
+- A tabela aplicada clareia os meios-tons em 9 a 11 códigos e reduz a saturação em cerca de 19% (ganho de croma 0,81). Mesmo assim, o usuário viu a WCam "bem diferente" do celular. Como a saída bate com o canvas em ΔE de cerca de 1, a diferença está depois do agente ou fora do canvas. A redução de saturação sugere que o canvas do Safari sai menos saturado que a tela do iPhone. Isso motivou a comparação lado a lado.
+
+### Comparação lado a lado (adendo de 2026-11-07)
+- `WCAM_DEV_TOOLS` na configuração. Sem a variável, as rotas de `/api/dev` respondem `404 not_found`, `devTools` vem `false` no status e as mensagens de imagem do celular são ignoradas com log. Com ela, `devTools` vem `true`.
+- `POST /api/dev/comparisons` exige sessão `live` (`409 no_live_session`), cria a comparação e manda `snapshot_request` ao celular.
+  - `snapshot_begin` e `snapshot_chunk` são remontados por índice, em qualquer ordem. Tamanho declarado maior que os pedaços permitem, índice fora da faixa ou tamanho final diferente dão `failed` com `phone_invalid`.
+  - Os prazos são de 10 s a partir do pedido: `phone_timeout` sem nada do celular, `phone_invalid` com pedaço faltando e `pc_missing` sem a imagem do PC. O fim da sessão dá `session_ended`.
+  - Ficam só as últimas 5 comparações, em memória; nada vai para o disco.
+- `PUT .../pc` aceita PNG de até 20 MB; o que não é PNG dá `422 invalid_request`. Com as duas imagens, o relatório é calculado fora do event loop.
+  - Mesma redução da calibração para 320x180 por média de área e casamento por correlação de luminância, com e sem espelho.
+  - Células de detalhe fino excluídas das duas imagens, como na calibração.
+  - Resultado: ΔE2000 médio, mediano e p90, ΔL*, razão de croma, desvio de matiz e grade 8x4.
+  - A imagem do celular é lida no seu `colorSpace` e a do PC em sRGB.
+  - `calibration` traz o estado, o `deltaE` e as tabelas em uso (as de faixa quando não há calibração, identidade em faixa limitada).
+- Print da tela do celular, por `PUT .../screen` (só com a comparação `ready`; antes, `409 comparison_not_ready`) ou pelo DataChannel (`screenshot_begin` e `screenshot_chunk`, guardado se a comparação ainda estiver `pending` e aplicado quando ela fica `ready`).
+  - O espaço de cor vem do perfil ICC do PNG (`iCCP` com "Display P3" vira `display-p3`; `sRGB`, outro perfil ou nenhum vira `srgb`).
+  - O vídeo é localizado no print por correlação normalizada (FFT), com busca de escala e posição em duas etapas e com e sem espelho, e recortado.
+  - `screenDifference.phone` compara o print com o canvas e `screenDifference.pc`, o print com a imagem do PC, no formato de `difference` (o print é a referência).
+  - Downloads: `phone.png` e `screen.png`.
+- PNG decodificado pelo PyAV, que já estava no projeto; nenhuma dependência nova.
+- Testes (19):
+  - remontagem fora de ordem com relatório `ready`; pedaço faltando; tamanho errado;
+  - `phone_timeout`, `pc_missing`, limite de 5 e `session_ended`;
+  - PNG inválido recusado;
+  - escurecimento conhecido de 20 códigos medido (ΔL negativo, ΔE acima de 3); espelho encontrado;
+  - espaço de cor pelo ICC; print alinhado sob a interface do `/cam` e espelhado (ΔE abaixo de 1);
+  - print antes do `ready` recusado; print enviado relatado contra canvas e PC; print pelo DataChannel esperando a comparação `pending`;
+  - comparação só em `live`, com o `snapshot_request` enviado; imagens ignoradas sem a variável;
+  - rotas `404` sem a variável e relatório completo com ela.
+
 ### Versão
 0.6.0 no `pyproject.toml` e no `uv.lock`; `wcam --version` confirma 0.6.0.
 
@@ -132,6 +168,7 @@ Commits:
 | 1 | Parcial (agent) | Testes de unidade: a tabela leva 0 a 16 e 255 a 235, e o croma 128 fica 128 (0 vira 16, 255 vira 240). Todo Y acima de 0 sai acima de 16. Faixa limitada e não declarada saem byte a byte iguais. Faixa cheia com letterbox é convertida uma vez só. Um quadro codificado em `yuvj420p` pelo libx264 e decodificado pelo `h264` sai `yuvj420p`, `color_range` 2, matriz não declarada (o mesmo perfil medido no iPhone) e é reconhecido como faixa cheia. `colorRange` e `colorMatrix` aparecem no status (teste com WebRTC real). Faltam o quadro real do iPhone em pouca luz e os valores declarados por cada aparelho. |
 | 3.1 | Parcial (agent) | Testes: o ajuste recupera curva e saturação conhecidas (erro abaixo de 0,03 em cada ponto, ΔE abaixo de 1); amostra de outra cena é descartada; sem 3 amostras válidas o estado é `default` e a saída é a tabela de faixa byte a byte; ao recomeçar, nada fica guardado; `color_sample` antes do `live` é ignorado; o trace grava o formato combinado. No laboratório, as duas conexões chegam a `applied` com ΔE2000 de 0,17. e2e da web (14 de 14): ΔE2000 de 0,16 e 0,22 com a câmera padrão do Chromium e SSIM de 0,9865 depois do `applied` (decisão 8). Faltam o iPhone do usuário (ΔE abaixo de 2 em toda conexão) e a verificação da vcam. |
 | 3.2 | Para revisão | Nenhum valor por modelo, marca ou aparelho no código do agente. A correção só depende das amostras da conexão. |
+| 3.3 | Parcial (agent) | Lado do agente coberto pelos 19 testes acima: remontagem (inclusive pedaço faltando e tamanho errado), prazo de 10 s, limite de 5 comparações, relatório com diferença conhecida entre imagens sintéticas, rota `404` sem a variável, mais o print. Faltam o e2e da web e o uso pelo usuário no iPhone. |
 | 4 | Parcial (agent) | Teste com relógio controlado: congelado em 2,8 s, preto (Y=16, UV=128) em 3,2 s, e o mesmo quadro enviado ao sink em cada tick a 30 fps durante todo o intervalo. Falta a verificação no Frame Server, que depende da DLL nova da vcam. |
 | 5 | Verificado | Laboratório a 4,9 Mbit/s com um pacote e o reenvio perdidos: o vídeo volta em 0,57 a 0,60 s (antes, 3,86 a 3,92 s). O teste falha acima de 1 s. |
 | 6 | Verificado (agent) | No laboratório, a trava gera uma linha `stalled`/`frozen` com `pliSent` de pelo menos 1 e `rtpBytes` maior que 0. O teste confere que o arquivo não contém o IP do emissor, `#t=` nem `https://`. Testes de unidade cobrem os campos, as causas, as ações, o fim da sessão e uma linha por episódio no arquivo. |
@@ -172,5 +209,6 @@ Nenhuma nova. Pydantic, numpy, PyAV, psutil e aiortc já estavam no projeto, e o
    - 10 min na Máxima sem episódio no Wi-Fi dele (spec §3);
    - reunião de 30 min no novo Teams, com o `episodes.log` guardado (CA 7);
    - capacidades do iPhone (CA 10).
-   - calibração no iPhone: ΔE2000 antes e depois em cada conexão, com troca de câmera (CA 3.1).
+   - calibração no iPhone: ΔE2000 antes e depois em cada conexão, com troca de câmera (CA 3.1);
+   - comparação lado a lado no iPhone, com e sem print da tela (CA 3.3).
 2. CI na integração.
