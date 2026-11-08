@@ -24,6 +24,7 @@ export interface Publisher {
 
 export interface SnapshotRequest {
   id: string;
+  receivedAt: number;
 }
 
 interface PublisherSession {
@@ -183,7 +184,7 @@ function startSession(
     }
     if (message.type === "snapshot_request") {
       if (isActive()) {
-        onSnapshotRequest({ id: message.id });
+        onSnapshotRequest({ id: message.id, receivedAt: performance.now() });
       }
       return;
     }

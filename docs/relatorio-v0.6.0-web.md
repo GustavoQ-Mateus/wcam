@@ -104,6 +104,8 @@ Nenhuma.
 
 ## 9. Adendo: calibração de cor (spec §1.1, CA 3.1)
 
+**Substituída pela correção pela câmera (decisão 10, §11).** O código desta seção saiu do produto; o texto fica como registro.
+
 Integração: `origin/feature/qualidade` em 8e40b78, com o agent da calibração.
 
 O que foi feito:
@@ -216,4 +218,44 @@ Borda de baixo do `/cam`, com o aviso de tela acesa forçado e o botão do print
 Sem sobreposição. Nas telas mais largas que 16:9, o vídeo fica com faixas pretas, e as pílulas em `--scrim` dos controles, inclusive o botão do print, ficam quase sem contorno sobre o preto, como já acontecia com o trilho. Fica para a validação visual.
 
 **Pendente:** uso pelo usuário no iPhone, com a WCam real no PC, antes de aprovar o CA 3.
+
+## 11. Adendo: correção de cor pela câmera e falhas da comparação (spec §1.1, §6, CA 3.1 e 3.3, decisão 10)
+
+Integração: `origin/feature/qualidade` em 455db77, com o agent da correção pela câmera.
+
+Correção pela câmera:
+- Sai o envio de `color_sample`: o hook, a montagem da mensagem e os testes. O `toBase64` foi para `data/base64.ts`, com Vitest, e o tipo do canvas para `data/snapshot.ts`. A `sendControl` pública do publisher saiu.
+- `camera_capabilities` leva `colorSpace` (`data/camera-capabilities.ts`, com Vitest; campos ausentes viram `null`).
+- A leitura fica em `media/camera-capabilities.ts`:
+  - espera o `<video>` do visor mostrar a faixa atual, até 2 s;
+  - faz `new VideoFrame(video)`, com `MediaStreamTrackProcessor` num clone da faixa como alternativa;
+  - devolve `null` sem `VideoFrame` e sempre chama `frame.close()`.
+- A mensagem sai quando o canal abre e a cada troca de câmera, e só se a faixa ainda for a mesma quando a leitura termina.
+- Console: `colorCorrection` com `console.color_matched` em `applied` e `console.color_default` nos outros casos; `correction` no tipo da comparação.
+- e2e: `color-correction.spec.ts` substitui o `color-calibration.spec.ts`. O `quality.spec` espera a correção existir (`cameraCapabilities` recebido) antes de contar os quadros.
+
+Falhas da comparação (bug do teste de 2026-11-07, "missing" na tela):
+- A câmera WCam abre ANTES do `POST` (`openWcamCamera`): permissão resolvida, label "WCam" achado depois do primeiro `getUserMedia`, primeiro quadro recebido. Só então o `POST` e a captura do quadro saem juntos, seguidos do `PUT .../pc`. A câmera fecha no fim.
+- Se a câmera não abre, a comparação não é criada:
+  - NotAllowedError, SecurityError ou página sem `mediaDevices` dão `camera_denied`;
+  - NotFoundError, OverconstrainedError ou label ausente dão `camera_missing`;
+  - NotReadableError ou AbortError dão `camera_busy`;
+  - qualquer outro erro dá `camera_failed`.
+- Cada motivo vira um texto próprio (`comparisonFailureKey`, com Vitest): os `reason` do contrato, `no_live_session` e os problemas da câmera. Qualquer outro código cai em `errors.<code>` ou `errors.unknown`. `console.dev_compare_failed` saiu.
+- e2e novo: com `getUserMedia` rejeitando com NotAllowedError, o alerta mostra `console.dev_compare_camera_denied`, e o celular não recebe `snapshot_request` (o botão do print não aparece).
+
+E2E no compose contra 455db77, sem portas publicadas: 16 passaram, cerca de 1,0 min. Vitest 73.
+
+| Medida | Valor |
+|---|---|
+| Câmera falsa padrão, `colorSpace` declarado | primaries, transfer e matrix `smpte170m`, `fullRange` false |
+| Correção com a câmera falsa padrão | `default`, transfer `smpte170m`, display `standard` |
+| Comparação | as duas imagens, os três downloads e o print do celular em 8,1 s de teste |
+| Comparação com permissão negada | texto `console.dev_compare_camera_denied`, nenhuma comparação criada |
+| Opção de qualidade, celular para console e console para celular | abaixo de 300 ms |
+| Taxa em `balanced` e depois de `light` | 7 633 e 4 927 kbps |
+| SSIM (referência y4m) | 0,9837, mínimo 0,9831, 34 quadros, 30,1 fps |
+| Correção com a referência y4m | `default`, transfer `null`: o Chromium não declara transferência para y4m, o que é esperado (orquestrador) |
+
+**Pendente:** o teste manual do usuário no iPhone: a correção em `applied` com `bt709` e `apple`, e a comparação com a câmera WCam real.
 

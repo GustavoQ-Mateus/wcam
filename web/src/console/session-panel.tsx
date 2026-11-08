@@ -1,5 +1,6 @@
+import type { CameraColorSpace } from "../data/camera-capabilities";
 import type { Session } from "../data/contract";
-import { colorCorrectionKey, videoFormatValues } from "../data/console-format";
+import { cameraColorLine, colorCorrectionKey, videoFormatValues } from "../data/console-format";
 import type { MessageKey } from "../data/i18n";
 import { t } from "../data/language";
 import { ConsoleButton } from "./console-button";
@@ -49,6 +50,7 @@ export function SessionPanel({ session, onConfirm, onReject, onDisconnect, onCom
         </p>
       )}
       {session.video && <p className={styles.color}>{t(colorCorrectionKey(session.video.colorCorrection))}</p>}
+      {session.video && <p className={styles.color}>{cameraColorText(session.cameraCapabilities?.colorSpace)}</p>}
       {session.video && session.video.framesScaled > 0 && (
         <p className={styles.warning}>
           <span className={styles.warningMark} aria-hidden="true" />
@@ -80,4 +82,13 @@ export function SessionPanel({ session, onConfirm, onReject, onDisconnect, onCom
       </div>
     </section>
   );
+}
+
+function cameraColorText(colorSpace: CameraColorSpace | null | undefined): string {
+  const line = cameraColorLine(colorSpace);
+  if (line.kind === "unknown") {
+    return t("console.camera_color_unknown");
+  }
+  const { primaries, transfer, matrix, rangeKey } = line;
+  return t("console.camera_color", { primaries, transfer, matrix, range: t(rangeKey) });
 }

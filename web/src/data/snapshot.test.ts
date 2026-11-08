@@ -4,6 +4,7 @@ import { isPng, screenshotMessages, SNAPSHOT_CHUNK_BYTES, snapshotMessages, type
 const FRAME: Omit<SnapshotFrame, "png"> = {
   id: "c1",
   capturedAt: 1793991387130,
+  captureDelayMs: 12.5,
   colorSpace: "display-p3",
   width: 1920,
   height: 1080,

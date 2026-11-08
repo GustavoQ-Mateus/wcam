@@ -74,8 +74,13 @@ export function fetchComparison(id: string, signal?: AbortSignal): Promise<Compa
   return requestJson<Comparison>(comparisonPath(id), signal ? { signal } : {});
 }
 
-export function uploadComparisonImage(id: string, image: "pc" | "screen", png: Blob): Promise<null> {
-  return requestJson<null>(`${comparisonPath(id)}/${image}`, { method: "PUT", png });
+export function uploadComparisonPc(id: string, png: Blob, capturedAt: number): Promise<null> {
+  const query = new URLSearchParams({ capturedAt: String(Math.round(capturedAt)) });
+  return requestJson<null>(`${comparisonPath(id)}/pc?${query.toString()}`, { method: "PUT", png });
+}
+
+export function uploadComparisonScreen(id: string, png: Blob): Promise<null> {
+  return requestJson<null>(`${comparisonPath(id)}/screen`, { method: "PUT", png });
 }
 
 export function comparisonImageUrl(id: string, image: "phone" | "screen"): string {

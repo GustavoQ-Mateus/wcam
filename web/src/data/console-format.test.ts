@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  cameraColorLine,
   colorCorrectionKey,
   comparisonAvailable,
   cpuPercentValue,
@@ -67,5 +68,26 @@ describe("console format", () => {
       comparisonAvailable(status(true, null)),
       comparisonAvailable(null),
     ]).toEqual([true, false, false, false, false]);
+  });
+
+  it("camera color shows the color space as the browser names it, with the range", () => {
+    expect(cameraColorLine({ primaries: "bt709", transfer: "bt709", matrix: "bt709", fullRange: true })).toEqual({
+      kind: "declared",
+      primaries: "bt709",
+      transfer: "bt709",
+      matrix: "bt709",
+      rangeKey: "console.camera_color_full",
+    });
+    expect(
+      cameraColorLine({ primaries: "smpte170m", transfer: "smpte170m", matrix: "smpte170m", fullRange: false }),
+    ).toMatchObject({ rangeKey: "console.camera_color_limited" });
+  });
+
+  it("camera color is unknown when the browser reports nothing or leaves a field out", () => {
+    expect([
+      cameraColorLine(null),
+      cameraColorLine(undefined),
+      cameraColorLine({ primaries: "bt709", transfer: null, matrix: "bt709", fullRange: true }),
+    ]).toEqual([{ kind: "unknown" }, { kind: "unknown" }, { kind: "unknown" }]);
   });
 });
