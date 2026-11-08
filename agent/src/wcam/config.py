@@ -41,3 +41,4 @@ class Settings(BaseSettings):
     vcam_dll: Path = Field(default_factory=default_vcam_dll)
     quality_reference: Path | None = None
     color_trace_dir: Path | None = None
+    dev_tools: bool = False

@@ -19,3 +19,7 @@ class NoSessionAwaitingConfirmationError(AgentError):
 
 class NoActiveSessionError(AgentError):
     code = "no_active_session"
+
+
+class NoLiveSessionError(AgentError):
+    code = "no_live_session"

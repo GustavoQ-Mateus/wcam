@@ -101,6 +101,7 @@ class StatusResponse(CamelModel):
     quality_preset: QualityPreset
     process: ProcessBody
     quality: QualityBody | None
+    dev_tools: bool
 
 
 class QualityPresetRequest(CamelModel):
@@ -122,7 +123,7 @@ def iso_utc(moment: datetime) -> str:
     return moment.replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def status_response(status: Status, pipeline: FramePipeline, cpu_percent: float) -> StatusResponse:
+def status_response(status: Status, pipeline: FramePipeline, cpu_percent: float, dev_tools: bool) -> StatusResponse:
     expires_at = status.pairing_expires_at
     quality = pipeline.quality_report
     return StatusResponse(
@@ -133,6 +134,7 @@ def status_response(status: Status, pipeline: FramePipeline, cpu_percent: float)
         quality_preset=status.quality_preset,
         process=ProcessBody(cpu_percent=cpu_percent),
         quality=None if quality is None else quality_body(quality),
+        dev_tools=dev_tools,
     )
 
 

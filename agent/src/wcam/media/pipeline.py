@@ -90,6 +90,9 @@ class FramePipeline:
         self._last_phone = None
         self.color_calibrator.restart()
 
+    def color_tables(self) -> ColorTables | None:
+        return applied_tables(self.color_calibrator.correction, self.color_range)
+
     def phone_frame_age(self) -> float | None:
         if not self._phone_active or self._last_phone_at is None:
             return None
