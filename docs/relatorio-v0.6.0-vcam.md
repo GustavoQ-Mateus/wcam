@@ -1,6 +1,6 @@
 # Relatório v0.6.0, sessão vcam
 
-Status: em andamento (código e medição das barras prontos; falta o quadro real do iPhone no teste final)
+Status: em andamento (código, medições e verify prontos; falta o CA 4 no Frame Server)
 Branch: `feature/qualidade-vcam`
 Spec: `docs/specs/spec-v0.6.0.md` §1; ADRs 0011 e 0012; handoff `docs/handoff-v0.6.0.md`
 
@@ -73,11 +73,23 @@ Medição de 2026-11-06, Google Chrome 156.0.8078.80, coeficientes [offset, Y−
 - `color-sample-<n>.json`: a mensagem `color_sample` como chegou, mais `receivedAt`, `calibrationState`, `correlation`, `mirrored`, `colorRange` e `matchedFrame` (Y, U e V do quadro casado, do tamanho da amostra, antes de qualquer tabela).
 - `color-calibration.json`: `state`, `deltaE`, `rangeTables` (só faixa) e `appliedTables` (faixa composta com a calibração).
 
-Para cada amostra e cada modelo, o comando aplica as tabelas ao quadro casado (espelhado quando `mirrored`), passa o resultado pelo modelo do Chrome do `colorSpace` da amostra e calcula o ΔE2000 médio por pixel contra a amostra. Isso sai "antes" (`rangeTables`) e "depois" (`appliedTables`), por amostra e na média. Testes: amostra gerada do próprio quadro dá ΔE abaixo de 0,3; o espelho é respeitado; uma correção conhecida dá ΔE baixo depois e alto antes; display-p3 equivale a sRGB; e o JSON do agente é lido. Pendente: rodar com o trace real no teste final.
+Para cada amostra e cada modelo, o comando aplica as tabelas ao quadro casado (espelhado quando `mirrored`), passa o resultado pelo modelo do Chrome do `colorSpace` da amostra e calcula o ΔE2000 médio por pixel contra a amostra. Isso sai "antes" (`rangeTables`) e "depois" (`appliedTables`), por amostra e na média. Testes: amostra gerada do próprio quadro dá ΔE abaixo de 0,3; o espelho é respeitado; uma correção conhecida dá ΔE baixo depois e alto antes; display-p3 equivale a sRGB; e o JSON do agente é lido.
+
+Trace do teste final de 2026-11-07 (duas sessões, separadas pelo `receivedAt`; o agente publicou ΔE 1,23). ΔE2000 médio, antes e depois da calibração:
+
+| Sessão (amostras válidas) | Chrome com GPU | Chrome sem GPU |
+|---|---|---|
+| 22:32 (1 a 5) | 2,05 para 1,62 | 2,12 para 1,76 |
+| 21:45 a 21:46 (10 a 15) | 2,13 para 1,80 | 2,16 para 1,89 |
+
+- As amostras 6 a 9 ficaram fora: quadros pretos, três delas com correlação abaixo de 0,5. A média das 15 que o comando imprime (1,56 para 1,28) é puxada por elas.
+- Cena escura (L* entre 3,5 e 34), onde o ΔE2000 subestima diferenças visíveis.
+- Depois da calibração, o brilho casa, mas sobra um desvio de matiz (Δa* cerca de −0,7, Δb* cerca de +0,4), vindo do ganho de saturação de cerca de 1,04.
+- Limites do trace, passados à sessão agent: as amostras 1 a 5 de 21:44 foram sobrescritas pela sessão de 22:32 (a numeração recomeça); só existe o `color-calibration.json` de 22:32, então a sessão de 21:45 foi avaliada com as tabelas da outra; o trace guarda amostras de correlação baixa.
 
 ## Quadro real do iPhone (item 3 do handoff)
 
-Pendente, no teste final: com o agente da v0.6.0 e o iPhone do usuário, comparar a WCam no app Câmera com a prévia do celular, com a DLL BT.709.
+Substituído, por decisão do orquestrador, pela comparação lado a lado feita pelo usuário (`wcam-65bdcb172a11f251`): ΔE2000 de 1,80 entre a WCam no PC e o celular.
 
 ## Achados para outras versões
 
@@ -92,4 +104,4 @@ Pendente, no teste final: com o agente da v0.6.0 e o iPhone do usuário, compara
 - `dotnet publish -r win-x64 -c Release` da DLL: 0 avisos (com o `vswhere` no PATH).
 - No Frame Server, com cada DLL registrada pelo usuário e o probe publicando: Chrome e app Câmera a 1920x1080 e 30 fps, barras limpas e contador andando.
 - DLL final do commit 903e779: SHA-256 `ab70df1dd112ba2209092bc4c53c55b65bcb5ce064d2c109043bb865ada8414f`. Re-registrada pelo usuário: o hash instalado em `C:\Program Files\WCam` confere, e o `InprocServer32` aponta para ela.
-- Pendente: quadro real do iPhone (teste final).
+- Pendente: CA 4 (congelar 3 s e depois preto) no Frame Server, visto num app real.
