@@ -21,7 +21,7 @@ export default defineConfig({
     launchOptions: { args: FAKE_MEDIA_ARGS },
   },
   projects: [
-    { name: "chromium", testIgnore: QUALITY_SPEC, use: { ...devices["Desktop Chrome"] } },
+    { name: "chromium", testIgnore: QUALITY_SPEC, use: { ...devices["Desktop Chrome"], channel: "chromium" } },
     {
       name: "quality",
       testMatch: QUALITY_SPEC,

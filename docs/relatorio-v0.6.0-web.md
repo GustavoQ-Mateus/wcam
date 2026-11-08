@@ -173,3 +173,47 @@ Rodada final contra f5de19d (merge local b0ef7f1), só esta sessão no compose, 
 
 CA 3.1 do lado web verificado no e2e. Fica pendente a verificação manual no iPhone: ΔE abaixo de 2 e as 5 amostras novas a cada troca de câmera.
 
+## 10. Adendo: comparação lado a lado (spec §6, CA 3.3)
+
+Integração: `origin/feature/qualidade` em e688f0e, com o agent da comparação.
+
+O que foi feito:
+- Celular:
+  - responde `snapshot_request` em `live` com o PNG do visor no tamanho nativo, sem espelho, `display-p3` quando aceito, em `snapshot_begin` e pedaços de 45 000 bytes (`data/snapshot.ts`, Vitest);
+  - o envio respeita `bufferedAmount`: fila em `media/use-publisher.ts`, que acima de 1 MB espera `bufferedamountlow`;
+  - depois de um `snapshot_request`, mostra `cam.dev_send_screenshot` no canto inferior direito. O botão escolhe um PNG da galeria, confere a assinatura (`isPng`, Vitest) e envia `screenshot_begin` e os pedaços; o resultado aparece por 3 s.
+- Console:
+  - `console.dev_compare` no painel da sessão, só com `devTools` e `live` (`comparisonAvailable`, Vitest);
+  - no mesmo clique, `POST /api/dev/comparisons` e a captura da câmera WCam (`media/wcam-camera.ts`: label "WCam" depois de um `getUserMedia`, canvas srgb no tamanho do vídeo, PNG), enviada por `PUT .../pc`;
+  - imagens lado a lado com horário em milissegundos e a grade 8x4 sobre a imagem do PC: número em cada célula, contorno e número em `--warning` acima de 2;
+  - dados em grupos (celular e PC; com o print, tela e celular, tela e PC), formatados em `data/comparison-format.ts` (Vitest);
+  - downloads do celular, do PC, do print e do JSON;
+  - print pelo console ou pelo celular, que aparece como terceira imagem.
+- Decisões de design em `docs/design-v0.6.0.md` §6.
+
+Para o e2e:
+- O console no compose (`http://agent:8080`) não é contexto seguro, e sem isso `navigator.mediaDevices` não existe.
+- O `playwright.config` ganhou `--unsafely-treat-insecure-origin-as-secure` para a URL do console, e o projeto `chromium` passou a usar `channel: "chromium"` (headless completo): o headless shell padrão ignora esse flag (testado: `isSecureContext` false no shell e true no canal `chromium`).
+- A câmera WCam é simulada: a câmera falsa do Chromium com o label trocado para "WCam" por init script (o Chromium do compose não enxerga a WCam real).
+
+E2E no compose contra e688f0e, sem portas publicadas: 18 passaram, cerca de 1,2 min.
+
+| Medida | Valor |
+|---|---|
+| Comparação | imagens e dados em menos de 10 s depois do clique; os três downloads baixam; o print enviado pelo celular aparece como terceira imagem |
+| Calibração, câmera falsa padrão | `applied`, ΔE2000 0,25 e 0,22 |
+| Taxa em `balanced` e depois de `light` | 6 089 e 4 934 kbps |
+| SSIM depois do `applied` | 0,9865 (mínimo 0,9856, 48 quadros), 31,3 fps |
+
+Borda de baixo do `/cam`, com o aviso de tela acesa forçado e o botão do print, em paisagem (teste temporário, não commitado):
+
+| Tela | Aviso (x) | Botão do print (x) | Folga | Último botão do trilho (fundo) e topo do botão do print |
+|---|---|---|---|---|
+| 667x375 | 20 a 396 | 519 a 647 | 123 px | 288 e 311 |
+| 844x390 | 20 a 396 | 696 a 824 | 300 px | 295 e 326 |
+| 932x430 | 20 a 396 | 784 a 912 | 388 px | 315 e 366 |
+
+Sem sobreposição. Nas telas mais largas que 16:9, o vídeo fica com faixas pretas, e as pílulas em `--scrim` dos controles, inclusive o botão do print, ficam quase sem contorno sobre o preto, como já acontecia com o trilho. Fica para a validação visual.
+
+**Pendente:** uso pelo usuário no iPhone, com a WCam real no PC, antes de aprovar o CA 3.
+
