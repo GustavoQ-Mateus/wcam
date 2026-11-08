@@ -112,6 +112,14 @@ O tempo de parede por quadro fica abaixo do tempo de CPU por quadro porque o FFm
   - status com `colorCorrection` e `cameraCapabilities.colorSpace`.
   No fluxo WebRTC real (cliente aiortc, `smpte170m`, `standard`), `colorCorrection` fica `default`.
 
+### Resultado no iPhone do usuário (comparação de 2026-11-08, 21:53)
+- Comparação `wcam-65bdcb172a11f251`: `correction` `applied`, `transfer` `bt709`, convenção `apple`.
+- Imagem da câmera WCam no PC contra o quadro do visor do celular: ΔE2000 médio de 1,80 (mediana 1,68, p90 2,93), ΔL* de −0,67, croma 0,88, matiz −0,35°, correlação de 0,999, `captureGapMs` de 10 ms (medido no relógio do PC).
+- Print da tela do iPhone contra a imagem do PC: ΔE2000 médio de 2,69 (mediana 2,10, p90 4,55), ΔL* de +1,59, croma 0,98, matiz −0,44°. Alinhamento espelhado (câmera frontal), correlação de 0,951.
+- Print contra o quadro do celular: ΔE2000 médio de 3,04 (mediana 2,59), ΔL* de +2,30, croma 1,04.
+- O print foi tirado 24 s depois da captura, com o LED colorido do microfone mudando a luz do quarto. No fundo da cena, o ΔE variou de 1,2 a 2,3 só por isso. A média de 2,69 fica acima do limite de 2 do CA 3.1, mas a mediana fica perto e a saturação bate (0,98).
+- Antes, com a calibração por imagem, o mesmo tipo de comparação (print contra PC) deu ΔE de 4,43 e croma de 0,78.
+
 ### Calibração de cor (adendo de 2026-11-06, substituída em 2026-11-08; histórico)
 - `color_sample` é validado pelo contrato: `colorSpace` `display-p3` ou `srgb`, `width` e `height` positivos, e `rgb` em base64 com exatamente `width × height × 3` bytes. Fora disso, a mensagem é ignorada com o log de mensagem fora do contrato. Antes do `live`, é ignorada com log próprio. `camera_capabilities` (enviada a cada troca de câmera) recomeça a medição.
 - Anel dos últimos 60 quadros (2 s), reduzidos a 320x180 e normalizados pela faixa declarada. Fica ativo só enquanto faltam amostras: até 5 amostras da medição atual ou 30 s sem amostra.
@@ -194,16 +202,16 @@ Commits:
 
 | CA | Estado | Evidência |
 |---|---|---|
-| 1 | Parcial (agent) | Testes de unidade: a tabela leva 0 a 16 e 255 a 235, e o croma 128 fica 128 (0 vira 16, 255 vira 240). Todo Y acima de 0 sai acima de 16. Faixa limitada e não declarada saem byte a byte iguais. Faixa cheia com letterbox é convertida uma vez só. Um quadro codificado em `yuvj420p` pelo libx264 e decodificado pelo `h264` sai `yuvj420p`, `color_range` 2, matriz não declarada (o mesmo perfil medido no iPhone) e é reconhecido como faixa cheia. `colorRange` e `colorMatrix` aparecem no status (teste com WebRTC real). Faltam o quadro real do iPhone em pouca luz e os valores declarados por cada aparelho. |
-| 3.1 | Parcial (agent) | Os 30 testes da correção pela câmera acima, mais o fluxo WebRTC real em `default` com a convenção `standard`. Custo por quadro igual ao de só faixa. Faltam o iPhone do usuário (`applied` com `bt709` e `apple` na frontal e na traseira), a comparação lado a lado com ΔE abaixo de 2 contra o print da tela e o e2e da web. |
+| 1 | Verificado (agent) | Testes de unidade: a tabela leva 0 a 16 e 255 a 235, e o croma 128 fica 128 (0 vira 16, 255 vira 240). Todo Y acima de 0 sai acima de 16. Faixa limitada e não declarada saem byte a byte iguais. Faixa cheia com letterbox é convertida uma vez só. Valores do iPhone do usuário: o SPS do H.264 declara `video_full_range_flag` 1, com matriz, primária e transferência não especificadas (código 2); o status mostrou `colorRange` `full` e `colorMatrix` `unspecified`; o `VideoFrame.colorSpace` das câmeras frontal e traseira declara `bt709` em primárias, transferência e matriz, faixa cheia. Os quadros crus do iPhone no spike chegam a Y 0, e a tabela os leva a 16 sem que nenhum Y acima de 0 chegue a 16. Nenhum Android testado. |
+| 3.1 | Parcial | Os 30 testes da correção pela câmera, mais o fluxo WebRTC real em `default` com a convenção `standard`. Custo por quadro igual ao de só faixa. No iPhone do usuário (2026-11-08): `applied` com `bt709` e `apple`; PC contra o quadro do celular com ΔE2000 de 1,80; print da tela contra o PC com ΔE2000 médio de 2,69 (mediana 2,10, croma 0,98), acima do limite de 2, com o print 24 s depois e a luz do quarto mudando (detalhes acima). A decisão sobre o limite fica com o orquestrador e o usuário. |
 | 3.2 | Para revisão | Nenhum valor por modelo ou aparelho no código do agente. A única regra por plataforma é a convenção de exibição da decisão 10 (`apple` ou `standard` pelo `User-Agent`). |
-| 3.3 | Parcial (agent) | Lado do agente coberto pelos 19 testes acima: remontagem (inclusive pedaço faltando e tamanho errado), prazo de 10 s, limite de 5 comparações, relatório com diferença conhecida entre imagens sintéticas, rota `404` sem a variável, mais o print. Faltam o e2e da web e o uso pelo usuário no iPhone. |
+| 3.3 | Verificado (agent) | Lado do agente coberto pelos testes da comparação (23 ao todo): remontagem (inclusive pedaço faltando e tamanho errado), prazo de 10 s, limite de 5 comparações, relatório com diferença conhecida entre imagens sintéticas, rota `404` sem a variável, print com espelho e correlação do alinhamento, `captureGapMs` no relógio do PC. Usado pelo usuário no iPhone em 2026-11-08 (comparações `wcam-fc65c330cc5298f8` e `wcam-65bdcb172a11f251`). |
 | 4 | Parcial (agent) | Teste com relógio controlado: congelado em 2,8 s, preto (Y=16, UV=128) em 3,2 s, e o mesmo quadro enviado ao sink em cada tick a 30 fps durante todo o intervalo. Falta a verificação no Frame Server, que depende da DLL nova da vcam. |
 | 5 | Verificado | Laboratório a 4,9 Mbit/s com um pacote e o reenvio perdidos: o vídeo volta em 0,57 a 0,60 s (antes, 3,86 a 3,92 s). O teste falha acima de 1 s. |
 | 6 | Verificado (agent) | No laboratório, a trava gera uma linha `stalled`/`frozen` com `pliSent` de pelo menos 1 e `rtpBytes` maior que 0. O teste confere que o arquivo não contém o IP do emissor, `#t=` nem `https://`. Testes de unidade cobrem os campos, as causas, as ações, o fim da sessão e uma linha por episódio no arquivo. |
 | 8 | Parcial (agent) | O lado do agente está coberto. Teste com DataChannel real: `set_quality_preset` do celular gera eco, e o `PUT` do console chega ao celular como `quality_preset`. O teto do REMB por opção foi verificado nas três opções (o primeiro REMB fica em pelo menos 90% do teto, e nenhum passa dele). O e2e de menos de 300 ms e da taxa em até 5 s é da web. |
 | 9 | Verificado | Com a saída redirecionada, sai só a orientação do console e nenhum `#t=`, e a janela de pareamento nem é aberta (teste). |
-| 10 | Parcial (agent) | O benchmark desta máquina está acima. As capacidades e os codecs do iPhone dependem da web e do usuário. |
+| 10 | Verificado (agent) | Benchmark de decodificação desta máquina acima. Capacidades do iPhone do usuário (frontal, pela coleta de status de 2026-11-06): 4032x3024, 60 fps, codecs `video/H264`, `video/H265`, `video/VP8`, `video/VP9` e `video/AV1`; negociado H.264 (constrained baseline, nível 4.0, pelo SPS). |
 | 11 (agent) | Parcial | Em `agent/`, no estado final com o merge: `ruff check` e `ruff format --check` limpos, `pyright` com 0 erros, `pytest` com 251 passed e 1 skipped no estado do commit do ajuste da comparação (o teste da DLL real, opcional). Versão 0.6.0. CI não verificado. |
 
 ## 3. Decisões e pontos para registrar
@@ -232,12 +240,9 @@ Nenhuma nova. Pydantic, numpy, PyAV, psutil e aiortc já estavam no projeto, e o
 
 ## 5. Pendências
 
-1. Com o usuário, combinado por você:
-   - o quadro real do iPhone em pouca luz e o `colorRange`/`colorMatrix` declarados (CA 1);
-   - a verificação do congelar no Frame Server, com a DLL nova (CA 4);
-   - 10 min na Máxima sem episódio no Wi-Fi dele (spec §3);
-   - reunião de 30 min no novo Teams, com o `episodes.log` guardado (CA 7);
-   - capacidades do iPhone (CA 10).
-   - calibração no iPhone: ΔE2000 antes e depois em cada conexão, com troca de câmera (CA 3.1);
-   - comparação lado a lado no iPhone, com e sem print da tela (CA 3.3).
+1. Com o usuário e o orquestrador:
+   - CA 3.1: decidir sobre o print contra o PC (ΔE médio de 2,69 com a luz do quarto mudando), ou repetir com a luz estável;
+   - CA 4: verificação do congelar no Frame Server, com a DLL nova (sessão vcam);
+   - CA 7: reunião de 30 min no novo Teams, com o `episodes.log` guardado, e 10 min na Máxima sem episódio no Wi-Fi do usuário (spec §3);
+   - Android, se houver um aparelho disponível (CA 1).
 2. CI na integração.
