@@ -32,7 +32,7 @@ export function dropAlpha(rgba: Uint8ClampedArray): Uint8Array {
   return rgb;
 }
 
-function toBase64(bytes: Uint8Array): string {
+export function toBase64(bytes: Uint8Array): string {
   let binary = "";
   for (let start = 0; start < bytes.length; start += BINARY_CHUNK) {
     binary += String.fromCharCode(...bytes.subarray(start, start + BINARY_CHUNK));

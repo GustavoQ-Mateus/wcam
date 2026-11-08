@@ -1,12 +1,11 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { colorSampleMessage, type SampleColorSpace } from "../data/color-sample";
+import { createColorCanvas } from "./color-canvas";
 
 const SAMPLE_WIDTH = 160;
 const SAMPLE_HEIGHT = 90;
 const SAMPLE_INTERVAL_MS = 1000;
 const SAMPLES_PER_CAMERA = 5;
-const PREFERRED_COLOR_SPACE: SampleColorSpace = "display-p3";
-const FALLBACK_COLOR_SPACE: SampleColorSpace = "srgb";
 const SMOOTHING_QUALITY: ImageSmoothingQuality = "high";
 
 interface SampleContext {
@@ -62,18 +61,13 @@ export function useColorSample(
 }
 
 function createSampleContext(): SampleContext | null {
-  const canvas = document.createElement("canvas");
-  canvas.width = SAMPLE_WIDTH;
-  canvas.height = SAMPLE_HEIGHT;
-  const context = canvas.getContext("2d", { colorSpace: PREFERRED_COLOR_SPACE, willReadFrequently: true });
-  if (!context) {
+  const sample = createColorCanvas(SAMPLE_WIDTH, SAMPLE_HEIGHT);
+  if (!sample) {
     return null;
   }
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = SMOOTHING_QUALITY;
-  const colorSpace =
-    context.getContextAttributes().colorSpace === PREFERRED_COLOR_SPACE ? PREFERRED_COLOR_SPACE : FALLBACK_COLOR_SPACE;
-  return { context, colorSpace };
+  sample.context.imageSmoothingEnabled = true;
+  sample.context.imageSmoothingQuality = SMOOTHING_QUALITY;
+  return { context: sample.context, colorSpace: sample.colorSpace };
 }
 
 function readSample(video: HTMLVideoElement, { context, colorSpace }: SampleContext) {

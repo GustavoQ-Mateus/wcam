@@ -36,6 +36,23 @@ describe("control message", () => {
     expect(messages.map(parseControlMessage)).toEqual([null, null]);
   });
 
+  it("snapshot request from the agent is parsed with its id", () => {
+    expect(parseControlMessage('{"type":"snapshot_request","id":"c1"}')).toEqual({
+      type: "snapshot_request",
+      id: "c1",
+    });
+  });
+
+  it("snapshot request without a text id is ignored", () => {
+    const messages = [
+      '{"type":"snapshot_request"}',
+      '{"type":"snapshot_request","id":7}',
+      '{"type":"snapshot_request","id":""}',
+    ];
+
+    expect(messages.map(parseControlMessage)).toEqual([null, null, null]);
+  });
+
   it("chosen preset is sent as set_quality_preset", () => {
     expect(JSON.parse(setQualityPresetMessage("maximum"))).toEqual({ type: "set_quality_preset", preset: "maximum" });
   });

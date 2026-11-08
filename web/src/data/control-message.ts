@@ -5,6 +5,7 @@ import { isQualityPreset, type QualityPreset } from "./quality-preset";
 const SESSION_STATE_TYPE = "session_state";
 const QUALITY_PRESET_TYPE = "quality_preset";
 const SET_QUALITY_PRESET_TYPE = "set_quality_preset";
+const SNAPSHOT_REQUEST_TYPE = "snapshot_request";
 
 export function parseControlMessage(data: unknown): ControlMessage | null {
   if (typeof data !== "string") {
@@ -19,6 +20,9 @@ export function parseControlMessage(data: unknown): ControlMessage | null {
   }
   if (message.type === SESSION_STATE_TYPE) {
     return parseSessionState(message);
+  }
+  if (message.type === SNAPSHOT_REQUEST_TYPE) {
+    return parseSnapshotRequest(message);
   }
   return null;
 }
@@ -36,6 +40,13 @@ function parseQualityPreset(message: object): ControlMessage | null {
     return null;
   }
   return { type: QUALITY_PRESET_TYPE, preset: message.preset };
+}
+
+function parseSnapshotRequest(message: object): ControlMessage | null {
+  if (!("id" in message) || typeof message.id !== "string" || message.id === "") {
+    return null;
+  }
+  return { type: SNAPSHOT_REQUEST_TYPE, id: message.id };
 }
 
 function parseSessionState(message: object): ControlMessage | null {

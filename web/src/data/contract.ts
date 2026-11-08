@@ -95,7 +95,8 @@ export type ControlMessage =
   | { type: "session_state"; state: "awaiting_confirmation" }
   | { type: "session_state"; state: "live" }
   | { type: "session_state"; state: "ended"; reason: string }
-  | { type: "quality_preset"; preset: QualityPreset };
+  | { type: "quality_preset"; preset: QualityPreset }
+  | { type: "snapshot_request"; id: string };
 
 export interface QualityPresetRequest {
   preset: QualityPreset;
