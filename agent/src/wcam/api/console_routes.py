@@ -66,7 +66,9 @@ def create_console_router(services: AgentServices, phone_page_url: str) -> APIRo
         "measured quality.",
     )
     async def get_status() -> StatusResponse:
-        return status_response(manager.status(), services.pipeline, services.cpu.percent)
+        return status_response(
+            manager.status(), services.pipeline, services.cpu.percent, services.comparisons is not None
+        )
 
     @router.put(
         "/api/quality-preset",

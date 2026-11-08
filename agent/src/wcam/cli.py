@@ -11,6 +11,7 @@ from wcam.api.console_routes import pairing_url
 from wcam.app import create_servers, phone_page_url, run
 from wcam.config import Settings
 from wcam.i18n import Messages, load_messages, resolve_language, system_language_tag
+from wcam.media.color_calibration import IDENTITY_TABLE
 from wcam.media.color_calibrator import ColorCalibrator
 from wcam.media.color_trace import ColorTrace
 from wcam.media.episodes import open_episode_log
@@ -21,6 +22,7 @@ from wcam.network.certificates import TlsCertificate, load_or_create_certificate
 from wcam.network.lan import NoLanInterfaceError, detect_lan_interface
 from wcam.process_monitor import CpuMonitor
 from wcam.services import AgentServices
+from wcam.sessions.comparisons import CalibrationSnapshot, ComparisonStore
 from wcam.sessions.manager import SessionManager
 from wcam.virtualcam.factory import FallbackReason, SinkSelection, select_sink
 from wcam.virtualcam.media_foundation_sink import load_native_library
@@ -58,8 +60,9 @@ def main() -> None:
         color_calibrator=color_calibrator(settings),
     )
     pipeline.open()
-    manager = SessionManager(aiortc_peer_factory(lan.network, pipeline))
-    services = AgentServices(manager, pipeline, CpuMonitor())
+    comparisons = ComparisonStore(lambda: calibration_snapshot(pipeline)) if settings.dev_tools else None
+    manager = SessionManager(aiortc_peer_factory(lan.network, pipeline), comparisons=comparisons)
+    services = AgentServices(manager, pipeline, CpuMonitor(), comparisons)
     print_banner(messages, console_url, phone_url, certificate)
     print_virtual_camera(messages, selection)
     announce_pairing(messages, manager, phone_url, console_url, sys.stdout)
@@ -88,6 +91,12 @@ def quality_meter(settings: Settings) -> QualityMeter | None:
 def color_calibrator(settings: Settings) -> ColorCalibrator:
     trace = None if settings.color_trace_dir is None else ColorTrace(settings.color_trace_dir)
     return ColorCalibrator(trace)
+
+
+def calibration_snapshot(pipeline: FramePipeline) -> CalibrationSnapshot:
+    status = pipeline.color_calibrator.status
+    luma_table, chroma_table = pipeline.color_tables() or (IDENTITY_TABLE, IDENTITY_TABLE)
+    return CalibrationSnapshot(status.state.value, status.delta_e, luma_table, chroma_table)
 
 
 def print_virtual_camera(messages: Messages, selection: SinkSelection) -> None:

@@ -7,6 +7,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    NonNegativeInt,
     PositiveFloat,
     PositiveInt,
     TypeAdapter,
@@ -20,6 +21,7 @@ from wcam.media.color_difference import RgbSpace
 from wcam.media.quality_preset import QualityPreset
 
 RGB_CHANNELS = 3
+SNAPSHOT_CHUNK_BYTES = 45_000
 
 
 class PhoneMessage(BaseModel):
@@ -65,10 +67,71 @@ class ColorSampleMessage(PhoneMessage):
         return ColorSample(self.color_space, pixels, self.captured_at)
 
 
-type AnyPhoneMessage = SetQualityPresetMessage | CameraCapabilitiesMessage | ColorSampleMessage
+class SnapshotBeginMessage(PhoneMessage):
+    type: Literal["snapshot_begin"]
+    id: str
+    captured_at: float
+    color_space: RgbSpace
+    width: PositiveInt
+    height: PositiveInt
+    size: PositiveInt
+    chunks: PositiveInt
+
+
+class ChunkMessage(PhoneMessage):
+    id: str
+    index: NonNegativeInt
+    data: str
+
+    @model_validator(mode="after")
+    def check_data(self) -> Self:
+        if len(self.data_bytes()) > SNAPSHOT_CHUNK_BYTES:
+            raise ValueError("chunk is too large")
+        return self
+
+    def data_bytes(self) -> bytes:
+        try:
+            return base64.b64decode(self.data, validate=True)
+        except binascii.Error as error:
+            raise ValueError("data is not base64") from error
+
+
+class SnapshotChunkMessage(ChunkMessage):
+    type: Literal["snapshot_chunk"]
+
+
+class ScreenshotBeginMessage(PhoneMessage):
+    type: Literal["screenshot_begin"]
+    id: str
+    size: PositiveInt
+    chunks: PositiveInt
+
+
+class ScreenshotChunkMessage(ChunkMessage):
+    type: Literal["screenshot_chunk"]
+
+
+type AnyPhoneMessage = (
+    SetQualityPresetMessage
+    | CameraCapabilitiesMessage
+    | ColorSampleMessage
+    | SnapshotBeginMessage
+    | SnapshotChunkMessage
+    | ScreenshotBeginMessage
+    | ScreenshotChunkMessage
+)
 
 PHONE_MESSAGE = TypeAdapter[AnyPhoneMessage](
-    Annotated[SetQualityPresetMessage | CameraCapabilitiesMessage | ColorSampleMessage, Field(discriminator="type")]
+    Annotated[
+        SetQualityPresetMessage
+        | CameraCapabilitiesMessage
+        | ColorSampleMessage
+        | SnapshotBeginMessage
+        | SnapshotChunkMessage
+        | ScreenshotBeginMessage
+        | ScreenshotChunkMessage,
+        Field(discriminator="type"),
+    ]
 )
 
 

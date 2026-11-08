@@ -9,6 +9,7 @@ from fastapi import FastAPI
 
 from wcam import __version__
 from wcam.api.console_routes import create_console_router
+from wcam.api.dev_routes import create_dev_router
 from wcam.api.errors import install_error_handlers
 from wcam.api.host_guard import HostGuard
 from wcam.api.phone_routes import create_phone_router
@@ -48,6 +49,8 @@ def create_console_app(settings: Settings, services: AgentServices, phone_url: s
     app = FastAPI(title="WCam console", version=__version__)
     install_error_handlers(app)
     app.include_router(create_console_router(services, phone_url))
+    if services.comparisons is not None:
+        app.include_router(create_dev_router(services.manager, services.comparisons))
     mount_web(app, settings.web_dist, CONSOLE_PAGES)
     app.add_middleware(HostGuard, allowed_hosts=console_allowed_hosts(settings))
     return app
@@ -94,6 +97,8 @@ async def run(servers: Sequence[uvicorn.Server], services: AgentServices) -> Non
         await serve(servers)
     finally:
         await services.manager.shutdown()
+        if services.comparisons is not None:
+            await services.comparisons.close()
         for task in background:
             task.cancel()
         await asyncio.gather(*background, return_exceptions=True)
