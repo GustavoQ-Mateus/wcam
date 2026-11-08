@@ -4,7 +4,6 @@ import { consumePairingToken } from "../data/pairing";
 import { screenshotMessages } from "../data/snapshot";
 import type { QualityPreset } from "../data/quality-preset";
 import { useCameraStream } from "../media/use-camera-stream";
-import { useColorSample } from "../media/use-color-sample";
 import { readPngFile } from "../media/screenshot-file";
 import { useOrientation } from "../media/use-orientation";
 import { usePublisher } from "../media/use-publisher";
@@ -40,9 +39,8 @@ export function useCam(hasPairing: boolean): Cam {
     keepAlive: isSession(state),
     takeToken: consumePairingToken,
     onEvent: dispatch,
+    videoRef,
   });
-  const sampling = state.kind === "live" && !state.portrait && !camera.opening;
-  useColorSample(videoRef, camera.track, sampling, publisher.sendControl);
   useSnapshotResponder(videoRef, publisher.snapshotRequest, state.kind === "live", publisher.sendPaced);
 
   const { stop } = camera;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { ApiError, createSession } from "../data/api-client";
 import type { CamEvent } from "../data/cam-state";
 import { confirmationCode, sdpFingerprint } from "../data/confirmation-code";
@@ -12,13 +12,13 @@ interface PublisherOptions {
   keepAlive: boolean;
   takeToken: () => string | null;
   onEvent: (event: CamEvent) => void;
+  videoRef: RefObject<HTMLVideoElement | null>;
 }
 
 export interface Publisher {
   qualityPreset: QualityPreset | null;
   snapshotRequest: SnapshotRequest | null;
   chooseQualityPreset: (preset: QualityPreset) => void;
-  sendControl: (data: string) => void;
   sendPaced: (messages: readonly string[]) => Promise<void>;
 }
 
@@ -29,7 +29,6 @@ export interface SnapshotRequest {
 interface PublisherSession {
   replaceTrack: (track: MediaStreamTrack) => void;
   chooseQualityPreset: (preset: QualityPreset) => void;
-  sendControl: (data: string) => void;
   sendPaced: (messages: readonly string[]) => Promise<void>;
   close: () => void;
 }
@@ -38,6 +37,7 @@ interface SessionCallbacks {
   onEvent: (event: CamEvent) => void;
   onQualityPreset: (preset: QualityPreset) => void;
   onSnapshotRequest: (request: SnapshotRequest) => void;
+  readVideo: () => HTMLVideoElement | null;
 }
 
 type SendParameters = RTCRtpSendParameters & { degradationPreference?: string };
@@ -51,13 +51,17 @@ const BUFFERED_HIGH_BYTES = 1_000_000;
 const BUFFERED_LOW_BYTES = 256_000;
 const FAILED_CONNECTION_STATES: ReadonlySet<RTCPeerConnectionState> = new Set(["failed", "closed"]);
 
-export function usePublisher({ track, shouldStart, keepAlive, takeToken, onEvent }: PublisherOptions): Publisher {
+export function usePublisher({
+  track,
+  shouldStart,
+  keepAlive,
+  takeToken,
+  onEvent,
+  videoRef,
+}: PublisherOptions): Publisher {
   const sessionRef = useRef<PublisherSession | null>(null);
   const [qualityPreset, setQualityPreset] = useState<QualityPreset | null>(null);
   const [snapshotRequest, setSnapshotRequest] = useState<SnapshotRequest | null>(null);
-  const sendControl = useCallback((data: string) => {
-    sessionRef.current?.sendControl(data);
-  }, []);
   const sendPaced = useCallback((messages: readonly string[]) => {
     return sessionRef.current?.sendPaced(messages) ?? Promise.resolve();
   }, []);
@@ -75,8 +79,9 @@ export function usePublisher({ track, shouldStart, keepAlive, takeToken, onEvent
       onEvent,
       onQualityPreset: setQualityPreset,
       onSnapshotRequest: setSnapshotRequest,
+      readVideo: () => videoRef.current,
     });
-  }, [shouldStart, track, takeToken, onEvent]);
+  }, [shouldStart, track, takeToken, onEvent, videoRef]);
 
   useEffect(() => {
     if (track) {
@@ -105,7 +110,6 @@ export function usePublisher({ track, shouldStart, keepAlive, takeToken, onEvent
     chooseQualityPreset: (preset) => {
       sessionRef.current?.chooseQualityPreset(preset);
     },
-    sendControl,
     sendPaced,
   };
 }
@@ -113,7 +117,7 @@ export function usePublisher({ track, shouldStart, keepAlive, takeToken, onEvent
 function startSession(
   track: MediaStreamTrack,
   token: string,
-  { onEvent, onQualityPreset, onSnapshotRequest }: SessionCallbacks,
+  { onEvent, onQualityPreset, onSnapshotRequest, readVideo }: SessionCallbacks,
 ): PublisherSession {
   const connection = new RTCPeerConnection({ iceServers: [] });
   const channel = connection.createDataChannel(CONTROL_CHANNEL);
@@ -142,7 +146,12 @@ function startSession(
     }
   };
   const sendCapabilities = () => {
-    sendControl(cameraCapabilitiesData(readCameraCapabilities(currentTrack)));
+    const track = currentTrack;
+    void readCameraCapabilities(track, readVideo()).then((capabilities) => {
+      if (track === currentTrack) {
+        sendControl(cameraCapabilitiesData(capabilities));
+      }
+    });
   };
   const finish = (event: CamEvent) => {
     emit(event);
@@ -209,7 +218,6 @@ function startSession(
     chooseQualityPreset: (preset) => {
       sendControl(setQualityPresetMessage(preset));
     },
-    sendControl,
     sendPaced: async (messages) => {
       for (const message of messages) {
         if (channel.bufferedAmount > BUFFERED_HIGH_BYTES) {

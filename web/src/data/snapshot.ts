@@ -1,10 +1,11 @@
-import type { SampleColorSpace } from "./color-sample";
-import { toBase64 } from "./color-sample";
+import { toBase64 } from "./base64";
+
+export type CanvasColorSpace = "display-p3" | "srgb";
 
 export interface SnapshotFrame {
   id: string;
   capturedAt: number;
-  colorSpace: SampleColorSpace;
+  colorSpace: CanvasColorSpace;
   width: number;
   height: number;
   png: Uint8Array;

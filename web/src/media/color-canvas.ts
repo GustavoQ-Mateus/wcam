@@ -1,19 +1,19 @@
-import type { SampleColorSpace } from "../data/color-sample";
+import type { CanvasColorSpace } from "../data/snapshot";
 
 export interface ColorCanvas {
   canvas: HTMLCanvasElement;
   context: CanvasRenderingContext2D;
-  colorSpace: SampleColorSpace;
+  colorSpace: CanvasColorSpace;
 }
 
-const PREFERRED_COLOR_SPACE: SampleColorSpace = "display-p3";
-const FALLBACK_COLOR_SPACE: SampleColorSpace = "srgb";
+const PREFERRED_COLOR_SPACE: CanvasColorSpace = "display-p3";
+const FALLBACK_COLOR_SPACE: CanvasColorSpace = "srgb";
 const PNG_TYPE = "image/png";
 
 export function createColorCanvas(
   width: number,
   height: number,
-  colorSpace: SampleColorSpace = PREFERRED_COLOR_SPACE,
+  colorSpace: CanvasColorSpace = PREFERRED_COLOR_SPACE,
 ): ColorCanvas | null {
   const canvas = document.createElement("canvas");
   canvas.width = width;
