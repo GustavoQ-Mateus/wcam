@@ -1,6 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const FAKE_MEDIA_ARGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"];
+const CONSOLE_ORIGIN_ARGS = process.env.E2E_CONSOLE_URL
+  ? [`--unsafely-treat-insecure-origin-as-secure=${process.env.E2E_CONSOLE_URL}`]
+  : [];
+const FAKE_MEDIA_ARGS = [
+  "--use-fake-device-for-media-stream",
+  "--use-fake-ui-for-media-stream",
+  ...CONSOLE_ORIGIN_ARGS,
+];
 const QUALITY_SPEC = /quality\.spec\.ts/;
 
 export default defineConfig({
