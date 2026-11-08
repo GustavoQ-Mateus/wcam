@@ -105,6 +105,41 @@ Nos dois servidores.
 - `video` só aparece depois do Confirmar: o agente mede depois do portão. Em `connecting` e `awaiting_confirmation` é `null`.
 - `connecting` vira `awaiting_confirmation` quando o DataChannel `control` abre do lado do agente.
 
+### Comparação lado a lado (desenvolvimento, spec v0.6.0 §6)
+
+Só com `WCAM_DEV_TOOLS=1`; sem a variável, todas as rotas abaixo respondem `404 not_found` e `GET /api/status` traz `devTools: false`. Com ela, `devTools: true` no primeiro nível do status.
+
+| Rota | Corpo | Resposta | Erros |
+|---|---|---|---|
+| `POST /api/dev/comparisons` | nenhum | `201 {"id"}` | `409 no_live_session` |
+| `PUT /api/dev/comparisons/{id}/pc` | PNG (`image/png`), até 20 MB | `204` | `404 comparison_not_found`, `422 invalid_request` |
+| `GET /api/dev/comparisons/{id}` | nenhum | `200` (abaixo) | `404 comparison_not_found` |
+| `GET /api/dev/comparisons/{id}/phone.png` | nenhum | `200 image/png` | `404 comparison_not_found` |
+
+`GET /api/dev/comparisons/{id}`:
+
+```json
+{
+  "id": "c1",
+  "state": "ready",
+  "reason": null,
+  "requestedAt": "2026-11-07T21:50:00.120Z",
+  "phone": {"capturedAt": "2026-11-07T21:50:00.240Z", "colorSpace": "display-p3", "width": 1920, "height": 1080},
+  "pc": {"receivedAt": "2026-11-07T21:50:00.180Z", "width": 1920, "height": 1080},
+  "calibration": {"state": "applied", "deltaE": 1.01, "tables": {"y": [0], "u": [0], "v": [0]}},
+  "difference": {
+    "captureGapMs": 60, "correlation": 0.97, "mirrored": false,
+    "deltaE2000": {"mean": 3.2, "median": 2.9, "p90": 6.1},
+    "deltaL": -4.1, "chromaRatio": 0.92, "hueShiftDegrees": 2.3,
+    "grid": {"columns": 8, "rows": 4, "deltaE2000": [3.1]}
+  }
+}
+```
+
+- `state`: `pending` (esperando uma das imagens), `ready` ou `failed`. `reason` (só em `failed`): `phone_timeout` (celular sem resposta em 10 s), `phone_invalid` (pedaços faltando ou tamanho errado), `pc_missing` (imagem do PC não chegou em 10 s), `session_ended`.
+- `phone` e `pc` são `null` até cada imagem chegar; `difference` é `null` até as duas. `calibration.tables` são as tabelas Y, U e V em uso (256 inteiros cada); `grid.deltaE2000` tem `columns × rows` valores, linha a linha.
+- O agente guarda só as últimas 5 comparações, em memória.
+
 ## Celular (`<ip-da-lan>:8443`)
 
 `POST /api/sessions` com `{"token": "...", "sdp": "<oferta completa, sem trickle>"}`:
@@ -129,6 +164,11 @@ Do celular para o agente, JSON:
 - `{"type": "camera_capabilities", "width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"]}` quando o canal abre e a cada troca de câmera. `width`, `height` e `frameRate` são os máximos de `getCapabilities()` da faixa em uso (`null` quando o navegador não informa); `facingMode` é `user`, `environment` ou `null`; `codecs` são os `mimeType` de vídeo de `RTCRtpSender.getCapabilities("video")`, sem repetição e sem `video/rtx`, `video/red` e `video/ulpfec`.
 
 - `{"type": "color_sample", "colorSpace": "display-p3", "width": 160, "height": 90, "rgb": "<base64>", "capturedAt": 1793991387130}` para a calibração de cor: o quadro que o visor do celular está exibindo, desenhado num canvas sem espelho e lido com `getImageData` no mesmo `colorSpace` (`display-p3` ou `srgb`). `rgb` é o base64 dos bytes R, G e B de cada pixel, sem alfa, linha a linha (`width × height × 3` bytes); `capturedAt` é `performance.timeOrigin + performance.now()` em ms. Enviada com a sessão em `live` e o celular em paisagem, uma por segundo, 5 vezes, e de novo a cada troca de câmera. Antes do `live` é ignorada com registro no log. Cabe no `max-message-size` de 65 536 bytes anunciado pelo agente.
+
+Comparação lado a lado (só com `WCAM_DEV_TOOLS=1`; sem a variável, o agente não envia `snapshot_request` e ignora as respostas com log):
+
+- agente para o celular: `{"type": "snapshot_request", "id": "c1"}`, só em `live`;
+- celular para o agente: `{"type": "snapshot_begin", "id": "c1", "capturedAt": <ms>, "colorSpace": "display-p3" | "srgb", "width": 1920, "height": 1080, "size": <bytes do PNG>, "chunks": <n>}` e depois `n` mensagens `{"type": "snapshot_chunk", "id": "c1", "index": <0 a n−1>, "data": "<base64 de até 45 000 bytes do PNG>"}`. O quadro é o do visor, sem espelho, no tamanho nativo do vídeo. Cada mensagem cabe no `max-message-size` de 65 536.
 
 Mensagem com `type` desconhecido, JSON inválido ou campo fora do formato é ignorada pelo agente e registrada no log, sem encerrar a sessão.
 
@@ -212,6 +252,7 @@ Variáveis de ambiente (somam-se à tabela abaixo):
 | `WCAM_VCAM_DLL` | `%ProgramFiles%\WCam\Wcam.VirtualCamera.dll` | caminho da DLL da câmera nativa |
 | `WCAM_QUALITY_REFERENCE` | vazio | caminho de um arquivo `.y4m` de referência; liga a medição de SSIM |
 | `WCAM_COLOR_TRACE_DIR` | vazio | pasta de desenvolvimento; grava cada `color_sample`, o quadro casado e as tabelas da calibração de cor (spec v0.6.0 §1.1). Vazia, nada vai para o disco |
+| `WCAM_DEV_TOOLS` | vazio | `1` liga a comparação lado a lado no console (spec v0.6.0 §6); qualquer outro valor deixa desligada |
 
 ## Qualidade (`quality`)
 
