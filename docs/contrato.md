@@ -112,7 +112,7 @@ Só com `WCAM_DEV_TOOLS=1`; sem a variável, todas as rotas abaixo respondem `40
 | Rota | Corpo | Resposta | Erros |
 |---|---|---|---|
 | `POST /api/dev/comparisons` | nenhum | `201 {"id"}` | `409 no_live_session` |
-| `PUT /api/dev/comparisons/{id}/pc` | PNG (`image/png`), até 20 MB | `204` | `404 comparison_not_found`, `422 invalid_request` |
+| `PUT /api/dev/comparisons/{id}/pc?capturedAt=<ms>` | PNG (`image/png`), até 20 MB; `capturedAt` é o instante da captura no relógio do PC, em ms desde a época | `204` | `404 comparison_not_found`, `422 invalid_request` |
 | `GET /api/dev/comparisons/{id}` | nenhum | `200` (abaixo) | `404 comparison_not_found` |
 | `GET /api/dev/comparisons/{id}/phone.png` | nenhum | `200 image/png` | `404 comparison_not_found` |
 | `PUT /api/dev/comparisons/{id}/screen` | PNG (`image/png`) do print da tela do celular, até 20 MB | `204` | `404 comparison_not_found`, `409 comparison_not_ready`, `422 invalid_request` (não é PNG) |
@@ -127,7 +127,7 @@ Só com `WCAM_DEV_TOOLS=1`; sem a variável, todas as rotas abaixo respondem `40
   "reason": null,
   "requestedAt": "2026-11-07T21:50:00.120Z",
   "phone": {"capturedAt": "2026-11-07T21:50:00.240Z", "colorSpace": "display-p3", "width": 1920, "height": 1080},
-  "pc": {"receivedAt": "2026-11-07T21:50:00.180Z", "width": 1920, "height": 1080},
+  "pc": {"receivedAt": "2026-11-07T21:50:00.180Z", "capturedAt": "2026-11-07T21:50:00.110Z", "width": 1920, "height": 1080},
   "correction": {"state": "applied", "transfer": "bt709", "display": "apple", "tables": {"y": [0], "u": [0], "v": [0]}},
   "difference": {
     "captureGapMs": 60, "correlation": 0.97, "mirrored": false,
@@ -140,7 +140,7 @@ Só com `WCAM_DEV_TOOLS=1`; sem a variável, todas as rotas abaixo respondem `40
 
 - `state`: `pending` (esperando uma das imagens), `ready` ou `failed`. `reason` (só em `failed`): `phone_timeout` (celular sem resposta em 10 s), `phone_invalid` (pedaços faltando ou tamanho errado), `pc_missing` (imagem do PC não chegou em 10 s), `session_ended`.
 - `phone` e `pc` são `null` até cada imagem chegar; `difference` é `null` até as duas. `correction.tables` são as tabelas Y, U e V em uso (256 inteiros cada); `grid.deltaE2000` tem `columns × rows` valores, linha a linha.
-- `screen` é `null` até o print chegar; com ele, `{"receivedAt", "width", "height", "colorSpace"}` (do perfil ICC; sem perfil, `srgb`), e `screenDifference` traz `{"phone": <mesmo formato de difference>, "pc": <mesmo formato>}`: print contra o canvas do celular e print contra a imagem do PC. O print só é aceito com a comparação `ready`.
+- Em `screenDifference`, `mirrored` e `correlation` são os do alinhamento do print (o print da câmera frontal vem espelhado, como o visor). `screen` é `null` até o print chegar; com ele, `{"receivedAt", "width", "height", "colorSpace"}` (do perfil ICC; sem perfil, `srgb`), e `screenDifference` traz `{"phone": <mesmo formato de difference>, "pc": <mesmo formato>}`: print contra o canvas do celular e print contra a imagem do PC. O print só é aceito com a comparação `ready`.
 - O agente guarda só as últimas 5 comparações, em memória.
 
 ## Celular (`<ip-da-lan>:8443`)
@@ -170,7 +170,7 @@ Do celular para o agente, JSON:
 Comparação lado a lado (só com `WCAM_DEV_TOOLS=1`; sem a variável, o agente não envia `snapshot_request` e ignora as respostas com log):
 
 - agente para o celular: `{"type": "snapshot_request", "id": "c1"}`, só em `live`;
-- celular para o agente: `{"type": "snapshot_begin", "id": "c1", "capturedAt": <ms>, "colorSpace": "display-p3" | "srgb", "width": 1920, "height": 1080, "size": <bytes do PNG>, "chunks": <n>}` e depois `n` mensagens `{"type": "snapshot_chunk", "id": "c1", "index": <0 a n−1>, "data": "<base64 de até 45 000 bytes do PNG>"}`. O quadro é o do visor, sem espelho, no tamanho nativo do vídeo. Cada mensagem cabe no `max-message-size` de 65 536.
+- celular para o agente: `{"type": "snapshot_begin", "id": "c1", "capturedAt": <ms>, "captureDelayMs": <ms entre receber o snapshot_request e capturar, no relógio do celular>, "colorSpace": "display-p3" | "srgb", "width": 1920, "height": 1080, "size": <bytes do PNG>, "chunks": <n>}` e depois `n` mensagens `{"type": "snapshot_chunk", "id": "c1", "index": <0 a n−1>, "data": "<base64 de até 45 000 bytes do PNG>"}`. O quadro é o do visor, sem espelho, no tamanho nativo do vídeo. Cada mensagem cabe no `max-message-size` de 65 536. `capturedAt` do celular é só informativo, porque o relógio do celular pode estar defasado do PC; `captureGapMs` no relatório é |(envio do `snapshot_request` + `captureDelayMs`) − `capturedAt` do PC|, tudo no relógio do PC.
 - celular para o agente, print da tela escolhido pelo usuário: `{"type": "screenshot_begin", "id": "c1", "size": <bytes do PNG>, "chunks": <n>}` e `n` mensagens `{"type": "screenshot_chunk", "id": "c1", "index": <0 a n−1>, "data": "<base64 de até 45 000 bytes>"}`. `id` é o do último `snapshot_request`. Tem o mesmo efeito de `PUT /api/dev/comparisons/{id}/screen` (só com a comparação `ready`, só PNG); se a comparação ainda não estiver `ready`, o agente guarda o print e o aplica quando ela ficar. O botão do celular só aparece depois de um `snapshot_request`, que só existe com `WCAM_DEV_TOOLS=1`.
 
 Mensagem com `type` desconhecido, JSON inválido ou campo fora do formato é ignorada pelo agente e registrada no log, sem encerrar a sessão.
