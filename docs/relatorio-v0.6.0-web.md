@@ -259,3 +259,48 @@ E2E no compose contra 455db77, sem portas publicadas: 16 passaram, cerca de 1,0 
 
 **Pendente:** o teste manual do usuário no iPhone: a correção em `applied` com `bt709` e `apple`, e a comparação com a câmera WCam real.
 
+## 12. Audit e polish (impeccable, emil-design-eng, mobile-native)
+
+Superfícies: `/cam` (seletor de qualidade, botão do print e o resultado dele) e console (painel de qualidade, linhas de cor, comparação). Verificado no navegador (Chromium do compose, câmera falsa) com capturas em 932x430 no `/cam` e 1440x900 no console, antes e depois. O `impeccable context` não achou PRODUCT.md nem DESIGN.md; o contexto foi o código e o `docs/planejamento.md` §5.
+
+### 12.1 Audit (`impeccable audit`)
+
+| # | Dimensão | Nota | Achado principal |
+|---|---|---|---|
+| 1 | Acessibilidade | 3 | nomes acessíveis, foco visível e `prefers-reduced-motion` presentes; a falha era de affordance (abaixo) |
+| 2 | Performance | 4 | só `transform` e `opacity` animados, URLs `blob:` liberadas, sem leitura de layout em laço |
+| 3 | Tokens | 4 | nenhuma cor solta nas superfícies da v0.6.0 |
+| 4 | Responsivo | 3 | pílulas do `/cam` somem sobre as faixas pretas laterais |
+| 5 | Integridade | 3 | links de download com o sublinhado padrão do navegador; painel de qualidade com o controle flutuando |
+| **Total** | | **17/20** | Bom |
+
+Detector (`impeccable detect`) sem achados, antes e depois.
+
+Achados:
+- **[P1] Pílulas `--scrim` invisíveis sobre as faixas pretas** (`control-button`, `capture-readout`, `screen-notice`, `screenshot-button`). Em telas mais largas que 16:9 (932x430, a do iPhone do usuário), o trilho fica sobre o preto, e preto translúcido sobre preto não tem borda: sobrava só o ícone, sem a área de toque visível.
+- **[P2] Links de download sublinhados.** Os `<a download>` com a forma do botão secundário herdavam o `text-decoration` do navegador e destoavam dos botões ao lado.
+- **[P2] Painel de qualidade do console.** O controle segmentado ocupava cerca de metade do painel, com segmentos de larguras diferentes e a metade direita vazia, e a dica e o detalhe tinham o mesmo espaçamento do controle. É o "feio" que o usuário apontou. Como o painel será refeito na v0.7.0, aqui entra só polish.
+- **[P3, fora da web] Horários da comparação com `.000`.** O agente manda os horários com precisão de segundo, então os milissegundos saem sempre zerados. Não mexi.
+
+### 12.2 Polish
+
+| Antes | Depois | Por quê | Skill |
+|---|---|---|---|
+| `background: var(--scrim)` sem contorno | o mesmo fundo, mais `box-shadow: inset 0 0 0 1px var(--control-ring)` (token novo, branco a 16%) | O anel de 1 px marca a área de toque sobre qualquer fundo, inclusive o preto, sem mudar a luminosidade do controle. É função, não decoração: sem ele, o controle some. Vale para o trilho, o leitor de formato, o aviso de tela acesa e o botão do print com o resultado dele. | mobile-native, emil-design-eng |
+| link de download sublinhado | `text-decoration: none` no `.button` | Tem a mesma forma e o mesmo comportamento dos botões secundários; o sublinhado era um padrão do navegador que não pertence ao sistema. | impeccable polish |
+| trilho `flex` do tamanho do conteúdo | `grid` de três colunas iguais na largura do painel, rótulos centrados | Lê como um controle só, alinhado ao painel da sessão acima. A pílula branca da opção marcada fica com a mesma largura em qualquer opção. | impeccable polish, emil-design-eng |
+| dica e detalhe com o espaçamento do controle | dica e detalhe num grupo com `--space-1`; o painel com `--space-4` entre os blocos | Agrupa o que explica a opção e separa do controle. | impeccable polish |
+
+Ficaram como estavam:
+- O anel de foco que aparece no botão de qualidade depois de fechar o painel com Esc é o foco devolvido ao gatilho, o comportamento certo para teclado.
+- A press feedback (`scale(0.97)`), o `:hover` só com `(hover: hover) and (pointer: fine)` e o `prefers-reduced-motion` do painel e do anel de espera já estavam de acordo com a emil-design-eng e a mobile-native.
+
+Verificação depois do polish, contra 8f72c2d:
+- `npm run build` sem avisos, `npm run lint` limpo, Vitest 76.
+- e2e no compose sem portas publicadas: 16 passaram.
+  - Correção pela câmera falsa: `default` com `smpte170m` e display `standard`.
+  - Taxa: 6 048 kbps em `balanced` e 4 199 kbps em `light`.
+  - SSIM: 0,9839 (mínimo 0,9824, 32 quadros, 28,9 fps).
+
+Não verificado: o iPhone real (toque, área segura, Safari).
+

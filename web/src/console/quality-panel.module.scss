@@ -1,8 +1,8 @@
 .panel {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-3);
+  align-items: stretch;
+  gap: var(--space-4);
   max-width: var(--measure);
   padding: var(--space-6);
   border-radius: var(--radius-box);
@@ -15,8 +15,8 @@
 }
 
 .track {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-1);
   padding: var(--space-1);
   border-radius: var(--radius-pill);
@@ -26,9 +26,10 @@
 .segment {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-2);
   min-height: var(--hit-min);
-  padding: 0 var(--space-5);
+  padding: 0 var(--space-3);
   border-radius: var(--radius-pill);
   color: var(--muted);
   font-weight: var(--weight-strong);
@@ -63,6 +64,12 @@
   border: var(--indicator-stroke) solid currentColor;
   border-radius: 50%;
   animation: pulse var(--duration-pulse) ease-in-out infinite alternate;
+}
+
+.explanation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
 .hint {
