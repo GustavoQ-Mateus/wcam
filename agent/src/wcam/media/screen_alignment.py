@@ -3,9 +3,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from wcam.media.color_calibration import BT709_LUMA_WEIGHTS, block_mean
 from wcam.media.color_difference import FloatArray, RgbSpace
 from wcam.media.comparison_report import DecodedImage
+from wcam.media.image_reduction import BT709_LUMA_WEIGHTS, block_mean
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 CHUNK_LENGTH_BYTES = 4

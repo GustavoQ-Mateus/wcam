@@ -18,7 +18,7 @@ from tests.unit.test_quality_preset import live_manager
 from tests.unit.test_session_manager import connected_manager, session_request
 from wcam.app import create_console_app, phone_page_url
 from wcam.config import Settings
-from wcam.media.color_calibration import IDENTITY_TABLE
+from wcam.media.color_correction import IDENTITY_TABLE
 from wcam.media.color_difference import RgbSpace
 from wcam.media.comparison_report import GRID_COLUMNS, GRID_ROWS, decoded_png, image_difference
 from wcam.media.screen_alignment import aligned_screen, png_color_space
@@ -26,11 +26,11 @@ from wcam.process_monitor import CpuMonitor
 from wcam.services import AgentServices
 from wcam.sessions.comparisons import (
     MAX_COMPARISONS,
-    CalibrationSnapshot,
     ComparisonNotFoundError,
     ComparisonNotReadyError,
     ComparisonState,
     ComparisonStore,
+    CorrectionSnapshot,
     FailureReason,
     InvalidImageError,
 )
@@ -55,7 +55,7 @@ POLL_SECONDS = 0.02
 CAPTURED_AT = 1793991387130.0
 DARKER_CODES = 20
 SAME_IMAGE_DELTA_E = 0.5
-CALIBRATION = CalibrationSnapshot("applied", 1.01, IDENTITY_TABLE, IDENTITY_TABLE)
+CORRECTION = CorrectionSnapshot("applied", "bt709", "apple", IDENTITY_TABLE, IDENTITY_TABLE)
 
 
 def scene(seed: int = 3, width: int = WIDTH, height: int = HEIGHT) -> np.ndarray:
@@ -138,7 +138,7 @@ async def wait_for(condition: Callable[[], bool]) -> None:
 
 
 def store(deadline: float = SHORT_DEADLINE) -> ComparisonStore:
-    return ComparisonStore(lambda: CALIBRATION, deadline=deadline)
+    return ComparisonStore(lambda: CORRECTION, deadline=deadline)
 
 
 async def ready_comparison(comparisons: ComparisonStore, phone: np.ndarray, pc: np.ndarray) -> str:
@@ -403,7 +403,8 @@ async def test_dev_routes_report_a_comparison_with_dev_tools(settings: Settings)
     assert uploaded.status_code == 204
     assert report["state"] == "ready"
     assert report["difference"]["deltaE2000"]["mean"] < SAME_IMAGE_DELTA_E
-    assert len(report["calibration"]["tables"]["y"]) == 256
+    assert len(report["correction"]["tables"]["y"]) == 256
+    assert report["correction"]["display"] == "apple"
     assert report["phone"]["colorSpace"] == "srgb"
     assert image.headers["content-type"] == "image/png"
     assert missing.json()["error"]["code"] == "comparison_not_found"

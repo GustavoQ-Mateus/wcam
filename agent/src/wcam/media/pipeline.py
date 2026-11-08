@@ -8,8 +8,7 @@ import numpy as np
 from av import VideoFrame
 from av.video.reformatter import ColorRange as DeclaredRange
 
-from wcam.media.color_calibration import ColorTables, applied_tables, can_reduce, correction_tables
-from wcam.media.color_calibrator import CalibrationState, ColorCalibrator
+from wcam.media.color_correction import ColorCorrection, ColorTables, CorrectionState, correction_tables
 from wcam.media.color_range import (
     UNSPECIFIED_MATRIX,
     ColorRange,
@@ -43,19 +42,18 @@ class FramePipeline:
         quality: QualityMeter | None = None,
         clock: Callable[[], float] = time.monotonic,
         fallback_reason: str | None = None,
-        color_calibrator: ColorCalibrator | None = None,
     ) -> None:
         self.sink = sink
         self.fallback_reason = fallback_reason
         self.quality = quality
-        self.color_calibrator = color_calibrator or ColorCalibrator()
+        self.color_correction: ColorCorrection | None = None
         self._clock = clock
         self._placeholder = black_i420(OUTPUT_WIDTH, OUTPUT_HEIGHT)
         self._pending: asyncio.Queue[VideoFrame] = asyncio.Queue(maxsize=1)
         self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=WORKER_NAME)
         self._quality_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=QUALITY_WORKER_NAME)
         self._measuring: Future[None] | None = None
-        self._measured_calibration = CalibrationState.MEASURING
+        self._measured_correction = CorrectionState.DEFAULT
         self._phone_active = False
         self._last_phone: I420Frame | None = None
         self._last_phone_at: float | None = None
@@ -79,19 +77,18 @@ class FramePipeline:
         self._last_phone = None
         self._last_phone_at = self._clock()
         self.portrait = False
-        self.color_calibrator.restart()
         self._phone_active = True
-        self._measured_calibration = CalibrationState.MEASURING
+        self._measured_correction = CorrectionState.DEFAULT
         if self.quality is not None:
             self.quality.restart(self._clock())
 
     def stop_phone(self) -> None:
         self._phone_active = False
         self._last_phone = None
-        self.color_calibrator.restart()
+        self.color_correction = None
 
     def color_tables(self) -> ColorTables | None:
-        return applied_tables(self.color_calibrator.correction, self.color_range)
+        return correction_tables(self.color_correction, self.color_range)
 
     def phone_frame_age(self) -> float | None:
         if not self._phone_active or self._last_phone_at is None:
@@ -112,7 +109,6 @@ class FramePipeline:
         finally:
             self._worker.shutdown(wait=True)
             self._quality_worker.shutdown(wait=True)
-            self.color_calibrator.close()
             self.sink.close()
 
     def deliver(self, frame: VideoFrame | None) -> None:
@@ -138,21 +134,19 @@ class FramePipeline:
     def _measure(self, now: float, output: I420Frame) -> None:
         if self.quality is None:
             return
-        self._restart_quality_on_calibration_change(self.quality, now)
+        self._restart_quality_on_correction_change(self.quality, now)
         if self._measuring is not None and not self._measuring.done():
             return
         self._measuring = self._quality_worker.submit(self.quality.observe, now, output[:OUTPUT_HEIGHT])
 
-    def _restart_quality_on_calibration_change(self, quality: QualityMeter, now: float) -> None:
-        state = self.color_calibrator.status.state
-        if state is self._measured_calibration:
+    def _restart_quality_on_correction_change(self, quality: QualityMeter, now: float) -> None:
+        correction = self.color_correction
+        state = CorrectionState.DEFAULT if correction is None else correction.state
+        if state is self._measured_correction:
             return
-        self._measured_calibration = state
-        correction = self.color_calibrator.correction
-        luma_table = None
-        if state is CalibrationState.APPLIED and correction is not None:
-            luma_table = correction_tables(correction, self.color_range)[0]
-        self._quality_worker.submit(quality.restart, now, luma_table)
+        self._measured_correction = state
+        tables = self.color_tables() if state is CorrectionState.APPLIED else None
+        self._quality_worker.submit(quality.restart, now, None if tables is None else tables[0])
 
     async def _next_frame(self) -> VideoFrame | None:
         try:
@@ -185,10 +179,7 @@ class FramePipeline:
 
     def _converted(self, frame: VideoFrame, width: int, height: int) -> I420Frame:
         array = i420_array(frame, width, height, self.color_range)
-        calibrator = self.color_calibrator
-        if calibrator.collecting and can_reduce(width, height):
-            calibrator.remember(i420_planes(array, width, height), self.color_range)
-        apply_color_tables(array, height, applied_tables(calibrator.correction, self.color_range))
+        apply_color_tables(array, height, self.color_tables())
         return array
 
 

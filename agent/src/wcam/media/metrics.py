@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from wcam.media.color_calibrator import MEASURING, CalibrationStatus
+from wcam.media.color_correction import ColorCorrection
 
 WINDOW_SECONDS = 1.0
 BITS_PER_BYTE = 8
@@ -17,7 +17,7 @@ class VideoStats:
     frames_scaled: int = 0
     color_range: str = "unspecified"
     color_matrix: str = "unspecified"
-    color_calibration: CalibrationStatus = MEASURING
+    color_correction: ColorCorrection | None = None
 
 
 class VideoMeter:

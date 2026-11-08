@@ -58,9 +58,10 @@ class InvalidImageError(AgentError):
 
 
 @dataclass(frozen=True, slots=True)
-class CalibrationSnapshot:
+class CorrectionSnapshot:
     state: str
-    delta_e: float | None
+    transfer: str | None
+    display: str
     luma_table: bytes
     chroma_table: bytes
 
@@ -113,7 +114,7 @@ class ScreenshotAssembly:
 class Comparison:
     id: str
     requested_at: datetime
-    calibration: CalibrationSnapshot
+    correction: CorrectionSnapshot
     state: ComparisonState = ComparisonState.PENDING
     reason: FailureReason | None = None
     phone: PhoneSnapshot | None = None
@@ -135,18 +136,18 @@ class Comparison:
 class ComparisonStore:
     def __init__(
         self,
-        calibration: Callable[[], CalibrationSnapshot],
+        correction: Callable[[], CorrectionSnapshot],
         clock: Clock = utc_now,
         deadline: float = DEADLINE_SECONDS,
     ) -> None:
-        self._calibration = calibration
+        self._correction = correction
         self._clock = clock
         self._deadline = deadline
         self._comparisons: OrderedDict[str, Comparison] = OrderedDict()
         self._tasks: dict[str, set[asyncio.Task[None]]] = {}
 
     def create(self) -> Comparison:
-        comparison = Comparison(secrets.token_hex(ID_BYTES), self._clock(), self._calibration())
+        comparison = Comparison(secrets.token_hex(ID_BYTES), self._clock(), self._correction())
         self._comparisons[comparison.id] = comparison
         self._own(comparison.id, self._expire(comparison))
         while len(self._comparisons) > MAX_COMPARISONS:

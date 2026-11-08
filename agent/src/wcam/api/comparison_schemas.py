@@ -1,8 +1,8 @@
 from wcam.api.schemas import CamelModel, iso_utc
 from wcam.media.comparison_report import GRID_COLUMNS, GRID_ROWS, ImageDifference
 from wcam.sessions.comparisons import (
-    CalibrationSnapshot,
     Comparison,
+    CorrectionSnapshot,
     PcSnapshot,
     PhoneSnapshot,
     ScreenDifference,
@@ -40,9 +40,10 @@ class ColorTablesBody(CamelModel):
     v: list[int]
 
 
-class ComparisonCalibrationBody(CamelModel):
+class ComparisonCorrectionBody(CamelModel):
     state: str
-    delta_e: float | None
+    transfer: str | None
+    display: str
     tables: ColorTablesBody
 
 
@@ -81,7 +82,7 @@ class ComparisonResponse(CamelModel):
     requested_at: str
     phone: PhoneImageBody | None
     pc: PcImageBody | None
-    calibration: ComparisonCalibrationBody
+    correction: ComparisonCorrectionBody
     difference: DifferenceBody | None
     screen: ScreenImageBody | None
     screen_difference: ScreenDifferenceBody | None
@@ -97,7 +98,7 @@ def comparison_response(comparison: Comparison) -> ComparisonResponse:
         requested_at=iso_utc(comparison.requested_at),
         phone=None if comparison.phone is None else phone_body(comparison.phone),
         pc=None if comparison.pc is None else pc_body(comparison.pc),
-        calibration=calibration_body(comparison.calibration),
+        correction=correction_body(comparison.correction),
         difference=None if difference is None else difference_body(difference, comparison.capture_gap_ms),
         screen=None if comparison.screen is None else screen_body(comparison.screen),
         screen_difference=None if screen_difference is None else screen_difference_body(screen_difference),
@@ -126,10 +127,12 @@ def screen_body(screen: ScreenSnapshot) -> ScreenImageBody:
     )
 
 
-def calibration_body(calibration: CalibrationSnapshot) -> ComparisonCalibrationBody:
-    chroma = list(calibration.chroma_table)
-    tables = ColorTablesBody(y=list(calibration.luma_table), u=chroma, v=chroma)
-    return ComparisonCalibrationBody(state=calibration.state, delta_e=calibration.delta_e, tables=tables)
+def correction_body(correction: CorrectionSnapshot) -> ComparisonCorrectionBody:
+    chroma = list(correction.chroma_table)
+    tables = ColorTablesBody(y=list(correction.luma_table), u=chroma, v=chroma)
+    return ComparisonCorrectionBody(
+        state=correction.state, transfer=correction.transfer, display=correction.display, tables=tables
+    )
 
 
 def difference_body(difference: ImageDifference, capture_gap_ms: int | None) -> DifferenceBody:

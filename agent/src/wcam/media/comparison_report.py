@@ -6,7 +6,8 @@ import av
 import numpy as np
 from av.error import FFmpegError
 
-from wcam.media.color_calibration import (
+from wcam.media.color_difference import FloatArray, RgbSpace, delta_e_2000, to_lab
+from wcam.media.image_reduction import (
     BT709_LUMA_WEIGHTS,
     MAX_DETAIL,
     REDUCED_HEIGHT,
@@ -16,7 +17,6 @@ from wcam.media.color_calibration import (
     correlation,
     fine_detail,
 )
-from wcam.media.color_difference import FloatArray, RgbSpace, delta_e_2000, to_lab
 from wcam.virtualcam.sink import I420Frame
 
 type BoolArray = np.ndarray[Any, np.dtype[np.bool_]]

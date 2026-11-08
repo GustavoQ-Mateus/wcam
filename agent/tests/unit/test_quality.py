@@ -5,12 +5,15 @@ import time
 from pathlib import Path
 
 import numpy as np
-import pytest
 
-from tests.unit.test_color_calibration import KNOWN_CORRECTION
 from tests.unit.test_pipeline import SteppingClock, phone_frame
-from wcam.media.color_calibration import correction_tables
-from wcam.media.color_calibrator import MEASURING, CalibrationState, CalibrationStatus
+from wcam.media.color_correction import (
+    ColorCorrection,
+    CorrectionState,
+    DisplayConvention,
+    apple_display_tables,
+    correction_tables,
+)
 from wcam.media.color_range import ColorRange
 from wcam.media.pipeline import FramePipeline
 from wcam.media.quality import WARMUP_SECONDS, Luma, QualityMeter, read_y4m_luma, ssim, translated
@@ -110,30 +113,35 @@ def restarts_after_delivery(pipeline: FramePipeline, meter: RecordingMeter, coun
     return meter.restarts
 
 
-@pytest.mark.parametrize(
-    "settled", [CalibrationStatus(CalibrationState.APPLIED, 0.5), CalibrationStatus(CalibrationState.DEFAULT, None)]
-)
-def test_quality_restarts_when_color_calibration_settles_and_measures_again(settled: CalibrationStatus) -> None:
-    clock = SteppingClock()
+APPLE_CORRECTION = ColorCorrection(CorrectionState.APPLIED, "bt709", DisplayConvention.APPLE, True)
+STANDARD_CORRECTION = ColorCorrection(CorrectionState.DEFAULT, "bt709", DisplayConvention.STANDARD, True)
+
+
+def live_quality_pipeline(clock: SteppingClock) -> tuple[FramePipeline, RecordingMeter]:
     meter = RecordingMeter()
     pipeline = FramePipeline(FakeSink(), meter, clock=clock)
     pipeline.open()
     pipeline.start_phone()
+    return pipeline, meter
+
+
+def test_quality_restarts_when_the_color_correction_changes_state() -> None:
+    clock = SteppingClock()
+    pipeline, meter = live_quality_pipeline(clock)
     assert restarts_after_delivery(pipeline, meter, 1) == [clock.now]
 
     clock.now += 1.0
-    pipeline.color_calibrator.status = settled
+    pipeline.color_correction = APPLE_CORRECTION
     assert restarts_after_delivery(pipeline, meter, 2)[-1] == clock.now
-
     clock.now += 1.0
-    pipeline.color_calibrator.status = MEASURING
+    pipeline.color_correction = STANDARD_CORRECTION
     assert restarts_after_delivery(pipeline, meter, 3)[-1] == clock.now
     assert len(restarts_after_delivery(pipeline, meter, 4)) == 3
 
 
 def test_reference_through_the_applied_luma_table_matches_video_through_it() -> None:
     reference = detailed_luma()
-    luma_table, _ = correction_tables(KNOWN_CORRECTION, ColorRange.FULL)
+    luma_table, _ = apple_display_tables(ColorRange.FULL)
     meter = QualityMeter(reference)
     meter.restart(0.0, luma_table)
 
@@ -142,16 +150,13 @@ def test_reference_through_the_applied_luma_table_matches_video_through_it() -> 
     assert meter.report.ssim == 1.0
 
 
-def test_applied_calibration_restarts_quality_with_its_luma_table_and_default_without() -> None:
-    meter = RecordingMeter()
-    pipeline = FramePipeline(FakeSink(), meter, clock=SteppingClock())
-    pipeline.open()
-    pipeline.start_phone()
-    pipeline.color_calibrator.correction = KNOWN_CORRECTION
-    pipeline.color_calibrator.status = CalibrationStatus(CalibrationState.APPLIED, 0.5)
+def test_applied_correction_restarts_quality_with_its_luma_table_and_default_without() -> None:
+    pipeline, meter = live_quality_pipeline(SteppingClock())
+    pipeline.color_correction = APPLE_CORRECTION
     restarts_after_delivery(pipeline, meter, 2)
-    pipeline.color_calibrator.correction = None
-    pipeline.color_calibrator.status = CalibrationStatus(CalibrationState.DEFAULT, None)
+    pipeline.color_correction = STANDARD_CORRECTION
     restarts_after_delivery(pipeline, meter, 3)
 
-    assert meter.luma_tables == [None, correction_tables(KNOWN_CORRECTION, pipeline.color_range)[0], None]
+    applied_table = correction_tables(APPLE_CORRECTION, pipeline.color_range)
+    assert applied_table is not None
+    assert meter.luma_tables == [None, applied_table[0], None]
