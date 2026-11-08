@@ -65,6 +65,7 @@ describe("control message", () => {
       frameRate: 30,
       facingMode: null,
       codecs: ["video/H264"],
+      colorSpace: { primaries: "bt709", transfer: "bt709", matrix: "bt709", fullRange: true },
     };
 
     expect(JSON.parse(cameraCapabilitiesData(message))).toEqual(message);
