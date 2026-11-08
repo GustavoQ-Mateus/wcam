@@ -125,6 +125,8 @@ Agent:
 
 Print da tela do celular (opcional): a análise do trace do teste final mostrou que a calibração tirou cerca de 19% de saturação e clareou os meios-tons para igualar o canvas do Safari, o que sugere que o canvas sai diferente do que a tela do iPhone mostra. Só um print da tela mostra os pixels como exibidos. Por isso a comparação aceita, depois de pronta, um print do iPhone enviado pelo console (arquivo PNG com o perfil ICC; JPEG é recusado). O agente alinha o print com as outras duas imagens (busca de escala e posição, como no spike) e acrescenta ao relatório a diferença entre o print e o canvas do celular e entre o print e a imagem do PC. O print aparece como terceira imagem, e baixa junto com as outras.
 
+O Safari do iPhone não permite que uma página capture a própria tela, então o print é tirado pelo usuário com os botões do aparelho. Para não exigir cabo nem e-mail, o `/cam`, com as ferramentas de desenvolvimento ligadas, mostra um botão `cam.dev_send_screenshot` depois de cada `snapshot_request`: o usuário escolhe o print na galeria (seletor de arquivo, só PNG) e o celular o envia pelo DataChannel em pedaços, associado à última comparação. O envio pelo console continua como alternativa.
+
 Uso esperado: o usuário compara as duas imagens no mesmo monitor. Se elas estiverem iguais no PC e a tela do iPhone parecer diferente, a amostra do canvas não representa o que a tela do celular mostra, e a calibração mede a coisa errada. Se forem diferentes no PC, os números dizem onde (tom, saturação, matiz, região).
 
 ## Contrato (`docs/contrato.md` vai para 0.6.0)
