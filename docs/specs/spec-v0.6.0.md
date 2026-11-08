@@ -104,6 +104,27 @@ Nada aqui muda o formato da câmera; é só levantamento, registrado nos relató
 - Agent: script de desenvolvimento `python -m wcam.tools.decode_benchmark` que decodifica H.264 sintético em 1280x720, 1920x1080, 2560x1440 e 3840x2160, a 30 e 60 fps, e mede a CPU do processo.
 - Usuário, no iPhone dele: o relatório registra as capacidades reais e o resultado do benchmark nesta máquina.
 
+## 6. Comparação lado a lado (ferramenta de desenvolvimento)
+
+Motivo: no teste final de 2026-11-07, a calibração chegou a `applied` com `deltaE` 1,01 medido pelo agente, e o usuário viu a WCam no app Câmera "bem diferente" do celular. Comparar a olho entre duas telas não separa as causas possíveis (a amostra do canvas não ser o que a tela do iPhone mostra, o app do PC, os monitores). Pedido do usuário (2026-11-07): um botão no console que captura ao mesmo tempo a prévia do celular e a câmera WCam, mostra as duas lado a lado no mesmo monitor, permite baixar as imagens e traz os dados para validar a calibração.
+
+Só existe com `WCAM_DEV_TOOLS=1` (desenvolvimento); sem a variável, as rotas respondem `404`, as mensagens novas são ignoradas com log e o botão não aparece. Nada vai para o disco do agente: as comparações ficam em memória (as últimas 5) e o usuário baixa o que quiser pelo navegador.
+
+Console (web):
+- Com `devTools` no status e a sessão `live`, o painel da sessão mostra `console.dev_compare`. O clique chama `POST /api/dev/comparisons` e, no mesmo instante, captura um quadro da câmera WCam no navegador do PC (`getUserMedia` com o dispositivo "WCam", canvas `srgb` no tamanho do vídeo, PNG), enviado por `PUT /api/dev/comparisons/{id}/pc`.
+- Quando a comparação fica `ready`, mostra as duas imagens lado a lado no mesmo tamanho, com o horário de cada captura, e na área de detalhes os dados do relatório. Botões para baixar a imagem do celular, a do PC e o relatório JSON.
+- Acesso à câmera e canvas em `media/`; formatação dos dados em `data/`, com Vitest.
+
+Celular (web):
+- Ao receber `snapshot_request` em `live`, desenha o quadro atual do visor num canvas no tamanho nativo do vídeo, sem espelho, no `colorSpace` `display-p3` quando aceito, e envia o PNG pelo DataChannel em pedaços (contrato). Sem texto nem elemento novo na tela.
+
+Agent:
+- `POST /api/dev/comparisons` cria a comparação, guarda o horário e manda `snapshot_request` ao celular; remonta os pedaços e confere o tamanho.
+- Com as duas imagens, monta o relatório: horários das duas capturas e a diferença entre eles; estado e `deltaE` da calibração e as tabelas em uso; e a diferença de cor entre as duas imagens, depois de alinhar (redução por média de área para 320x180, casamento por correlação de luminância com e sem espelho, células de detalhe fino excluídas como na calibração): ΔE2000 médio, mediano e p90, ΔL*, razão de croma, desvio de matiz e uma grade 8x4 com o ΔE2000 médio de cada região. A imagem do celular é lida no seu `colorSpace`, a do PC em sRGB.
+- Prazo de 10 s para o celular responder; senão `failed` com o motivo.
+
+Uso esperado: o usuário compara as duas imagens no mesmo monitor. Se elas estiverem iguais no PC e a tela do iPhone parecer diferente, a amostra do canvas não representa o que a tela do celular mostra, e a calibração mede a coisa errada. Se forem diferentes no PC, os números dizem onde (tom, saturação, matiz, região).
+
 ## Contrato (`docs/contrato.md` vai para 0.6.0)
 
 Console:
@@ -141,6 +162,7 @@ Calibração: `console.color_matched` ("Cor igual à do celular" / "Color matche
 3. O usuário compara lado a lado, no mesmo ambiente com pouca luz, a prévia do celular e a WCam no app Câmera do Windows, e aprova que sombras e cores estão no mesmo nível.
 3.1. Calibração: em toda conexão do iPhone do usuário, `colorCalibration.state` chega a `applied` sem nenhuma ação dele, com `deltaE` abaixo de 2. Na verificação de ponta a ponta da vcam (§1.1), o que o Chrome mostra da câmera WCam fica com ΔE2000 médio abaixo de 2 contra as amostras do celular. Testes: o ajuste recupera uma curva e um ganho conhecidos a partir de amostras sintéticas; amostra com correlação baixa é descartada; sem 3 amostras válidas o estado é `default` e a saída é byte a byte a da v0.6.0 sem calibração; ao encerrar a sessão nada fica guardado e a conexão seguinte começa em `measuring`; `color_sample` antes do `live` é ignorado. O e2e com a câmera falsa do Chromium mede e aplica a calibração a cada conexão, e o SSIM continua acima de 0,98, medido contra a referência passada pela mesma tabela de cor aplicada (decisão 8).
 3.2. Nenhum valor ligado a modelo, marca ou aparelho no código; conferido na revisão do orquestrador.
+3.3. Comparação lado a lado (§6): com `WCAM_DEV_TOOLS=1`, um clique no console traz as duas imagens e o relatório em até 10 s, e as três baixam. Sem a variável, rotas `404`, mensagens ignoradas e nenhum botão. Testes: remontagem dos pedaços (inclusive pedaço faltando e tamanho errado), prazo de 10 s, limite de 5 comparações em memória, relatório com uma diferença conhecida entre duas imagens sintéticas, rota `404` sem a variável; e2e com a câmera falsa do Chromium e uma câmera WCam simulada, se o Chromium do compose não enxergar a WCam (registrar no relatório). Usado pelo usuário no iPhone antes de aprovar o CA 3.
 4. Congelar: sem quadro novo, a câmera repete o último quadro bom por 3 s (tolerância de 0,2 s) e então mostra preto (Y=16, UV=128). Teste automatizado e verificação no Frame Server.
 5. Recuperação: no teste de laboratório, com um pacote e o seu reenvio perdidos a 5 Mbit/s, o vídeo volta em até 1 s.
 6. Registro: cada episódio gera uma linha em `episodes.log` com todos os campos; teste confirma que token, URL de pareamento e IP completo nunca aparecem no arquivo.
@@ -161,5 +183,6 @@ Calibração: `console.color_matched` ("Cor igual à do celular" / "Color matche
 6. O teste com aparelho real é só no iPhone do usuário (decisão dele, 2026-11-06). Outro aparelho é coberto pelo e2e com a câmera falsa do Chromium e pela ausência de valores por modelo no código (CA 3.2).
 7. Nome: "calibração de cor" no código e nos documentos (`color_calibration`); na tela, só o resultado ("Cor igual à do celular").
 8. O SSIM mede perda de detalhe na transmissão, não a correção de cor, que é intencional (emenda do CA-2). Com a calibração aplicada, a referência do SSIM passa pela mesma tabela de Y aplicada ao vídeo. No e2e com a referência y4m (BT.601, C420jpeg), antes desta decisão o SSIM era 0,985 em `measuring` e 0,973 contra a referência original depois do `applied`; o ΔE de cerca de 4,4 que sobra nesse arquivo é de matriz, fora do escopo, e o e2e não exige ΔE abaixo de 2 com ele, só com a câmera falsa padrão do Chromium.
+9. Ferramenta de comparação lado a lado (§6) entra na v0.6.0, aprovada pelo usuário em 2026-11-07, porque é o instrumento de verificação do CA 3.
 
 ## Changelog

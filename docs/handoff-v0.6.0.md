@@ -86,3 +86,20 @@ Sessão web:
 
 Sessão vcam:
 1. Verificação de ponta a ponta para o teste final: quadro lido pelo Chrome na câmera WCam (`getUserMedia`) contra a amostra do celular do mesmo instante, ΔE2000 médio. Ferramenta de desenvolvimento, fora do produto; o método vai no relatório. Combine comigo o que precisar do agente (por exemplo, gravar amostras com horário quando uma variável de desenvolvimento estiver definida).
+
+## Adendo: comparação lado a lado (2026-11-07)
+
+Spec §6, CA 3.3, decisão 9. Contrato: seção "Comparação lado a lado" no console, mensagens `snapshot_request`, `snapshot_begin` e `snapshot_chunk` no DataChannel, `devTools` no status, `WCAM_DEV_TOOLS`. Textos `console.dev_compare*` já em `locales/`. Dado que motivou: no teste final, `applied` com `deltaE` 1,01 e o usuário vendo a WCam bem diferente do celular.
+
+Sessão agent:
+1. `WCAM_DEV_TOOLS` na configuração; `devTools` no status; rotas `404 not_found` sem a variável.
+2. Rotas do contrato; comparações em memória (últimas 5); `snapshot_request` ao celular; remontagem dos pedaços com conferência de `size` e `chunks`; prazos de 10 s (`phone_timeout`, `pc_missing`); `session_ended`.
+3. Relatório `difference` como no contrato, reaproveitando o alinhamento e a máscara de detalhe da calibração; cálculo fora do event loop.
+4. Testes do CA 3.3 do lado do agente.
+
+Sessão web:
+1. Celular: responder `snapshot_request` em `live` com o PNG do visor no tamanho nativo, sem espelho, `display-p3` quando aceito, em pedaços de até 45 000 bytes.
+2. Console: botão `console.dev_compare` com `devTools` e sessão `live`; captura da câmera WCam no navegador do PC no mesmo clique (`media/`), `PUT .../pc`; espera `ready`; imagens lado a lado no mesmo tamanho com horários; dados na área de detalhes; três downloads (imagem do celular, imagem do PC, JSON do relatório).
+3. e2e do CA 3.3 e Vitest da formatação.
+
+Ordem: as duas sessões em paralelo; o contrato é o ponto de encontro. Qualquer ajuste de contrato passa por mim.
