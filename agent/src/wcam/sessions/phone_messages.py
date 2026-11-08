@@ -6,6 +6,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
@@ -58,6 +59,7 @@ class SnapshotBeginMessage(PhoneMessage):
     type: Literal["snapshot_begin"]
     id: str
     captured_at: float
+    capture_delay_ms: NonNegativeFloat | None = None
     color_space: RgbSpace
     width: PositiveInt
     height: PositiveInt

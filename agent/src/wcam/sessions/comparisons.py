@@ -3,8 +3,8 @@ import logging
 import secrets
 from collections import OrderedDict
 from collections.abc import Callable, Coroutine
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
@@ -12,7 +12,7 @@ from wcam.clock import Clock, utc_now
 from wcam.errors import AgentError
 from wcam.media.color_difference import RgbSpace
 from wcam.media.comparison_report import DecodedImage, ImageDifference, decoded_png, image_difference
-from wcam.media.screen_alignment import aligned_screen, png_color_space
+from wcam.media.screen_alignment import Placement, aligned_screen, png_color_space
 from wcam.sessions.phone_messages import (
     SNAPSHOT_CHUNK_BYTES,
     ScreenshotBeginMessage,
@@ -69,6 +69,7 @@ class CorrectionSnapshot:
 @dataclass(frozen=True, slots=True)
 class PhoneSnapshot:
     captured_at: datetime
+    capture_delay_ms: float | None
     color_space: RgbSpace
     width: int
     height: int
@@ -78,6 +79,7 @@ class PhoneSnapshot:
 @dataclass(frozen=True, slots=True)
 class PcSnapshot:
     received_at: datetime
+    captured_at: datetime | None
     width: int
     height: int
     png: bytes
@@ -130,7 +132,11 @@ class Comparison:
     def capture_gap_ms(self) -> int | None:
         if self.phone is None or self.pc is None:
             return None
-        return round(abs((self.phone.captured_at - self.pc.received_at).total_seconds()) * MILLISECONDS)
+        delay_ms, pc_captured_at = self.phone.capture_delay_ms, self.pc.captured_at
+        if delay_ms is None or pc_captured_at is None:
+            return None
+        phone_captured_at = self.requested_at + timedelta(milliseconds=delay_ms)
+        return round(abs((phone_captured_at - pc_captured_at).total_seconds()) * MILLISECONDS)
 
 
 class ComparisonStore:
@@ -184,12 +190,13 @@ class ComparisonStore:
         if len(assembly.parts) == assembly.begin.chunks:
             self._finish_phone(comparison, assembly)
 
-    async def receive_pc(self, comparison_id: str, png: bytes) -> None:
+    async def receive_pc(self, comparison_id: str, png: bytes, captured_at_ms: float | None = None) -> None:
         comparison = self.find(comparison_id)
         image = await decoded_upload(png)
         if comparison.state is not ComparisonState.PENDING or comparison.pc is not None:
             return
-        comparison.pc = PcSnapshot(self._clock(), image.width, image.height, png)
+        captured_at = None if captured_at_ms is None else from_milliseconds(captured_at_ms)
+        comparison.pc = PcSnapshot(self._clock(), captured_at, image.width, image.height, png)
         self._complete_when_both_arrived(comparison)
 
     async def receive_screen(self, comparison_id: str, png: bytes) -> None:
@@ -271,8 +278,14 @@ class ComparisonStore:
             self._fail(comparison, FailureReason.PHONE_INVALID)
             return
         begin = assembly.begin
-        captured_at = datetime.fromtimestamp(begin.captured_at / MILLISECONDS, UTC)
-        comparison.phone = PhoneSnapshot(captured_at, begin.color_space, begin.width, begin.height, png)
+        comparison.phone = PhoneSnapshot(
+            from_milliseconds(begin.captured_at),
+            begin.capture_delay_ms,
+            begin.color_space,
+            begin.width,
+            begin.height,
+            png,
+        )
         comparison.assembly = None
         self._complete_when_both_arrived(comparison)
 
@@ -344,9 +357,17 @@ def screen_report(
     screen = decoded_png(png)
     space = png_color_space(png)
     phone_image = decoded_png(phone.png)
-    aligned, _ = aligned_screen(phone_image, screen)
+    aligned, placement = aligned_screen(phone_image, screen)
     difference = ScreenDifference(
-        phone=image_difference(aligned, space, phone_image, phone.color_space),
-        pc=image_difference(aligned, space, decoded_png(pc.png), RgbSpace.SRGB),
+        phone=with_alignment(image_difference(aligned, space, phone_image, phone.color_space), placement),
+        pc=with_alignment(image_difference(aligned, space, decoded_png(pc.png), RgbSpace.SRGB), placement),
     )
     return ScreenSnapshot(received_at, screen.width, screen.height, space, png), difference
+
+
+def with_alignment(difference: ImageDifference, placement: Placement) -> ImageDifference:
+    return replace(difference, mirrored=placement.mirrored != difference.mirrored, correlation=placement.score)
+
+
+def from_milliseconds(milliseconds: float) -> datetime:
+    return datetime.fromtimestamp(milliseconds / MILLISECONDS, UTC)

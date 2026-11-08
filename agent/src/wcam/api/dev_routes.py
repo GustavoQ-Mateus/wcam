@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Request, Response, status
+from typing import Annotated
+
+from fastapi import APIRouter, Query, Request, Response, status
 
 from wcam.api.comparison_schemas import ComparisonCreatedResponse, ComparisonResponse, comparison_response
 from wcam.sessions.comparisons import ComparisonNotFoundError, ComparisonStore
@@ -24,10 +26,15 @@ def create_dev_router(manager: SessionManager, comparisons: ComparisonStore) -> 
         "/api/dev/comparisons/{comparison_id}/pc",
         status_code=status.HTTP_204_NO_CONTENT,
         summary="Upload the PC frame of a comparison",
-        description="Development only. PNG of the frame read from the WCam camera in the PC browser, up to 20 MB.",
+        description="Development only. PNG of the frame read from the WCam camera in the PC browser, up to 20 MB, "
+        "with capturedAt as the capture time on the PC clock in milliseconds since the epoch.",
     )
-    async def upload_pc(comparison_id: str, request: Request) -> Response:
-        await comparisons.receive_pc(comparison_id, await request.body())
+    async def upload_pc(
+        comparison_id: str,
+        request: Request,
+        captured_at: Annotated[float | None, Query(alias="capturedAt", ge=0)] = None,
+    ) -> Response:
+        await comparisons.receive_pc(comparison_id, await request.body(), captured_at)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @router.put(

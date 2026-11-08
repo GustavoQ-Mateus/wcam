@@ -23,6 +23,7 @@ class PhoneImageBody(CamelModel):
 
 class PcImageBody(CamelModel):
     received_at: str
+    captured_at: str | None
     width: int
     height: int
 
@@ -115,7 +116,12 @@ def phone_body(phone: PhoneSnapshot) -> PhoneImageBody:
 
 
 def pc_body(pc: PcSnapshot) -> PcImageBody:
-    return PcImageBody(received_at=iso_utc(pc.received_at), width=pc.width, height=pc.height)
+    return PcImageBody(
+        received_at=iso_utc(pc.received_at),
+        captured_at=None if pc.captured_at is None else iso_utc(pc.captured_at),
+        width=pc.width,
+        height=pc.height,
+    )
 
 
 def screen_body(screen: ScreenSnapshot) -> ScreenImageBody:
