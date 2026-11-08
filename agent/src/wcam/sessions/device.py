@@ -1,4 +1,9 @@
+from wcam.media.color_correction import DisplayConvention
+
 SEPARATOR = " · "
+APPLE_MOBILE_SYSTEMS = ("iPhone", "iPad")
+MAC_SYSTEM = "macOS"
+SAFARI_BROWSER = "Safari"
 SYSTEMS = (
     ("iPhone", "iPhone"),
     ("iPad", "iPad"),
@@ -29,3 +34,11 @@ def describe_device(user_agent: str) -> str | None:
 
 def first_match(user_agent: str, markers: tuple[tuple[str, str], ...]) -> str | None:
     return next((name for marker, name in markers if marker in user_agent), None)
+
+
+def display_convention(user_agent: str) -> DisplayConvention:
+    system = first_match(user_agent, SYSTEMS)
+    browser = first_match(user_agent, BROWSERS)
+    if system in APPLE_MOBILE_SYSTEMS or (system == MAC_SYSTEM and browser == SAFARI_BROWSER):
+        return DisplayConvention.APPLE
+    return DisplayConvention.STANDARD

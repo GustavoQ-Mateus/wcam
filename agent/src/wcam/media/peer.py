@@ -14,7 +14,7 @@ from aiortc.rtcrtpreceiver import RTCRtpReceiver
 from aiortc.stats import RTCTransportStats
 from av import VideoFrame
 
-from wcam.media.color_calibration import ColorSample
+from wcam.media.color_correction import ColorCorrection
 from wcam.media.episodes import EpisodeTracker, LinkSample, write_episode
 from wcam.media.frame_gate import FrameGate
 from wcam.media.metrics import VideoMeter, VideoStats
@@ -125,7 +125,7 @@ class AiortcPeer:
             frames_scaled=self._pipeline.frames_scaled,
             color_range=self._pipeline.color_range,
             color_matrix=self._pipeline.color_matrix,
-            color_calibration=self._pipeline.color_calibrator.status,
+            color_correction=self._pipeline.color_correction,
         )
 
     async def answer(self, offer_sdp: str) -> None:
@@ -148,11 +148,8 @@ class AiortcPeer:
     def limit_bitrate(self, max_bitrate_bps: int) -> None:
         cap_video_estimate(self._connection, max_bitrate_bps)
 
-    def add_color_sample(self, sample: ColorSample) -> None:
-        self._pipeline.color_calibrator.add_sample(sample)
-
-    def restart_color_calibration(self) -> None:
-        self._pipeline.color_calibrator.restart()
+    def set_color_correction(self, correction: ColorCorrection) -> None:
+        self._pipeline.color_correction = correction
 
     def send(self, message: dict[str, str]) -> None:
         if self._channel is not None and self._channel.readyState == "open":

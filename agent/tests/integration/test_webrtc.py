@@ -72,6 +72,7 @@ PHONE_CAPABILITIES: dict[str, object] = {
     "frameRate": 60.0,
     "facingMode": "environment",
     "codecs": ["video/H264", "video/VP8"],
+    "colorSpace": {"primaries": "smpte170m", "transfer": "smpte170m", "matrix": "smpte170m", "fullRange": False},
 }
 
 
@@ -277,6 +278,11 @@ async def test_aiortc_phone_goes_live_only_after_confirmation(
     assert (result.video_after_confirmation["width"], result.video_after_confirmation["height"]) == (WIDTH, HEIGHT)
     assert result.video_after_confirmation["colorRange"] in {"limited", "unspecified"}
     assert result.video_after_confirmation["colorMatrix"] == "unspecified"
+    assert result.video_after_confirmation["colorCorrection"] == {
+        "state": "default",
+        "transfer": None,
+        "display": "standard",
+    }
     assert factory.peers[0].gate.released > 0
     assert result.source_before_confirmation is FrameSource.PLACEHOLDER
     assert result.live_frame_shape == I420_SHAPE

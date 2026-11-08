@@ -2,7 +2,6 @@ import base64
 import binascii
 from typing import Annotated, Literal, Self
 
-import numpy as np
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -16,11 +15,10 @@ from pydantic import (
 )
 from pydantic.alias_generators import to_camel
 
-from wcam.media.color_calibration import ColorSample
+from wcam.media.color_correction import CameraColorSpace
 from wcam.media.color_difference import RgbSpace
 from wcam.media.quality_preset import QualityPreset
 
-RGB_CHANNELS = 3
 SNAPSHOT_CHUNK_BYTES = 45_000
 
 
@@ -33,6 +31,16 @@ class SetQualityPresetMessage(PhoneMessage):
     preset: QualityPreset
 
 
+class CameraColorSpaceMessage(PhoneMessage):
+    primaries: str | None = None
+    transfer: str | None = None
+    matrix: str | None = None
+    full_range: bool | None = None
+
+    def to_color_space(self) -> CameraColorSpace:
+        return CameraColorSpace(self.primaries, self.transfer, self.matrix, self.full_range)
+
+
 class CameraCapabilitiesMessage(PhoneMessage):
     type: Literal["camera_capabilities"]
     width: PositiveInt | None
@@ -40,31 +48,10 @@ class CameraCapabilitiesMessage(PhoneMessage):
     frame_rate: PositiveFloat | None
     facing_mode: Literal["user", "environment"] | None
     codecs: tuple[str, ...]
+    color_space: CameraColorSpaceMessage | None = None
 
-
-class ColorSampleMessage(PhoneMessage):
-    type: Literal["color_sample"]
-    color_space: RgbSpace
-    width: PositiveInt
-    height: PositiveInt
-    rgb: str
-    captured_at: float
-
-    @model_validator(mode="after")
-    def check_pixel_count(self) -> Self:
-        if len(self.rgb_bytes()) != self.width * self.height * RGB_CHANNELS:
-            raise ValueError("rgb does not hold width x height pixels")
-        return self
-
-    def rgb_bytes(self) -> bytes:
-        try:
-            return base64.b64decode(self.rgb, validate=True)
-        except binascii.Error as error:
-            raise ValueError("rgb is not base64") from error
-
-    def to_sample(self) -> ColorSample:
-        pixels = np.frombuffer(self.rgb_bytes(), dtype=np.uint8).reshape(self.height, self.width, RGB_CHANNELS)
-        return ColorSample(self.color_space, pixels, self.captured_at)
+    def camera_color_space(self) -> CameraColorSpace | None:
+        return None if self.color_space is None else self.color_space.to_color_space()
 
 
 class SnapshotBeginMessage(PhoneMessage):
@@ -114,7 +101,6 @@ class ScreenshotChunkMessage(ChunkMessage):
 type AnyPhoneMessage = (
     SetQualityPresetMessage
     | CameraCapabilitiesMessage
-    | ColorSampleMessage
     | SnapshotBeginMessage
     | SnapshotChunkMessage
     | ScreenshotBeginMessage
@@ -125,7 +111,6 @@ PHONE_MESSAGE = TypeAdapter[AnyPhoneMessage](
     Annotated[
         SetQualityPresetMessage
         | CameraCapabilitiesMessage
-        | ColorSampleMessage
         | SnapshotBeginMessage
         | SnapshotChunkMessage
         | ScreenshotBeginMessage

@@ -3,7 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
-from wcam.media.color_calibrator import CalibrationStatus
+from wcam.media.color_correction import ColorCorrection, CorrectionState, DisplayConvention
 from wcam.media.metrics import VideoStats
 from wcam.media.pipeline import FramePipeline
 from wcam.media.quality import QualityReport
@@ -27,9 +27,10 @@ class PairingBody(CamelModel):
     expires_at: str
 
 
-class ColorCalibrationBody(CamelModel):
+class ColorCorrectionBody(CamelModel):
     state: str
-    delta_e: float | None
+    transfer: str | None
+    display: str
 
 
 class VideoBody(CamelModel):
@@ -41,7 +42,14 @@ class VideoBody(CamelModel):
     frames_scaled: int
     color_range: str
     color_matrix: str
-    color_calibration: ColorCalibrationBody
+    color_correction: ColorCorrectionBody
+
+
+class CameraColorSpaceBody(CamelModel):
+    primaries: str | None
+    transfer: str | None
+    matrix: str | None
+    full_range: bool | None
 
 
 class CameraCapabilitiesBody(CamelModel):
@@ -50,6 +58,7 @@ class CameraCapabilitiesBody(CamelModel):
     frame_rate: float | None
     facing_mode: str | None
     codecs: list[str]
+    color_space: CameraColorSpaceBody | None
 
 
 class SessionBody(CamelModel):
@@ -176,6 +185,14 @@ def camera_capabilities_body(capabilities: CameraCapabilitiesMessage | None) -> 
         frame_rate=capabilities.frame_rate,
         facing_mode=capabilities.facing_mode,
         codecs=list(capabilities.codecs),
+        color_space=None
+        if capabilities.color_space is None
+        else CameraColorSpaceBody(
+            primaries=capabilities.color_space.primaries,
+            transfer=capabilities.color_space.transfer,
+            matrix=capabilities.color_space.matrix,
+            full_range=capabilities.color_space.full_range,
+        ),
     )
 
 
@@ -189,12 +206,14 @@ def video_body(video: VideoStats) -> VideoBody:
         frames_scaled=video.frames_scaled,
         color_range=video.color_range,
         color_matrix=video.color_matrix,
-        color_calibration=color_calibration_body(video.color_calibration),
+        color_correction=color_correction_body(video.color_correction),
     )
 
 
-def color_calibration_body(status: CalibrationStatus) -> ColorCalibrationBody:
-    return ColorCalibrationBody(state=status.state, delta_e=status.delta_e)
+def color_correction_body(correction: ColorCorrection | None) -> ColorCorrectionBody:
+    if correction is None:
+        return ColorCorrectionBody(state=CorrectionState.DEFAULT, transfer=None, display=DisplayConvention.STANDARD)
+    return ColorCorrectionBody(state=correction.state, transfer=correction.transfer, display=correction.display)
 
 
 def last_ended_body(last_ended: LastEnded) -> LastEndedBody:

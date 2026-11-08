@@ -44,8 +44,8 @@ def create_dev_router(manager: SessionManager, comparisons: ComparisonStore) -> 
     @router.get(
         "/api/dev/comparisons/{comparison_id}",
         summary="Read a comparison",
-        description="Development only. Capture times, the calibration in use and the color difference between the "
-        "phone frame, the PC frame and, when uploaded, the phone screenshot.",
+        description="Development only. Capture times, the color correction in use and the color difference "
+        "between the phone frame, the PC frame and, when uploaded, the phone screenshot.",
     )
     async def read_comparison(comparison_id: str) -> ComparisonResponse:
         return comparison_response(comparisons.find(comparison_id))

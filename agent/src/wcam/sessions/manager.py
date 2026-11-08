@@ -8,7 +8,7 @@ from enum import StrEnum
 from typing import Any, Protocol
 
 from wcam.clock import Clock, utc_now
-from wcam.media.color_calibration import ColorSample
+from wcam.media.color_correction import ColorCorrection, DisplayConvention, color_correction, default_correction
 from wcam.media.metrics import VideoStats
 from wcam.media.quality_preset import DEFAULT_QUALITY_PRESET, QualityPreset
 from wcam.media.sdp_filter import is_publishable_offer, sha256_fingerprint
@@ -27,7 +27,6 @@ from wcam.sessions.errors import (
 )
 from wcam.sessions.phone_messages import (
     CameraCapabilitiesMessage,
-    ColorSampleMessage,
     ScreenshotBeginMessage,
     ScreenshotChunkMessage,
     SetQualityPresetMessage,
@@ -41,7 +40,6 @@ ID_BYTES = 16
 COUNTED_FAILURES = (PairingTokenInvalidError, PairingTokenExpiredError, PairingWindowClosedError)
 IGNORED_PHONE_MESSAGE = "Ignored a phone message outside the contract"
 PRESET_BEFORE_LIVE = "Ignored a quality preset change from a phone that is not live yet"
-COLOR_SAMPLE_BEFORE_LIVE = "Ignored a color sample from a phone that is not live yet"
 PHONE_IMAGE_WITHOUT_DEV_TOOLS = "Ignored a phone image because development tools are off"
 
 type PhoneImageMessage = SnapshotBeginMessage | SnapshotChunkMessage | ScreenshotBeginMessage | ScreenshotChunkMessage
@@ -82,9 +80,7 @@ class MediaPeer(Protocol):
 
     def limit_bitrate(self, max_bitrate_bps: int) -> None: ...
 
-    def add_color_sample(self, sample: ColorSample) -> None: ...
-
-    def restart_color_calibration(self) -> None: ...
+    def set_color_correction(self, correction: ColorCorrection) -> None: ...
 
     def send(self, message: dict[str, str]) -> None: ...
 
@@ -100,6 +96,7 @@ class SessionRequest:
     offer_sdp: str
     remote_ip: str
     device_name: str | None
+    display: DisplayConvention = DisplayConvention.STANDARD
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,6 +251,7 @@ class SessionManager:
         except ValueError as error:
             raise InvalidOfferError from error
         peer.limit_bitrate(self._quality_preset.max_bitrate_bps)
+        peer.set_color_correction(default_correction(request.display))
         agent_fingerprint = sha256_fingerprint(peer.answer_sdp) or ""
         code = confirmation_code(nonce, phone_fingerprint, agent_fingerprint)
         session = Session(secrets.token_hex(ID_BYTES), request, self._clock(), code, peer)
@@ -282,9 +280,7 @@ class SessionManager:
         message = parse_phone_message(data)
         if isinstance(message, CameraCapabilitiesMessage):
             session.camera_capabilities = message
-            session.peer.restart_color_calibration()
-        elif isinstance(message, ColorSampleMessage):
-            self._apply_color_sample(session, message)
+            session.peer.set_color_correction(color_correction(message.camera_color_space(), session.request.display))
         elif isinstance(message, PHONE_IMAGE_MESSAGES):
             self._receive_phone_image(message)
         elif isinstance(message, SetQualityPresetMessage):
@@ -297,12 +293,6 @@ class SessionManager:
             logger.warning(PRESET_BEFORE_LIVE)
             return
         self.set_quality_preset(preset)
-
-    def _apply_color_sample(self, session: Session, message: ColorSampleMessage) -> None:
-        if session.state is not SessionState.LIVE:
-            logger.warning(COLOR_SAMPLE_BEFORE_LIVE)
-            return
-        session.peer.add_color_sample(message.to_sample())
 
     def _receive_phone_image(self, message: PhoneImageMessage) -> None:
         comparisons = self._comparisons
