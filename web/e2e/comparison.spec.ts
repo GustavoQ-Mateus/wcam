@@ -4,6 +4,7 @@ import { PHONE_LANDSCAPE } from "./cam-helpers";
 import { consoleUrl, endSession, goLive, status } from "./session-helpers";
 
 const COMPARISON_TIMEOUT_MS = 10_000;
+const SNAPSHOT_GRACE_MS = 2000;
 const DOWNLOAD_KEYS = [
   "console.dev_compare_download_phone",
   "console.dev_compare_download_pc",
@@ -50,6 +51,22 @@ test("one click brings both images and the data in 10 s, all three download, and
     timeout: COMPARISON_TIMEOUT_MS,
   });
   expect(await loadedImages(consolePage)).toBe(3);
+});
+
+test("a denied camera on the computer shows why and creates no comparison", async ({ page, request }) => {
+  await goLive(page, request);
+  const consolePage = await page.context().newPage();
+  await consolePage.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = () =>
+      Promise.reject(new DOMException("Permission denied", "NotAllowedError"));
+  });
+  await consolePage.goto(consoleUrl("/"));
+
+  await consolePage.getByRole("button", { name: translate("en", "console.dev_compare") }).click();
+
+  await expect(consolePage.getByRole("alert")).toHaveText(translate("en", "console.dev_compare_camera_denied"));
+  await page.waitForTimeout(SNAPSHOT_GRACE_MS);
+  await expect(page.getByText(translate("en", "cam.dev_send_screenshot"))).toHaveCount(0);
 });
 
 async function openConsoleWithSimulatedWcam(page: Page): Promise<Page> {
