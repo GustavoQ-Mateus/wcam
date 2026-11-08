@@ -103,3 +103,23 @@ Sessão web:
 3. e2e do CA 3.3 e Vitest da formatação.
 
 Ordem: as duas sessões em paralelo; o contrato é o ponto de encontro. Qualquer ajuste de contrato passa por mim.
+
+## Adendo: spike da cor declarada pela câmera (2026-11-08)
+
+Aprovado pelo usuário. Spike, não contrato oficial: branch `spike/camera-color` a partir de `origin/feature/qualidade` em cada worktree; nada entra na branch da sessão. Objetivo: ler a configuração de cor e de imagem direto da câmera (no Safari, `VideoFrame.colorSpace` vem do buffer da câmera), e provar se o vídeo decodificado no PC é o que a câmera produziu. Com isso, a calibração por imagem dá lugar a uma correção derivada do que a câmera declara. App nativo descartado pelo usuário.
+
+Sessão web:
+1. No `/cam`, em `live`, 3 s depois e de novo 3 s depois de cada troca de câmera, num módulo em `media/`: `new VideoFrame(<video do visor>)` (ou `MediaStreamTrackProcessor`, se o construtor falhar no Safari; registrar qual funcionou). Ler `colorSpace` (primaries, transfer, matrix, fullRange), `format`, `codedWidth`/`codedHeight`, `visibleRect`, `displayWidth`/`displayHeight`, `timestamp`.
+2. `frame.copyTo` num `ArrayBuffer` no formato nativo (sem a opção `colorSpace`), com o layout de planos retornado. `frame.close()` sempre.
+3. `track.getSettings()` e `track.getCapabilities()` completos (exposição, balanço de branco, foco, zoom, brilho, temperatura de cor, o que o Safari expuser).
+4. DataChannel: `{"type":"spike_camera_info", facingMode, colorSpace, format, sizes, layout, settings, capabilities, capturedAt, chunks, size}` e depois `{"type":"spike_camera_chunk", index, data}` (base64 de até 45 000 bytes), respeitando `bufferedAmount`.
+5. Sem UI nova. Build em `dist-spike`, nunca em `web/dist`. Teste no Chromium com câmera falsa; avisar o orquestrador com o caminho do `dist-spike` e o `colorSpace` que o Chromium reportou.
+
+Sessão agent:
+1. Com `WCAM_SPIKE_DIR`: aceitar `spike_camera_info` e `spike_camera_chunk`, remontar e gravar `camera-N.json` e `camera-N.raw`.
+2. Anel dos quadros decodificados dos últimos 2 s nessa janela (resolução cheia, YUV como sai do PyAV, com `color_range` e `colorspace`); casar com o quadro cru por correlação de luminância.
+3. Comparar o quadro cru (convertido para I420 do mesmo tamanho, conforme o `format`) com o decodificado: diferença média e máxima por plano, PSNR em Y, faixa de cada um (mínimo, máximo, histograma de Y) e se a diferença é de compressão (ruído sem viés) ou de transformação (viés ou ganho por faixa). Gravar `compare-N.json`.
+4. Gravar o SPS e o `colorRange` declarado, como no spike anterior.
+5. Ruff e pyright no que tocar; teste de laboratório antes de qualquer pedido ao usuário.
+
+As duas sessões avisam o orquestrador ao terminar. O usuário só conecta o celular, troca de câmera uma vez e encerra.
