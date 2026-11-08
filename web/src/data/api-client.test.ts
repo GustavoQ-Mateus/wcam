@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, changeQualityPreset, requestJson } from "./api-client";
+import { ApiError, changeQualityPreset, requestJson, uploadComparisonImage } from "./api-client";
 
 const FORBIDDEN_STATUS = 403;
 const NO_CONTENT_STATUS = 204;
@@ -35,6 +35,20 @@ describe("api client", () => {
       method: "PUT",
       body: '{"preset":"light"}',
       headers: { "Content-Type": "application/json" },
+    });
+  });
+
+  it("comparison image is sent as png to its comparison", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: NO_CONTENT_STATUS }));
+    vi.stubGlobal("fetch", fetchMock);
+    const png = new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" });
+
+    await uploadComparisonImage("c 1", "screen", png);
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/dev/comparisons/c%201/screen", {
+      method: "PUT",
+      body: png,
+      headers: { "Content-Type": "image/png" },
     });
   });
 });

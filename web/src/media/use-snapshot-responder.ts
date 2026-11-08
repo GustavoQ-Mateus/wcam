@@ -31,9 +31,10 @@ async function sendSnapshot(
   }
   const capturedAt = performance.timeOrigin + performance.now();
   frame.context.drawImage(video, 0, 0, width, height);
-  const png = await encodePng(frame.canvas).catch(() => null);
-  if (!png) {
+  const blob = await encodePng(frame.canvas).catch(() => null);
+  if (!blob) {
     return;
   }
+  const png = new Uint8Array(await blob.arrayBuffer());
   await sendPaced(snapshotMessages({ id, capturedAt, colorSpace: frame.colorSpace, width, height, png }));
 }

@@ -78,6 +78,33 @@ export interface Status {
   qualityPreset: QualityPreset;
   process: { cpuPercent: number };
   quality: Quality | null;
+  devTools: boolean;
+}
+
+export type ComparisonState = "pending" | "ready" | "failed";
+
+export interface ImageDifference {
+  captureGapMs: number;
+  correlation: number;
+  mirrored: boolean;
+  deltaE2000: { mean: number; median: number; p90: number };
+  deltaL: number;
+  chromaRatio: number;
+  hueShiftDegrees: number;
+  grid: { columns: number; rows: number; deltaE2000: number[] };
+}
+
+export interface Comparison {
+  id: string;
+  state: ComparisonState;
+  reason: string | null;
+  requestedAt: string;
+  phone: { capturedAt: string; colorSpace: string; width: number; height: number } | null;
+  pc: { receivedAt: string; width: number; height: number } | null;
+  calibration: { state: ColorCalibration["state"]; deltaE: number | null; tables: Record<"y" | "u" | "v", number[]> };
+  difference: ImageDifference | null;
+  screen: { receivedAt: string; width: number; height: number; colorSpace: string } | null;
+  screenDifference: { phone: ImageDifference; pc: ImageDifference } | null;
 }
 
 export interface CreateSessionRequest {

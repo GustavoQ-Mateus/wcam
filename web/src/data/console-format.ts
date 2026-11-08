@@ -1,4 +1,4 @@
-import type { ColorCalibration, Video } from "./contract";
+import type { ColorCalibration, Status, Video } from "./contract";
 import type { MessageKey } from "./i18n";
 
 const MILLISECONDS_PER_SECOND = 1000;
@@ -22,6 +22,10 @@ export function videoFormatValues(video: Video): Readonly<Record<string, string>
 
 export function colorCalibrationKey(calibration: ColorCalibration): MessageKey {
   return calibration.state === "applied" ? "console.color_matched" : "console.color_default";
+}
+
+export function comparisonAvailable(status: Status | null): boolean {
+  return status?.devTools === true && status.session?.state === "live";
 }
 
 export function cpuPercentValue(cpuPercent: number): string {

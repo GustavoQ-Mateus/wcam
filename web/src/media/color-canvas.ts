@@ -8,6 +8,7 @@ export interface ColorCanvas {
 
 const PREFERRED_COLOR_SPACE: SampleColorSpace = "display-p3";
 const FALLBACK_COLOR_SPACE: SampleColorSpace = "srgb";
+const PNG_TYPE = "image/png";
 
 export function createColorCanvas(
   width: number,
@@ -25,16 +26,14 @@ export function createColorCanvas(
   return { canvas, context, colorSpace: granted };
 }
 
-export function encodePng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
+export function encodePng(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
-      if (!blob) {
+      if (blob) {
+        resolve(blob);
+      } else {
         reject(new Error("Canvas could not be encoded as PNG"));
-        return;
       }
-      blob.arrayBuffer().then((buffer) => {
-        resolve(new Uint8Array(buffer));
-      }, reject);
-    }, "image/png");
+    }, PNG_TYPE);
   });
 }

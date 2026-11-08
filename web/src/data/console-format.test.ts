@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { colorCalibrationKey, cpuPercentValue, secondsUntil, svgDataUrl, videoFormatValues } from "./console-format";
-import type { Video } from "./contract";
+import {
+  colorCalibrationKey,
+  comparisonAvailable,
+  cpuPercentValue,
+  secondsUntil,
+  svgDataUrl,
+  videoFormatValues,
+} from "./console-format";
+import type { Session, Status, Video } from "./contract";
 
 const NOW = Date.parse("2026-11-01T18:00:00Z");
 
@@ -46,5 +53,18 @@ describe("console format", () => {
   it("color calibration shows default while measuring or when not applied", () => {
     expect(colorCalibrationKey({ state: "measuring", deltaE: null })).toBe("console.color_default");
     expect(colorCalibrationKey({ state: "default", deltaE: 2.4 })).toBe("console.color_default");
+  });
+
+  it("comparison is offered only with dev tools on and a live session", () => {
+    const live = { state: "live" } as Session;
+    const status = (devTools: boolean, session: Session | null) => ({ devTools, session }) as Status;
+
+    expect([
+      comparisonAvailable(status(true, live)),
+      comparisonAvailable(status(false, live)),
+      comparisonAvailable(status(true, { state: "awaiting_confirmation" } as Session)),
+      comparisonAvailable(status(true, null)),
+      comparisonAvailable(null),
+    ]).toEqual([true, false, false, false, false]);
   });
 });
