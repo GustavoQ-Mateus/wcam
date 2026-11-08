@@ -53,6 +53,9 @@ SHORT_DEADLINE = 0.2
 SETTLE_SECONDS = 20.0
 POLL_SECONDS = 0.02
 CAPTURED_AT = 1793991387130.0
+CAPTURE_DELAY_MS = 120.0
+PC_CAPTURE_AFTER_REQUEST_MS = 200.0
+MILLISECONDS = 1000
 DARKER_CODES = 20
 SAME_IMAGE_DELTA_E = 0.5
 CORRECTION = CorrectionSnapshot("applied", "bt709", "apple", IDENTITY_TABLE, IDENTITY_TABLE)
@@ -88,12 +91,15 @@ def chunks_of(png: bytes) -> list[str]:
     return [base64.b64encode(png[start : start + CHUNK_BYTES]).decode() for start in range(0, len(png), CHUNK_BYTES)]
 
 
-def snapshot_messages(comparison_id: str, png: bytes) -> tuple[SnapshotBeginMessage, list[SnapshotChunkMessage]]:
+def snapshot_messages(
+    comparison_id: str, png: bytes, capture_delay_ms: float | None = CAPTURE_DELAY_MS
+) -> tuple[SnapshotBeginMessage, list[SnapshotChunkMessage]]:
     parts = chunks_of(png)
     begin = SnapshotBeginMessage(
         type="snapshot_begin",
         id=comparison_id,
         captured_at=CAPTURED_AT,
+        capture_delay_ms=capture_delay_ms,
         color_space=RgbSpace.SRGB,
         width=WIDTH,
         height=HEIGHT,
@@ -316,6 +322,57 @@ async def test_screenshot_upload_reports_against_phone_and_pc() -> None:
     await comparisons.close()
 
 
+async def test_screen_difference_reports_the_mirror_and_correlation_of_the_alignment() -> None:
+    comparisons = store(SETTLE_SECONDS)
+    phone = scene()
+    comparison_id = await ready_comparison(comparisons, phone, phone)
+    screen_png = png_bytes(screenshot_of(phone, mirrored=True))
+    _, placement = aligned_screen(decoded_png(png_bytes(phone)), decoded_png(screen_png))
+
+    await comparisons.receive_screen(comparison_id, screen_png)
+
+    difference = comparisons.find(comparison_id).screen_difference
+    assert difference is not None
+    assert (difference.phone.mirrored, difference.pc.mirrored) == (True, True)
+    assert difference.phone.correlation == difference.pc.correlation == placement.score
+    await comparisons.close()
+
+
+async def test_capture_gap_is_measured_on_the_pc_clock() -> None:
+    comparisons = store(SETTLE_SECONDS)
+    comparison = comparisons.create()
+    begin, chunks = snapshot_messages(comparison.id, png_bytes(scene()))
+    comparisons.receive_begin(begin)
+    for chunk in chunks:
+        comparisons.receive_chunk(chunk)
+    pc_captured_at_ms = comparison.requested_at.timestamp() * MILLISECONDS + PC_CAPTURE_AFTER_REQUEST_MS
+
+    await comparisons.receive_pc(comparison.id, png_bytes(scene()), pc_captured_at_ms)
+
+    assert comparison.capture_gap_ms == round(PC_CAPTURE_AFTER_REQUEST_MS - CAPTURE_DELAY_MS)
+    await comparisons.close()
+
+
+@pytest.mark.parametrize(
+    ("capture_delay_ms", "pc_capture"), [(None, PC_CAPTURE_AFTER_REQUEST_MS), (CAPTURE_DELAY_MS, None)]
+)
+async def test_capture_gap_is_unknown_without_both_pc_clock_times(
+    capture_delay_ms: float | None, pc_capture: float | None
+) -> None:
+    comparisons = store(SETTLE_SECONDS)
+    comparison = comparisons.create()
+    begin, chunks = snapshot_messages(comparison.id, png_bytes(scene()), capture_delay_ms)
+    comparisons.receive_begin(begin)
+    for chunk in chunks:
+        comparisons.receive_chunk(chunk)
+    pc_captured_at_ms = None if pc_capture is None else comparison.requested_at.timestamp() * MILLISECONDS + pc_capture
+
+    await comparisons.receive_pc(comparison.id, png_bytes(scene()), pc_captured_at_ms)
+
+    assert comparison.capture_gap_ms is None
+    await comparisons.close()
+
+
 async def test_screenshot_from_the_phone_waits_for_a_pending_comparison() -> None:
     comparisons = store(SETTLE_SECONDS)
     phone = scene()
@@ -393,7 +450,12 @@ async def test_dev_routes_report_a_comparison_with_dev_tools(settings: Settings)
         begin, chunks = snapshot_messages(comparison_id, png_bytes(phone))
         for message in (begin, *chunks):
             factory.last.events.on_message(json.dumps(message.model_dump(by_alias=True)))
-        uploaded = await console.put(f"/api/dev/comparisons/{comparison_id}/pc", content=png_bytes(phone))
+        requested_at = comparisons.find(comparison_id).requested_at.timestamp() * MILLISECONDS
+        uploaded = await console.put(
+            f"/api/dev/comparisons/{comparison_id}/pc",
+            params={"capturedAt": requested_at + PC_CAPTURE_AFTER_REQUEST_MS},
+            content=png_bytes(phone),
+        )
         await wait_for(lambda: comparisons.find(comparison_id).state is ComparisonState.READY)
         report = (await console.get(f"/api/dev/comparisons/{comparison_id}")).json()
         image = await console.get(f"/api/dev/comparisons/{comparison_id}/phone.png")
@@ -406,6 +468,8 @@ async def test_dev_routes_report_a_comparison_with_dev_tools(settings: Settings)
     assert len(report["correction"]["tables"]["y"]) == 256
     assert report["correction"]["display"] == "apple"
     assert report["phone"]["colorSpace"] == "srgb"
+    assert report["pc"]["capturedAt"] is not None
+    assert report["difference"]["captureGapMs"] == round(PC_CAPTURE_AFTER_REQUEST_MS - CAPTURE_DELAY_MS)
     assert image.headers["content-type"] == "image/png"
     assert missing.json()["error"]["code"] == "comparison_not_found"
     assert status["devTools"] is True

@@ -162,6 +162,7 @@ O tempo de parede por quadro fica abaixo do tempo de CPU por quadro porque o FFm
   - O vídeo é localizado no print por correlação normalizada (FFT), com busca de escala e posição em duas etapas e com e sem espelho, e recortado.
   - `screenDifference.phone` compara o print com o canvas e `screenDifference.pc`, o print com a imagem do PC, no formato de `difference` (o print é a referência).
   - Downloads: `phone.png` e `screen.png`.
+  - Ajuste de 2026-11-08, depois do primeiro uso no iPhone: `screenDifference.*.mirrored` e `correlation` passaram a vir do alinhamento do print (antes, `mirrored` saía sempre `false`, porque a comparação era feita sobre o recorte já desespelhado; o espelho escolhido estava certo). `captureGapMs` passou a ser medido só no relógio do PC: envio do `snapshot_request` mais o `captureDelayMs` do celular, contra o `capturedAt` do PC em `PUT .../pc?capturedAt=`. Antes, ele comparava o relógio do iPhone com o do PC e deu 18,5 s de defasagem. Sem um dos dois valores, fica `null`. Testes: gap conhecido, gap nulo sem um dos lados, espelho e correlação do alinhamento, `pc.capturedAt` pela rota.
 - PNG decodificado pelo PyAV, que já estava no projeto; nenhuma dependência nova.
 - Testes (19):
   - remontagem fora de ordem com relatório `ready`; pedaço faltando; tamanho errado;
@@ -203,7 +204,7 @@ Commits:
 | 8 | Parcial (agent) | O lado do agente está coberto. Teste com DataChannel real: `set_quality_preset` do celular gera eco, e o `PUT` do console chega ao celular como `quality_preset`. O teto do REMB por opção foi verificado nas três opções (o primeiro REMB fica em pelo menos 90% do teto, e nenhum passa dele). O e2e de menos de 300 ms e da taxa em até 5 s é da web. |
 | 9 | Verificado | Com a saída redirecionada, sai só a orientação do console e nenhum `#t=`, e a janela de pareamento nem é aberta (teste). |
 | 10 | Parcial (agent) | O benchmark desta máquina está acima. As capacidades e os codecs do iPhone dependem da web e do usuário. |
-| 11 (agent) | Parcial | Em `agent/`, no estado final com o merge: `ruff check` e `ruff format --check` limpos, `pyright` com 0 erros, `pytest` com 247 passed e 1 skipped no estado de `24b8263` (o teste da DLL real, opcional). Versão 0.6.0. CI não verificado. |
+| 11 (agent) | Parcial | Em `agent/`, no estado final com o merge: `ruff check` e `ruff format --check` limpos, `pyright` com 0 erros, `pytest` com 251 passed e 1 skipped no estado do commit do ajuste da comparação (o teste da DLL real, opcional). Versão 0.6.0. CI não verificado. |
 
 ## 3. Decisões e pontos para registrar
 
