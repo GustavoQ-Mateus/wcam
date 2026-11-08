@@ -1,6 +1,6 @@
 # Relatório v0.6.0, sessão vcam
 
-Status: em andamento (código, medições e verify prontos; falta o CA 4 no Frame Server)
+Status: pronto (código, medições, verify e CA 4 no Frame Server)
 Branch: `feature/qualidade-vcam`
 Spec: `docs/specs/spec-v0.6.0.md` §1; ADRs 0011 e 0012; handoff `docs/handoff-v0.6.0.md`
 
@@ -91,6 +91,24 @@ Trace do teste final de 2026-11-07 (duas sessões, separadas pelo `receivedAt`; 
 
 Substituído, por decisão do orquestrador, pela comparação lado a lado feita pelo usuário (`wcam-65bdcb172a11f251`): ΔE2000 de 1,80 entre a WCam no PC e o celular.
 
+## Congelar 3 s e depois preto no Frame Server (CA 4)
+
+Medição de 2026-11-08, sem o usuário, com a câmera liberada pelo orquestrador:
+- Agente da raiz (código da integração `feature/qualidade`, 8f72c2d), subido com `WCAM_VIRTUAL_CAMERA=media_foundation`, depois de conferir 8080 e 8443 livres. Câmera nativa ativa, 1920x1080 a 30 fps.
+- Cliente aiortc de laboratório no lugar do celular, pelo caminho real: `POST /api/pairing`, `POST /api/sessions` com o token e a oferta, `POST /api/sessions/current/confirm`, sessão `live`. Envia um clipe H.264 1080p30 sintético (ruído que se desloca 4 px por quadro) e, 4 s depois de `live`, para de enviar sem fechar a conexão.
+- Leitura da WCam no Google Chrome 156 pelo Playwright (`getUserMedia` 1920x1080 a 30 fps): a cada quadro, `requestVideoFrameCallback`, nível médio e diferença média para o quadro anterior numa redução de 192x108.
+- Três sessões seguidas. Tempo medido no Chrome, do último quadro que mudou até o primeiro quadro preto:
+
+| Sessão | Congelado até o preto | Quadros congelados | Diferença máxima entre quadros congelados | Nível no preto |
+|---|---|---|---|---|
+| 1 | 3,00 s | 89 | 0 | 0 |
+| 2 | 3,03 s | 88 | 0 | 0 |
+| 3 | 3,03 s | 89 | 0 | 0 |
+
+- Dentro de 3 s com tolerância de 0,2 s nas três. Durante o congelamento, a WCam continua a cerca de 30 fps repetindo o mesmo quadro (diferença 0, nível 129,5 igual ao do vídeo); ao vivo, a diferença média entre quadros era 13. O preto lido é RGB 0,0,0, que é Y=16, UV=128 decodificado em faixa limitada.
+- O `virtualCamera.source` do status, lido a cada 0,25 s, acompanha: `phone` até cerca de 0,5 s, `frozen` até cerca de 3 s e `placeholder` a partir de 3,2 s.
+- Nenhuma mudança na vcam: o agente republica o último quadro durante os 3 s, como previsto nos achados abaixo.
+
 ## Achados para outras versões
 
 - **Instalador da v1.0.0:** o `register-vcam.ps1` só trata a DLL presa pelo FrameServer (reinicia o serviço e copia de novo). Qualquer processo cliente da API C também carrega a DLL instalada e a prende: o probe na medição e, no produto, o agente WCam. Na rodada B, o primeiro registro falhou com `IOException` por causa do probe. O instalador precisa encerrar o WCam antes de copiar a DLL.
@@ -104,4 +122,4 @@ Substituído, por decisão do orquestrador, pela comparação lado a lado feita 
 - `dotnet publish -r win-x64 -c Release` da DLL: 0 avisos (com o `vswhere` no PATH).
 - No Frame Server, com cada DLL registrada pelo usuário e o probe publicando: Chrome e app Câmera a 1920x1080 e 30 fps, barras limpas e contador andando.
 - DLL final do commit 903e779: SHA-256 `ab70df1dd112ba2209092bc4c53c55b65bcb5ce064d2c109043bb865ada8414f`. Re-registrada pelo usuário: o hash instalado em `C:\Program Files\WCam` confere, e o `InprocServer32` aponta para ela.
-- Pendente: CA 4 (congelar 3 s e depois preto) no Frame Server, visto num app real.
+- CA 4 no Frame Server, visto no Chrome: congelado 3,00 s, 3,03 s e 3,03 s até o preto, em três sessões (seção acima).
