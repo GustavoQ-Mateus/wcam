@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SNAPSHOT_CHUNK_BYTES, snapshotMessages, type SnapshotFrame } from "./snapshot";
+import { isPng, screenshotMessages, SNAPSHOT_CHUNK_BYTES, snapshotMessages, type SnapshotFrame } from "./snapshot";
 
 const FRAME: Omit<SnapshotFrame, "png"> = {
   id: "c1",
@@ -44,5 +44,29 @@ describe("snapshotMessages", () => {
     const png = new Uint8Array(SNAPSHOT_CHUNK_BYTES * 3);
 
     expect(Math.max(...snapshotMessages({ ...FRAME, png }).map((message) => message.length))).toBeLessThan(65_536);
+  });
+});
+
+describe("screenshotMessages", () => {
+  it("begins with the comparison id, size and chunk count and then sends numbered chunks", () => {
+    const png = new Uint8Array(SNAPSHOT_CHUNK_BYTES + 1);
+
+    const messages = screenshotMessages("c2", png).map((message) => JSON.parse(message) as Record<string, unknown>);
+
+    expect(messages[0]).toEqual({ type: "screenshot_begin", id: "c2", size: SNAPSHOT_CHUNK_BYTES + 1, chunks: 2 });
+    expect(messages.slice(1).map(({ type, id, index }) => ({ type, id, index }))).toEqual([
+      { type: "screenshot_chunk", id: "c2", index: 0 },
+      { type: "screenshot_chunk", id: "c2", index: 1 },
+    ]);
+  });
+});
+
+describe("isPng", () => {
+  it("accepts bytes that start with the png signature", () => {
+    expect(isPng(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0]))).toBe(true);
+  });
+
+  it("refuses a jpeg and a file too short to be a png", () => {
+    expect([isPng(new Uint8Array([255, 216, 255, 224])), isPng(new Uint8Array([137, 80]))]).toEqual([false, false]);
   });
 });

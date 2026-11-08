@@ -9,6 +9,7 @@ import { ConnectingPrompt } from "./connecting-prompt";
 import { PreviewCover } from "./preview-cover";
 import { RotatePrompt } from "./rotate-prompt";
 import { ScreenNotice } from "./screen-notice";
+import { ScreenshotButton } from "./screenshot-button";
 import { ScrimLayer } from "./scrim-layer";
 import { Tally } from "./tally";
 
@@ -20,6 +21,7 @@ interface LiveLayerProps {
   onSwitchCamera: () => void;
   onTogglePreview: () => void;
   onChooseQuality: (preset: QualityPreset) => void;
+  onSendScreenshot?: ((file: File) => Promise<boolean>) | undefined;
 }
 
 interface Prompt {
@@ -35,6 +37,7 @@ export function LiveLayer({
   onSwitchCamera,
   onTogglePreview,
   onChooseQuality,
+  onSendScreenshot,
 }: LiveLayerProps) {
   const prompt = promptFor(state);
   const previewOff = state.kind === "preview_off" || (state.kind === "live" && state.previewOff);
@@ -57,6 +60,7 @@ export function LiveLayer({
             onChooseQuality={onChooseQuality}
           />
           {showNotice && !previewOff && <ScreenNotice onDismiss={onDismissNotice} />}
+          {onSendScreenshot && <ScreenshotButton onSend={onSendScreenshot} />}
         </>
       )}
     </>

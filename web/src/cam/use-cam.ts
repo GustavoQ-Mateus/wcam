@@ -1,9 +1,11 @@
 import { useEffect, useReducer, useRef, type RefObject } from "react";
 import { camReducer, initialCamState, isFinal, isSession, type CamState, type Facing } from "../data/cam-state";
 import { consumePairingToken } from "../data/pairing";
+import { screenshotMessages } from "../data/snapshot";
 import type { QualityPreset } from "../data/quality-preset";
 import { useCameraStream } from "../media/use-camera-stream";
 import { useColorSample } from "../media/use-color-sample";
+import { readPngFile } from "../media/screenshot-file";
 import { useOrientation } from "../media/use-orientation";
 import { usePublisher } from "../media/use-publisher";
 import { useSnapshotResponder } from "../media/use-snapshot-responder";
@@ -20,6 +22,8 @@ export interface Cam {
   switchCamera: () => void;
   togglePreview: () => void;
   chooseQualityPreset: (preset: QualityPreset) => void;
+  screenshotRequested: boolean;
+  sendScreenshot: (file: File) => Promise<boolean>;
 }
 
 export function useCam(hasPairing: boolean): Cam {
@@ -64,5 +68,15 @@ export function useCam(hasPairing: boolean): Cam {
       dispatch({ type: "preview_toggled" });
     },
     chooseQualityPreset: publisher.chooseQualityPreset,
+    screenshotRequested: state.kind === "live" && publisher.snapshotRequest !== null,
+    sendScreenshot: async (file) => {
+      const request = publisher.snapshotRequest;
+      const png = await readPngFile(file);
+      if (!request || !png) {
+        return false;
+      }
+      await publisher.sendPaced(screenshotMessages(request.id, png));
+      return true;
+    },
   };
 }

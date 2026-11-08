@@ -29,6 +29,7 @@ export default function CamPage() {
           onSwitchCamera={cam.switchCamera}
           onTogglePreview={cam.togglePreview}
           onChooseQuality={cam.chooseQualityPreset}
+          onSendScreenshot={cam.screenshotRequested ? cam.sendScreenshot : undefined}
         />
       ) : (
         <MessageLayer state={state} onStart={cam.start} />
