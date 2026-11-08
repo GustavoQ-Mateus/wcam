@@ -35,12 +35,13 @@ export interface Video {
   framesScaled: number;
   colorRange: "full" | "limited" | "unspecified";
   colorMatrix: string;
-  colorCalibration: ColorCalibration;
+  colorCorrection: ColorCorrection;
 }
 
-export interface ColorCalibration {
-  state: "measuring" | "applied" | "default";
-  deltaE: number | null;
+export interface ColorCorrection {
+  state: "applied" | "default";
+  transfer: string | null;
+  display: "apple" | "standard";
 }
 
 export interface Session {
@@ -101,7 +102,7 @@ export interface Comparison {
   requestedAt: string;
   phone: { capturedAt: string; colorSpace: string; width: number; height: number } | null;
   pc: { receivedAt: string; width: number; height: number } | null;
-  calibration: { state: ColorCalibration["state"]; deltaE: number | null; tables: Record<"y" | "u" | "v", number[]> };
+  correction: ColorCorrection & { tables: Record<"y" | "u" | "v", number[]> };
   difference: ImageDifference | null;
   screen: { receivedAt: string; width: number; height: number; colorSpace: string } | null;
   screenDifference: { phone: ImageDifference; pc: ImageDifference } | null;
