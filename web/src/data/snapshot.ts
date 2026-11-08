@@ -5,6 +5,7 @@ export type CanvasColorSpace = "display-p3" | "srgb";
 export interface SnapshotFrame {
   id: string;
   capturedAt: number;
+  captureDelayMs: number;
   colorSpace: CanvasColorSpace;
   width: number;
   height: number;
@@ -15,8 +16,16 @@ export const SNAPSHOT_CHUNK_BYTES = 45_000;
 
 const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
 
-export function snapshotMessages({ id, capturedAt, colorSpace, width, height, png }: SnapshotFrame): string[] {
-  const begin = { type: "snapshot_begin", id, capturedAt, colorSpace, width, height };
+export function snapshotMessages({
+  id,
+  capturedAt,
+  captureDelayMs,
+  colorSpace,
+  width,
+  height,
+  png,
+}: SnapshotFrame): string[] {
+  const begin = { type: "snapshot_begin", id, capturedAt, captureDelayMs, colorSpace, width, height };
   return chunkedMessages(begin, "snapshot_chunk", id, png);
 }
 

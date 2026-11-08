@@ -4,6 +4,7 @@ export interface CameraFrame {
   png: Blob;
   width: number;
   height: number;
+  capturedAt: number;
 }
 
 export interface WcamCamera {
@@ -92,8 +93,9 @@ async function captureFrame(video: HTMLVideoElement): Promise<CameraFrame> {
   if (!frame) {
     throw new WcamCameraError("camera_failed", "Canvas 2D is not available");
   }
+  const capturedAt = Date.now();
   frame.context.drawImage(video, 0, 0, width, height);
-  return { png: await encodePng(frame.canvas), width, height };
+  return { png: await encodePng(frame.canvas), width, height, capturedAt };
 }
 
 function nextFrame(video: HTMLVideoElement): Promise<void> {

@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { ApiError, createComparison, fetchComparison, uploadComparisonImage } from "../data/api-client";
+import {
+  ApiError,
+  createComparison,
+  fetchComparison,
+  uploadComparisonPc,
+  uploadComparisonScreen,
+} from "../data/api-client";
 import type { Comparison } from "../data/contract";
 import { openWcamCamera, WcamCameraError } from "../media/wcam-camera";
 
@@ -126,7 +132,7 @@ async function runComparison(isCurrent: () => boolean): Promise<{ comparison: Co
   const camera = await openWcamCamera();
   try {
     const [{ id }, pcFrame] = await Promise.all([createComparison(), camera.capture()]);
-    await uploadComparisonImage(id, "pc", pcFrame.png);
+    await uploadComparisonPc(id, pcFrame.png, pcFrame.capturedAt);
     const comparison = await waitFor(id, isCurrent, (current) => current.state !== "pending");
     return { comparison, pcImageUrl: URL.createObjectURL(pcFrame.png) };
   } finally {
@@ -135,7 +141,7 @@ async function runComparison(isCurrent: () => boolean): Promise<{ comparison: Co
 }
 
 async function sendScreen(id: string, file: File, isCurrent: () => boolean): Promise<Comparison> {
-  await uploadComparisonImage(id, "screen", file);
+  await uploadComparisonScreen(id, file);
   return waitFor(id, isCurrent, (current) => current.screen !== null && current.screenDifference !== null);
 }
 

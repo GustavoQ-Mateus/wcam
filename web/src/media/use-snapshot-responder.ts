@@ -15,12 +15,12 @@ export function useSnapshotResponder(
     if (!request || !live || !video || video.videoWidth === 0) {
       return;
     }
-    void sendSnapshot(request.id, video, sendPaced);
+    void sendSnapshot(request, video, sendPaced);
   }, [request, live, videoRef, sendPaced]);
 }
 
 async function sendSnapshot(
-  id: string,
+  { id, receivedAt }: SnapshotRequest,
   video: HTMLVideoElement,
   sendPaced: (messages: readonly string[]) => Promise<void>,
 ): Promise<void> {
@@ -29,12 +29,16 @@ async function sendSnapshot(
   if (!frame) {
     return;
   }
-  const capturedAt = performance.timeOrigin + performance.now();
+  const now = performance.now();
+  const capturedAt = performance.timeOrigin + now;
+  const captureDelayMs = now - receivedAt;
   frame.context.drawImage(video, 0, 0, width, height);
   const blob = await encodePng(frame.canvas).catch(() => null);
   if (!blob) {
     return;
   }
   const png = new Uint8Array(await blob.arrayBuffer());
-  await sendPaced(snapshotMessages({ id, capturedAt, colorSpace: frame.colorSpace, width, height, png }));
+  await sendPaced(
+    snapshotMessages({ id, capturedAt, captureDelayMs, colorSpace: frame.colorSpace, width, height, png }),
+  );
 }
