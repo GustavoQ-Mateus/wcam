@@ -172,6 +172,7 @@ Comparação lado a lado (só com `WCAM_DEV_TOOLS=1`; sem a variável, o agente 
 
 - agente para o celular: `{"type": "snapshot_request", "id": "c1"}`, só em `live`;
 - celular para o agente: `{"type": "snapshot_begin", "id": "c1", "capturedAt": <ms>, "colorSpace": "display-p3" | "srgb", "width": 1920, "height": 1080, "size": <bytes do PNG>, "chunks": <n>}` e depois `n` mensagens `{"type": "snapshot_chunk", "id": "c1", "index": <0 a n−1>, "data": "<base64 de até 45 000 bytes do PNG>"}`. O quadro é o do visor, sem espelho, no tamanho nativo do vídeo. Cada mensagem cabe no `max-message-size` de 65 536.
+- celular para o agente, print da tela escolhido pelo usuário: `{"type": "screenshot_begin", "id": "c1", "size": <bytes do PNG>, "chunks": <n>}` e `n` mensagens `{"type": "screenshot_chunk", "id": "c1", "index": <0 a n−1>, "data": "<base64 de até 45 000 bytes>"}`. `id` é o do último `snapshot_request`. Tem o mesmo efeito de `PUT /api/dev/comparisons/{id}/screen` (só com a comparação `ready`, só PNG); se a comparação ainda não estiver `ready`, o agente guarda o print e o aplica quando ela ficar. O botão do celular só aparece depois de um `snapshot_request`, que só existe com `WCAM_DEV_TOOLS=1`.
 
 Mensagem com `type` desconhecido, JSON inválido ou campo fora do formato é ignorada pelo agente e registrada no log, sem encerrar a sessão.
 
