@@ -123,6 +123,8 @@ Agent:
 - Com as duas imagens, monta o relatório: horários das duas capturas e a diferença entre eles; estado e `deltaE` da calibração e as tabelas em uso; e a diferença de cor entre as duas imagens, depois de alinhar (redução por média de área para 320x180, casamento por correlação de luminância com e sem espelho, células de detalhe fino excluídas como na calibração): ΔE2000 médio, mediano e p90, ΔL*, razão de croma, desvio de matiz e uma grade 8x4 com o ΔE2000 médio de cada região. A imagem do celular é lida no seu `colorSpace`, a do PC em sRGB.
 - Prazo de 10 s para o celular responder; senão `failed` com o motivo.
 
+Print da tela do celular (opcional): a análise do trace do teste final mostrou que a calibração tirou cerca de 19% de saturação e clareou os meios-tons para igualar o canvas do Safari, o que sugere que o canvas sai diferente do que a tela do iPhone mostra. Só um print da tela mostra os pixels como exibidos. Por isso a comparação aceita, depois de pronta, um print do iPhone enviado pelo console (arquivo PNG com o perfil ICC; JPEG é recusado). O agente alinha o print com as outras duas imagens (busca de escala e posição, como no spike) e acrescenta ao relatório a diferença entre o print e o canvas do celular e entre o print e a imagem do PC. O print aparece como terceira imagem, e baixa junto com as outras.
+
 Uso esperado: o usuário compara as duas imagens no mesmo monitor. Se elas estiverem iguais no PC e a tela do iPhone parecer diferente, a amostra do canvas não representa o que a tela do celular mostra, e a calibração mede a coisa errada. Se forem diferentes no PC, os números dizem onde (tom, saturação, matiz, região).
 
 ## Contrato (`docs/contrato.md` vai para 0.6.0)

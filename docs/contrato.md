@@ -115,6 +115,8 @@ Só com `WCAM_DEV_TOOLS=1`; sem a variável, todas as rotas abaixo respondem `40
 | `PUT /api/dev/comparisons/{id}/pc` | PNG (`image/png`), até 20 MB | `204` | `404 comparison_not_found`, `422 invalid_request` |
 | `GET /api/dev/comparisons/{id}` | nenhum | `200` (abaixo) | `404 comparison_not_found` |
 | `GET /api/dev/comparisons/{id}/phone.png` | nenhum | `200 image/png` | `404 comparison_not_found` |
+| `PUT /api/dev/comparisons/{id}/screen` | PNG (`image/png`) do print da tela do celular, até 20 MB | `204` | `404 comparison_not_found`, `409 comparison_not_ready`, `422 invalid_request` (não é PNG) |
+| `GET /api/dev/comparisons/{id}/screen.png` | nenhum | `200 image/png` | `404 comparison_not_found` |
 
 `GET /api/dev/comparisons/{id}`:
 
@@ -138,6 +140,7 @@ Só com `WCAM_DEV_TOOLS=1`; sem a variável, todas as rotas abaixo respondem `40
 
 - `state`: `pending` (esperando uma das imagens), `ready` ou `failed`. `reason` (só em `failed`): `phone_timeout` (celular sem resposta em 10 s), `phone_invalid` (pedaços faltando ou tamanho errado), `pc_missing` (imagem do PC não chegou em 10 s), `session_ended`.
 - `phone` e `pc` são `null` até cada imagem chegar; `difference` é `null` até as duas. `calibration.tables` são as tabelas Y, U e V em uso (256 inteiros cada); `grid.deltaE2000` tem `columns × rows` valores, linha a linha.
+- `screen` é `null` até o print chegar; com ele, `{"receivedAt", "width", "height", "colorSpace"}` (do perfil ICC; sem perfil, `srgb`), e `screenDifference` traz `{"phone": <mesmo formato de difference>, "pc": <mesmo formato>}`: print contra o canvas do celular e print contra a imagem do PC. O print só é aceito com a comparação `ready`.
 - O agente guarda só as últimas 5 comparações, em memória.
 
 ## Celular (`<ip-da-lan>:8443`)
