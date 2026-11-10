@@ -1,3 +1,5 @@
+import logging
+
 import pyvirtualcam
 
 from wcam.virtualcam.sink import (
@@ -12,6 +14,9 @@ BACKEND = "obs"
 CAMERA_NAME = "OBS Virtual Camera"
 DRIVER_MISSING_MARKER = "device not found"
 DEVICE_IN_USE_MARKER = "could not be started"
+FORMAT_REFUSED = "The OBS Virtual Camera did not accept the new format"
+
+logger = logging.getLogger(__name__)
 
 
 class PyvirtualcamSink:
@@ -38,6 +43,14 @@ class PyvirtualcamSink:
             self._status = SinkStatus(CameraState.UNAVAILABLE, unavailable_reason(str(error)))
             return
         self._status = SinkStatus(CameraState.ACTIVE)
+
+    def set_format(self, width: int, height: int, fps: int) -> bool:
+        self.close()
+        self.open(width, height, fps)
+        if self._status.state is not CameraState.ACTIVE:
+            logger.warning(FORMAT_REFUSED)
+            return False
+        return True
 
     def send(self, frame: I420Frame) -> None:
         if self._camera is not None:
