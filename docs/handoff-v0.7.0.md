@@ -67,6 +67,13 @@ Skills de design obrigatórias e registradas em `docs/design-v0.7.0.md`, decisã
 - Vcam: propõe ao orquestrador a API C de estado (formato anunciado, troca pendente, consulta ou retorno do `WcamFormatSet`) antes de implementar; o monitor de atividade de sensores roda dentro da DLL.
 - Ainda a verificar: modo 0 no app Câmera, 2 min por formato e, com o usuário, Teams e OBS (inclusive app que segura a câmera sem receber vídeo durante o reinício).
 
+API C aprovada (vcam implementa, agent consome):
+- `int WcamFormatSet(uint32 width, uint32 height, uint32 fps)`: `E_INVALIDARG` fora da tabela (os 5 formatos do contrato); antes de `WcamCameraStart`, guarda e vale no início (`S_OK`); com a câmera rodando e nenhum app recebendo vídeo, reinicia a câmera virtual antes de retornar (`S_OK`, pode bloquear cerca de 5 s: o agente chama fora do event loop); com app recebendo, fica pendente (`S_FALSE`) e a DLL aplica sozinha quando o último parar; pedir de novo o formato anunciado cancela a pendência (`S_OK`); falha no reinício devolve o `HRESULT` e deixa a câmera parada.
+- `int WcamFormatGet(WcamFormatState* state)`: `S_OK` ou `E_POINTER`. Nove `uint32` em sequência: `width`, `height`, `fps` (anunciado), `requestedWidth`, `requestedHeight`, `requestedFps`, `pending`, `streamingApps`, `running` (0 durante o reinício e depois de falha).
+- O agente consulta `WcamFormatGet` a cada 100 a 200 ms. `videoFormat.camera` e `virtualCamera.output` vêm do anunciado; `videoFormat.pending` vem de `pending`. Quando o anunciado passa a ser o pedido, o agente envia o `video_format` novo ao celular.
+- `WcamFramePublish` aceita só o formato anunciado; outro tamanho volta `E_INVALIDARG`. O canal continua aberto durante o reinício.
+- Sem callback da DLL para o Python.
+
 ## Fechamento
 
 Relatórios em `docs/relatorio-v0.7.0-agent.md`, `docs/relatorio-v0.7.0-web.md` e `docs/relatorio-v0.7.0-vcam.md`, com cada CA da spec que a sessão toca, os números dos spikes e o que não foi verificado. PR de cada branch de sessão para `feature/formato`.
