@@ -38,7 +38,7 @@ public class FrameTransportTests
     [Fact]
     public void AcceptsFrame_FullHdNv12_IsAccepted()
     {
-        Assert.True(FrameTransport.AcceptsFrame(VideoFormat.FrameSize, VideoFormat.Width, VideoFormat.Height));
+        Assert.True(FrameTransport.AcceptsFrame(VideoFormat.FrameSize, VideoFormat.Width, VideoFormat.Height, FrameFormat.Default));
     }
 
     [Theory]
@@ -49,7 +49,20 @@ public class FrameTransportTests
     [InlineData(0, 0, 0)]
     public void AcceptsFrame_OtherSizeOrLength_IsRejected(uint length, uint width, uint height)
     {
-        Assert.False(FrameTransport.AcceptsFrame(length, width, height));
+        Assert.False(FrameTransport.AcceptsFrame(length, width, height, FrameFormat.Default));
+    }
+
+    [Fact]
+    public void AcceptsFrame_FrameOfCurrentOtherFormat_IsAccepted()
+    {
+        var format = new FrameFormat(1280, 720, 60);
+        Assert.True(FrameTransport.AcceptsFrame((uint)format.FrameSize, 1280, 720, format));
+    }
+
+    [Fact]
+    public void AcceptsFrame_FullHdFrameWhileFormatIs720p_IsRejected()
+    {
+        Assert.False(FrameTransport.AcceptsFrame(VideoFormat.FrameSize, VideoFormat.Width, VideoFormat.Height, new FrameFormat(1280, 720, 30)));
     }
 
     [Fact]

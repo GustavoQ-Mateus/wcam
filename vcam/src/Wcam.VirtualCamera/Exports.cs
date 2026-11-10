@@ -102,16 +102,59 @@ internal static unsafe class Exports
         }
     }
 
+    [UnmanagedCallersOnly(EntryPoint = "WcamFormatSet")]
+    public static int WcamFormatSet(uint width, uint height, uint framesPerSecond)
+    {
+        try
+        {
+            var format = new FrameFormat((int)width, (int)height, (int)framesPerSecond);
+            if (!format.IsSupported)
+            {
+                return HRESULT.E_INVALIDARG;
+            }
+            return VirtualCameraHost.SetFormat(format) == FormatRequestOutcome.Pending ? HRESULT.S_FALSE : HRESULT.S_OK;
+        }
+        catch (Exception exception)
+        {
+            Log.Error("WcamFormatSet failed", exception);
+            return exception.HResult;
+        }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "WcamFormatGet")]
+    public static int WcamFormatGet(WcamFormatState* state)
+    {
+        try
+        {
+            if (state == null)
+            {
+                return HRESULT.E_POINTER;
+            }
+            *state = VirtualCameraHost.State;
+            return HRESULT.S_OK;
+        }
+        catch (Exception exception)
+        {
+            Log.Error("WcamFormatGet failed", exception);
+            return exception.HResult;
+        }
+    }
+
     [UnmanagedCallersOnly(EntryPoint = "WcamFramePublish")]
     public static int WcamFramePublish(byte* nv12, uint length, uint width, uint height)
     {
         try
         {
-            if (nv12 == null || !FrameTransport.AcceptsFrame(length, width, height))
+            if (nv12 == null)
             {
                 return HRESULT.E_INVALIDARG;
             }
-            return VirtualCameraHost.Publish(new ReadOnlySpan<byte>(nv12, (int)length)) ? HRESULT.S_OK : HRESULT.S_FALSE;
+            ReadOnlySpan<byte> frame = new(nv12, (int)length);
+            return VirtualCameraHost.Publish(frame, width, height) ? HRESULT.S_OK : HRESULT.S_FALSE;
+        }
+        catch (ArgumentException)
+        {
+            return HRESULT.E_INVALIDARG;
         }
         catch (Exception exception)
         {

@@ -8,7 +8,6 @@ internal sealed class SessionFrameReader : IDisposable
     private const int ReadAttempts = 3;
     private const byte BlackLuma = 16;
     private const byte NeutralChroma = 128;
-    private const int LumaSize = VideoFormat.Width * VideoFormat.Height;
 
     private MappedFrameChannel? _channel;
     private long _nextOpenAttempt;
@@ -16,18 +15,24 @@ internal sealed class SessionFrameReader : IDisposable
     private bool _hasOpened;
     private bool _showingPublished;
 
-    public static void FillBlack(Span<byte> frame)
+    public static void FillBlack(Span<byte> frame, FrameFormat format)
     {
-        frame[..LumaSize].Fill(BlackLuma);
-        frame[LumaSize..].Fill(NeutralChroma);
+        frame[..format.LumaSize].Fill(BlackLuma);
+        frame[format.LumaSize..format.FrameSize].Fill(NeutralChroma);
     }
 
-    public void Fill(Span<byte> frame)
+    public FrameFormat? ReadFormat()
     {
-        bool published = TryReadFresh(frame);
+        MappedFrameChannel? channel = OpenWhenDue();
+        return channel is not null && channel.Channel.TryReadFormat(out FrameFormat format) ? format : null;
+    }
+
+    public void Fill(Span<byte> frame, FrameFormat format)
+    {
+        bool published = TryReadFresh(frame, format);
         if (!published)
         {
-            FillBlack(frame);
+            FillBlack(frame, format);
         }
         if (published != _showingPublished)
         {
@@ -38,7 +43,7 @@ internal sealed class SessionFrameReader : IDisposable
 
     public void Dispose() => _channel?.Dispose();
 
-    private bool TryReadFresh(Span<byte> frame)
+    private bool TryReadFresh(Span<byte> frame, FrameFormat format)
     {
         MappedFrameChannel? channel = OpenWhenDue();
         if (channel is null)
@@ -47,7 +52,7 @@ internal sealed class SessionFrameReader : IDisposable
         }
         for (int attempt = 0; attempt < ReadAttempts; attempt++)
         {
-            if (channel.Channel.TryReadLatest(frame, out _, out long timestampTicks))
+            if (channel.Channel.TryReadLatest(frame, format, out _, out long timestampTicks))
             {
                 if (FrameTransport.IsFresh(timestampTicks, DateTime.UtcNow.Ticks))
                 {

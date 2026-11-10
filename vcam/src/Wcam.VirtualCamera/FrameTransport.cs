@@ -12,6 +12,6 @@ internal static class FrameTransport
 
     public static bool IsFresh(long publishedTicks, long nowTicks) => Math.Abs(nowTicks - publishedTicks) < FreshnessTicks;
 
-    public static bool AcceptsFrame(uint length, uint width, uint height) =>
-        width == VideoFormat.Width && height == VideoFormat.Height && length == VideoFormat.FrameSize;
+    public static bool AcceptsFrame(uint length, uint width, uint height, FrameFormat format) =>
+        width == format.Width && height == format.Height && length == format.FrameSize;
 }
