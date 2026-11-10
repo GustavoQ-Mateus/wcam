@@ -52,8 +52,8 @@ Na rodada B do spike `h264-levels`, o pipeline do agente entregou de 6 a 10 quad
 ## Verificação
 
 - `dotnet build`: 0 avisos.
-- `dotnet test`: 138 de 138, entre eles `FrameFormatTests`, `FrameChannelTests` (troca de formato, quadro de outro tamanho recusado, leitura no formato antigo recusada, formato sendo escrito), `FormatSwitchTests`, `WcamFormatStateTests` (layout de 36 bytes) e `StreamingMonitorTests`.
-- `dotnet publish -r win-x64 -c Release` da DLL e do probe: 0 avisos de trimming ou AOT. DLL final (commit 140e464) publicada em pasta separada, SHA-256 `F093581B0092697B9640397ABCFF245C417706D2EA3A04210C91A5B66166B50D`; a publicação AOT não é reprodutível, então o hash vale para esse arquivo.
+- `dotnet test`: 143 de 143, entre eles `FrameFormatTests`, `FrameChannelTests` (troca de formato, quadro de outro tamanho recusado, leitura no formato antigo recusada, formato sendo escrito), `FormatSwitchTests`, `WcamFormatStateTests` (layout de 36 bytes) e `StreamingMonitorTests`.
+- `dotnet publish -r win-x64 -c Release` da DLL e do probe: 0 avisos de trimming ou AOT. DLL do commit 140e464, medida no Frame Server abaixo: SHA-256 `F093581B0092697B9640397ABCFF245C417706D2EA3A04210C91A5B66166B50D`. DLL com a espera de 1 s antes de aplicar a troca pendente, publicada em pasta separada e não registrada: SHA-256 `E1A8DDEC642BAB59F715771D9B20CE765CBBC7B898834F92CAEB9424A26CE54B`. A publicação AOT não é reprodutível, então cada hash vale só para o seu arquivo.
 
 ## Verificação no Frame Server com a DLL final (CA 2 e CA 4)
 
@@ -79,6 +79,11 @@ Medição de 2026-11-10, das 16:19 às 16:32 UTC, com a DLL final (`F093581B...B
 
 Os cinco formatos ficaram acima dos 95% do nominal, sem quadro de tamanho diferente do anunciado.
 
-- **Achado:** o Chrome, ao abrir a câmera, faz um início e uma parada rápidos antes do início definitivo. O monitor viu 1, 0 e 1 app em 0,3 s (16:19:40,50, 40,61 e 40,82). Se houvesse uma troca pendente nesse instante, a DLL reiniciaria a câmera no meio da abertura do Chrome. Não aconteceu na medição, porque a pendência só foi criada depois. Fica registrado como risco para a verificação com Teams e OBS. Se aparecer, a correção é esperar alguns centésimos de segundo com 0 apps antes de aplicar.
+- **Achado, corrigido depois da medição:** o Chrome, ao abrir a câmera, faz um início e uma parada rápidos antes do início definitivo. O monitor viu 1, 0 e 1 app em 0,3 s (16:19:40,50, 40,61 e 40,82). Com uma troca pendente nesse instante, a DLL reiniciaria a câmera no meio da abertura do Chrome.
+  - Correção, por decisão do orquestrador: a troca pendente só é aplicada depois de 1 s seguido com 0 apps recebendo vídeo (`FormatSwitch.IdleBeforeApplyMilliseconds`). Se algum app voltar nesse intervalo, ela continua pendente; a contagem recomeça na próxima parada. A DLL reagenda a verificação até completar o intervalo, para não depender da precisão do temporizador.
+  - Com isso, a troca pendente leva cerca de 1 s a mais que os 0,12 s e 0,33 s medidos acima.
+  - Testes em `FormatSwitchTests`: espera de 1 s, app que volta dentro do intervalo, nova parada recomeçando a contagem, relatórios repetidos com 0 apps mantendo a primeira parada, e nada a aplicar sem pendência.
+  - O pedido feito com 0 apps continua reiniciando na hora, como na API aprovada.
+  - Não verificado no Frame Server: a DLL com a correção não foi registrada, e o orquestrador combina isso com o usuário.
 - **Ainda falta, com o usuário:** Teams e OBS, inclusive app que segura a câmera sem receber vídeo (Teams) durante o reinício.
 - Ao fim da medição, o probe foi encerrado (`WcamCameraStop` `S_OK`, monitor parado, câmera virtual parada), e o app Câmera e o Chrome foram fechados.

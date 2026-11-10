@@ -26,7 +26,7 @@ public class FormatSwitchTests
     public void Request_WhileAnAppReceivesVideo_StaysPendingInAnnouncedFormat()
     {
         var formats = new FormatSwitch(FrameFormat.Default);
-        formats.UpdateStreamingApps(1);
+        formats.UpdateStreamingApps(1, 0);
         Assert.Equal(FormatRequestOutcome.Pending, formats.Request(Hd, cameraStarted: true));
         Assert.Equal(FrameFormat.Default, formats.Announced);
         Assert.True(formats.IsPending);
@@ -36,40 +36,87 @@ public class FormatSwitchTests
     public void UpdateStreamingApps_LastAppStopsWithPendingFormat_AsksToApply()
     {
         var formats = new FormatSwitch(FrameFormat.Default);
-        formats.UpdateStreamingApps(2);
+        formats.UpdateStreamingApps(2, 0);
         formats.Request(Hd, cameraStarted: true);
-        Assert.False(formats.UpdateStreamingApps(1));
-        Assert.True(formats.UpdateStreamingApps(0));
+        Assert.False(formats.UpdateStreamingApps(1, 0));
+        Assert.True(formats.UpdateStreamingApps(0, 0));
     }
 
     [Fact]
     public void UpdateStreamingApps_LastAppStopsWithoutPendingFormat_DoesNotAskToApply()
     {
         var formats = new FormatSwitch(FrameFormat.Default);
-        formats.UpdateStreamingApps(1);
-        Assert.False(formats.UpdateStreamingApps(0));
+        formats.UpdateStreamingApps(1, 0);
+        Assert.False(formats.UpdateStreamingApps(0, 0));
     }
 
     [Fact]
     public void Request_AnnouncedFormatWhilePending_CancelsPendingChange()
     {
         var formats = new FormatSwitch(FrameFormat.Default);
-        formats.UpdateStreamingApps(1);
+        formats.UpdateStreamingApps(1, 0);
         formats.Request(Hd, cameraStarted: true);
         Assert.Equal(FormatRequestOutcome.Applied, formats.Request(FrameFormat.Default, cameraStarted: true));
         Assert.False(formats.IsPending);
-        Assert.False(formats.UpdateStreamingApps(0));
+        Assert.False(formats.UpdateStreamingApps(0, 0));
     }
 
     [Fact]
     public void Request_OtherFormatWhilePending_KeepsOnlyTheLatestRequest()
     {
         var formats = new FormatSwitch(FrameFormat.Default);
-        formats.UpdateStreamingApps(1);
+        formats.UpdateStreamingApps(1, 0);
         formats.Request(Hd, cameraStarted: true);
         formats.Request(UltraHd, cameraStarted: true);
         Assert.Equal(UltraHd, formats.Requested);
         Assert.Equal(FrameFormat.Default, formats.Announced);
+    }
+
+    [Fact]
+    public void MillisecondsUntilPendingApplies_LastAppStopped_WaitsOneSecondWithNoApp()
+    {
+        FormatSwitch formats = PendingWithOneApp();
+        formats.UpdateStreamingApps(0, 10_000);
+        Assert.Equal(FormatSwitch.IdleBeforeApplyMilliseconds, formats.MillisecondsUntilPendingApplies(10_000));
+        Assert.Equal(500, formats.MillisecondsUntilPendingApplies(10_500));
+        Assert.Equal(0, formats.MillisecondsUntilPendingApplies(10_000 + FormatSwitch.IdleBeforeApplyMilliseconds));
+    }
+
+    [Fact]
+    public void MillisecondsUntilPendingApplies_AppReturnsWithinOneSecond_StaysPending()
+    {
+        FormatSwitch formats = PendingWithOneApp();
+        formats.UpdateStreamingApps(0, 10_000);
+        formats.UpdateStreamingApps(1, 10_300);
+        Assert.Null(formats.MillisecondsUntilPendingApplies(11_000));
+        Assert.True(formats.IsPending);
+    }
+
+    [Fact]
+    public void MillisecondsUntilPendingApplies_AppStopsAgain_CountsFromTheLastStop()
+    {
+        FormatSwitch formats = PendingWithOneApp();
+        formats.UpdateStreamingApps(0, 10_000);
+        formats.UpdateStreamingApps(1, 10_300);
+        formats.UpdateStreamingApps(0, 10_600);
+        Assert.Equal(600, formats.MillisecondsUntilPendingApplies(11_000));
+    }
+
+    [Fact]
+    public void MillisecondsUntilPendingApplies_RepeatedReportWithNoApp_KeepsTheFirstStop()
+    {
+        FormatSwitch formats = PendingWithOneApp();
+        formats.UpdateStreamingApps(0, 10_000);
+        formats.UpdateStreamingApps(0, 10_800);
+        Assert.Equal(0, formats.MillisecondsUntilPendingApplies(11_000));
+    }
+
+    [Fact]
+    public void MillisecondsUntilPendingApplies_WithoutPendingFormat_IsNull()
+    {
+        var formats = new FormatSwitch(FrameFormat.Default);
+        formats.UpdateStreamingApps(0, 10_000);
+        Assert.Null(formats.MillisecondsUntilPendingApplies(20_000));
     }
 
     [Fact]
@@ -79,5 +126,13 @@ public class FormatSwitchTests
         formats.Request(Hd, cameraStarted: true);
         formats.Announce(Hd);
         Assert.False(formats.IsPending);
+    }
+
+    private static FormatSwitch PendingWithOneApp()
+    {
+        var formats = new FormatSwitch(FrameFormat.Default);
+        formats.UpdateStreamingApps(1, 0);
+        formats.Request(Hd, cameraStarted: true);
+        return formats;
     }
 }

@@ -140,13 +140,16 @@ internal static class VirtualCameraHost
         bool applyPending;
         lock (StateGate)
         {
-            applyPending = Formats.UpdateStreamingApps(count);
+            applyPending = Formats.UpdateStreamingApps(count, Environment.TickCount64);
         }
         if (applyPending)
         {
-            ThreadPool.QueueUserWorkItem(_ => ApplyPending());
+            ScheduleApplyPending(FormatSwitch.IdleBeforeApplyMilliseconds);
         }
     }
+
+    private static void ScheduleApplyPending(long delayMilliseconds) =>
+        Task.Delay(TimeSpan.FromMilliseconds(delayMilliseconds)).ContinueWith(_ => ApplyPending());
 
     private static void ApplyPending()
     {
@@ -157,8 +160,14 @@ internal static class VirtualCameraHost
                 FrameFormat format;
                 lock (StateGate)
                 {
-                    if (_section is null || !Formats.IsPending || Formats.StreamingApps > 0)
+                    long? remaining = Formats.MillisecondsUntilPendingApplies(Environment.TickCount64);
+                    if (_section is null || remaining is null)
                     {
+                        return;
+                    }
+                    if (remaining > 0)
+                    {
+                        ScheduleApplyPending(remaining.Value);
                         return;
                     }
                     format = Formats.Requested;

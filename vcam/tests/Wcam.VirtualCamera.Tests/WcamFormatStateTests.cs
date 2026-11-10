@@ -16,7 +16,7 @@ public class WcamFormatStateTests
     public void From_PendingChange_ReportsAnnouncedRequestedAndApps()
     {
         var formats = new FormatSwitch(FrameFormat.Default);
-        formats.UpdateStreamingApps(2);
+        formats.UpdateStreamingApps(2, 0);
         formats.Request(new FrameFormat(1280, 720, 60), cameraStarted: true);
         WcamFormatState state = WcamFormatState.From(formats, running: true);
         Assert.Equal((1920u, 1080u, 30u), (state.Width, state.Height, state.FramesPerSecond));
