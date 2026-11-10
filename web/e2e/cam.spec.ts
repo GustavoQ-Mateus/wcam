@@ -28,7 +28,7 @@ test("cam page does not load the console chunk", async ({ page }) => {
 test.describe("in portrait", () => {
   test.use({ viewport: PHONE_PORTRAIT });
 
-  test("cam with a portrait frame shows rotate", async ({ page }) => {
+  test("a portrait frame keeps the camera usable and shows the portrait hint", async ({ page }) => {
     await page.addInitScript((frame) => {
       navigator.mediaDevices.getUserMedia = () => {
         const canvas = document.createElement("canvas");
@@ -46,8 +46,8 @@ test.describe("in portrait", () => {
 
     await turnOnCamera(page, UNUSED_FRAGMENT);
 
-    await expect(page.getByText(translate("en", "cam.rotate_title"))).toBeVisible();
-    await expect(page.getByRole("button", { name: translate("en", "cam.switch_camera") })).toHaveCount(0);
+    await expect(page.getByText(translate("en", "cam.portrait_hint"))).toBeVisible();
+    await expect(page.getByRole("button", { name: translate("en", "cam.switch_camera") })).toBeVisible();
   });
 });
 

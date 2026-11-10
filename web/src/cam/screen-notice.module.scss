@@ -21,3 +21,8 @@
     transform: scale(var(--scale-press));
   }
 }
+
+[data-portrait="true"] .notice {
+  bottom: calc(var(--margin-bottom) + var(--control-size) + var(--space-4));
+  max-width: calc(100% - var(--margin-left) - var(--margin-right));
+}

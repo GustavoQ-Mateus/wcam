@@ -16,7 +16,7 @@ export default function CamPage() {
   const { state } = cam;
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} data-portrait={isLive(state) && state.portrait}>
       <Viewfinder videoRef={cam.videoRef} mirrored={isMirrored(cam.facing)} visible={isLive(state) && !cam.switching} />
       {isLive(state) ? (
         <LiveLayer

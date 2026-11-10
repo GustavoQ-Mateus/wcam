@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
-import { isSession, type LiveCamState } from "../data/cam-state";
+import type { LiveCamState } from "../data/cam-state";
 import { t } from "../data/language";
 import type { QualityPreset } from "../data/quality-preset";
 import { CaptureControls } from "./capture-controls";
 import { CaptureReadout } from "./capture-readout";
 import { ConfirmationPrompt } from "./confirmation-prompt";
 import { ConnectingPrompt } from "./connecting-prompt";
+import { PortraitHint } from "./portrait-hint";
 import { PreviewCover } from "./preview-cover";
-import { RotatePrompt } from "./rotate-prompt";
 import { ScreenNotice } from "./screen-notice";
 import { ScreenshotButton } from "./screenshot-button";
 import { ScrimLayer } from "./scrim-layer";
@@ -52,6 +52,7 @@ export function LiveLayer({
           <PreviewCover visible={previewOff} onShow={onTogglePreview} />
           <CaptureReadout capture={state.capture} dimmed={previewOff} />
           {state.kind === "live" && <Tally />}
+          {state.portrait && !previewOff && <PortraitHint />}
           <CaptureControls
             dimmed={previewOff}
             qualityPreset={state.kind === "live" ? qualityPreset : null}
@@ -68,9 +69,6 @@ export function LiveLayer({
 }
 
 function promptFor(state: LiveCamState): Prompt | null {
-  if (state.kind === "rotate" || (isSession(state) && state.portrait)) {
-    return { key: "rotate", content: <RotatePrompt /> };
-  }
   if (state.kind === "connecting") {
     return { key: "connecting", content: <ConnectingPrompt /> };
   }

@@ -103,8 +103,6 @@
   "cam.unavailable_unsupported": "Use o Chrome ou o Safari para abrir a câmera.",
   "cam.unavailable_no_camera": "Nenhuma câmera encontrada neste aparelho.",
   "cam.unavailable_in_use": "Feche o outro app que usa a câmera.",
-  "cam.rotate_title": "Vire o celular na horizontal",
-  "cam.rotate_body": "O WCam envia vídeo na horizontal, sem cortar nem reduzir a imagem.",
   "cam.capture_format": "{width} × {height} · {fps} fps",
   "cam.switch_camera": "Trocar câmera",
   "cam.preview_off": "Desligar prévia",
