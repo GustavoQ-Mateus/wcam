@@ -9,7 +9,7 @@ public sealed class PublishedFrameSectionTests : IDisposable
 
     public PublishedFrameSectionTests()
     {
-        _section = PublishedFrameSection.Create($@"Local\{_name}");
+        _section = PublishedFrameSection.Create($@"Local\{_name}", FrameFormat.Default);
     }
 
     public void Dispose() => _section.Dispose();
@@ -22,7 +22,7 @@ public sealed class PublishedFrameSectionTests : IDisposable
         byte[] destination = new byte[VideoFormat.FrameSize];
         _section.Publish(frame);
         using MappedFrameChannel reader = MappedFrameChannel.OpenSection(SessionName(), writable: false);
-        Assert.True(reader.Channel.TryReadLatest(destination, out ulong frameIndex, out long timestamp));
+        Assert.True(reader.Channel.TryReadLatest(destination, FrameFormat.Default, out ulong frameIndex, out long timestamp));
         Assert.Equal(frame, destination);
         Assert.Equal(1UL, frameIndex);
         Assert.True(FrameTransport.IsFresh(timestamp, DateTime.UtcNow.Ticks));
@@ -33,7 +33,7 @@ public sealed class PublishedFrameSectionTests : IDisposable
     {
         using MappedFrameChannel reader = MappedFrameChannel.OpenSection($@"Local\{_name}", writable: false);
         Assert.True(reader.Channel.HasValidHeader);
-        Assert.False(reader.Channel.TryReadLatest(new byte[VideoFormat.FrameSize], out _, out _));
+        Assert.False(reader.Channel.TryReadLatest(new byte[VideoFormat.FrameSize], FrameFormat.Default, out _, out _));
     }
 
     private string SessionName() => $@"Session\{Process.GetCurrentProcess().SessionId}\{_name}";

@@ -21,14 +21,14 @@ internal sealed unsafe class PublishedFrameSection : IDisposable
         _writer = writer;
     }
 
-    public static PublishedFrameSection Create(string name)
+    public static PublishedFrameSection Create(string name, FrameFormat format)
     {
         string ownerSid = WindowsIdentity.GetCurrent().User!.Value;
         SafeFileHandle section = CreateSection(name, FrameTransport.AccessDescriptor(ownerSid));
         try
         {
             MappedFrameChannel writer = MappedFrameChannel.OpenSection(name, writable: true);
-            writer.Channel.InitializeHeader();
+            writer.Channel.InitializeHeader(format);
             Log.Info($"created {name} for {ownerSid}");
             return new PublishedFrameSection(section, writer);
         }
@@ -40,6 +40,10 @@ internal sealed unsafe class PublishedFrameSection : IDisposable
     }
 
     public void Publish(ReadOnlySpan<byte> frame) => _writer.Channel.Publish(frame, DateTime.UtcNow.Ticks);
+
+    public void SetFormat(FrameFormat format) => _writer.Channel.SetFormat(format);
+
+    public void SetChangeMode(uint mode) => _writer.Channel.ChangeMode = mode;
 
     public void Dispose()
     {

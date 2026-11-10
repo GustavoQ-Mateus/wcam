@@ -1,0 +1,12 @@
+MFCreateSensorActivityMonitor
+IMFSensorActivityMonitor
+IMFSensorActivitiesReportCallback
+IMFSensorActivitiesReport
+IMFSensorActivityReport
+IMFSensorProcessActivity
+MFSensorDeviceMode
+MFStartup
+MFShutdown
+MFSTARTUP_FULL
+MF_VERSION
+CoInitializeEx

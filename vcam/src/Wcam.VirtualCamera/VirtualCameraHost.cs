@@ -10,6 +10,19 @@ internal static class VirtualCameraHost
     private static readonly Lock Gate = new();
     private static IMFVirtualCamera? _camera;
     private static PublishedFrameSection? _section;
+    private static FrameFormat _format = FrameFormat.Default;
+    private static uint _changeMode;
+
+    public static FrameFormat Format
+    {
+        get
+        {
+            lock (Gate)
+            {
+                return _format;
+            }
+        }
+    }
 
     public static void Start()
     {
@@ -23,7 +36,8 @@ internal static class VirtualCameraHost
             PInvoke.MFStartup(PInvoke.MF_VERSION, PInvoke.MFSTARTUP_FULL).ThrowOnFailure();
             try
             {
-                _section = PublishedFrameSection.Create(FrameTransport.LocalSectionName);
+                _section = PublishedFrameSection.Create(FrameTransport.LocalSectionName, _format);
+                _section.SetChangeMode(_changeMode);
                 _camera = CreateCamera();
             }
             catch
@@ -60,10 +74,34 @@ internal static class VirtualCameraHost
         Log.Info("virtual camera stopped");
     }
 
-    public static bool Publish(ReadOnlySpan<byte> frame)
+    public static void SetFormat(FrameFormat format)
     {
         lock (Gate)
         {
+            _format = format;
+            _section?.SetFormat(format);
+        }
+        Log.Info($"format set to {format}");
+    }
+
+    public static void SetChangeMode(uint mode)
+    {
+        lock (Gate)
+        {
+            _changeMode = mode;
+            _section?.SetChangeMode(mode);
+        }
+        Log.Info($"format change mode set to {mode}");
+    }
+
+    public static bool Publish(ReadOnlySpan<byte> frame, uint width, uint height)
+    {
+        lock (Gate)
+        {
+            if (!FrameTransport.AcceptsFrame((uint)frame.Length, width, height, _format))
+            {
+                throw new ArgumentException($"frame {width}x{height} does not match {_format}");
+            }
             if (_section is null)
             {
                 return false;
