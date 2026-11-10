@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from tests.unit.test_pipeline import SteppingClock, phone_frame
 from wcam.media.color_correction import (
@@ -70,6 +71,22 @@ def test_reference_file_has_one_full_hd_frame(tmp_path: Path) -> None:
     assert luma.shape == (HEIGHT, WIDTH)
     assert output.stat().st_size == len(reference_frame())
     assert output.read_bytes().startswith(b"YUV4MPEG2 W1920 H1080 F30:1")
+
+
+def test_reference_file_follows_the_requested_format(tmp_path: Path) -> None:
+    output = tmp_path / "reference-2160p60.y4m"
+    arguments = ["--width", "3840", "--height", "2160", "--fps", "60"]
+
+    subprocess.run([sys.executable, "-m", "wcam.tools.make_reference", str(output), *arguments], check=True)  # noqa: S603
+
+    assert read_y4m_luma(output).shape == (2160, 3840)
+    assert output.read_bytes().startswith(b"YUV4MPEG2 W3840 H2160 F60:1")
+    assert output.stat().st_size == len(reference_frame(3840, 2160, 60))
+
+
+def test_reference_rejects_odd_sizes() -> None:
+    with pytest.raises(ValueError, match="even"):
+        reference_frame(1279, 720)
 
 
 def test_quality_ignores_warmup_and_reports_average_and_minimum() -> None:
@@ -160,3 +177,12 @@ def test_applied_correction_restarts_quality_with_its_luma_table_and_default_wit
     applied_table = correction_tables(APPLE_CORRECTION, pipeline.color_range)
     assert applied_table is not None
     assert meter.luma_tables == [None, applied_table[0], None]
+
+
+def test_frame_of_another_size_than_the_reference_is_not_measured() -> None:
+    meter = QualityMeter(np.zeros((1080, 1920), dtype=np.uint8))
+    meter.restart(0.0)
+
+    meter.observe(WARMUP_SECONDS + 1, np.zeros((720, 1280), dtype=np.uint8))
+
+    assert meter.report.frames == 0

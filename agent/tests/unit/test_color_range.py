@@ -11,8 +11,8 @@ from wcam.virtualcam.sink import OUTPUT_HEIGHT, OUTPUT_WIDTH, I420Frame
 
 SMALL_WIDTH = 64
 SMALL_HEIGHT = 48
-SCALED_WIDTH = 1280
-SCALED_HEIGHT = 720
+SCALED_WIDTH = 720
+SCALED_HEIGHT = 1280
 SMALL_FPS = 30
 SMALL_BITRATE_BPS = 500_000
 SMPTE170M = 6
@@ -85,7 +85,7 @@ def test_limited_and_unspecified_range_pass_byte_for_byte(declared: DeclaredRang
     assert sink.last_frame.tobytes() == original.tobytes()
 
 
-def test_scaled_full_range_frame_is_converted_only_once() -> None:
+def test_reduced_portrait_full_range_frame_is_converted_only_once() -> None:
     pipeline, sink = live_pipeline()
 
     pipeline.deliver(full_range_frame(255, 128, SCALED_WIDTH, SCALED_HEIGHT))

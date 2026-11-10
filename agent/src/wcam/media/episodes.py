@@ -21,7 +21,6 @@ LOG_BACKUPS = 1
 class EpisodeCause(StrEnum):
     SILENCE = "silence"
     STALLED = "stalled"
-    PORTRAIT = "portrait"
 
 
 class EpisodeAction(StrEnum):
@@ -33,7 +32,6 @@ class EpisodeAction(StrEnum):
 class LinkSample:
     at: float
     frame_age: float
-    portrait: bool
     black: bool
     rtp_bytes: int
     keyframe_requests: int
@@ -54,7 +52,6 @@ class Episode:
 class OpenEpisode:
     started: float
     baseline: LinkSample
-    portrait: bool = False
     black: bool = False
 
 
@@ -70,7 +67,6 @@ class EpisodeTracker:
         if episode is None:
             self._watch_for_start(sample)
             return
-        episode.portrait |= sample.portrait
         episode.black |= sample.black
         if sample.frame_age <= EPISODE_SECONDS:
             self._close(episode, sample, sample.at - sample.frame_age)
@@ -83,7 +79,7 @@ class EpisodeTracker:
         if sample.frame_age <= EPISODE_SECONDS:
             self._calm = sample
             return
-        self._open = OpenEpisode(sample.at - sample.frame_age, self._calm or sample, sample.portrait, sample.black)
+        self._open = OpenEpisode(sample.at - sample.frame_age, self._calm or sample, sample.black)
 
     def _close(self, episode: OpenEpisode, sample: LinkSample, ended: float) -> None:
         self._open = None
@@ -102,8 +98,6 @@ class EpisodeTracker:
 
 
 def episode_cause(episode: OpenEpisode, sample: LinkSample) -> EpisodeCause:
-    if episode.portrait:
-        return EpisodeCause.PORTRAIT
     if sample.stalls > episode.baseline.stalls:
         return EpisodeCause.STALLED
     return EpisodeCause.SILENCE

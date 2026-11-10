@@ -1,4 +1,4 @@
-import sys
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -6,6 +6,7 @@ from numpy.typing import NDArray
 
 WIDTH = 1920
 HEIGHT = 1080
+FPS = 30
 SEED = 20261101
 GLYPH_WIDTH = 3
 GLYPH_HEIGHT = 5
@@ -17,30 +18,34 @@ TWILL_REPEAT = 4
 TEXTURE_CONTRAST = 40
 CONTRAST_FLOOR = 0.6
 CONTRAST_SWING = 0.4
-HEADER = f"YUV4MPEG2 W{WIDTH} H{HEIGHT} F30:1 Ip A1:1 C420jpeg\n".encode()
 FRAME_MARKER = b"FRAME\n"
-EXIT_USAGE = 2
 
 type Plane = NDArray[np.uint8]
 
 
-def reference_frame() -> bytes:
+def y4m_header(width: int, height: int, fps: int) -> bytes:
+    return f"YUV4MPEG2 W{width} H{height} F{fps}:1 Ip A1:1 C420jpeg\n".encode()
+
+
+def reference_frame(width: int = WIDTH, height: int = HEIGHT, fps: int = FPS) -> bytes:
+    if width % 2 or height % 2:
+        raise ValueError("width and height must be even")
     generator = np.random.default_rng(SEED)
-    luma = reference_luma(generator)
-    blue, red = reference_chroma()
-    return HEADER + FRAME_MARKER + luma.tobytes() + blue.tobytes() + red.tobytes()
+    luma = reference_luma(generator, width, height)
+    blue, red = reference_chroma(width, height)
+    return y4m_header(width, height, fps) + FRAME_MARKER + luma.tobytes() + blue.tobytes() + red.tobytes()
 
 
-def reference_luma(generator: np.random.Generator) -> Plane:
-    columns = np.arange(WIDTH)
-    rows = np.arange(HEIGHT)
-    luma = np.tile(16 + columns * 219 // (WIDTH - 1), (HEIGHT, 1)).astype(np.int32)
-    quarter = WIDTH // 4
-    third = HEIGHT // 3
+def reference_luma(generator: np.random.Generator, width: int, height: int) -> Plane:
+    columns = np.arange(width)
+    rows = np.arange(height)
+    luma = np.tile(16 + columns * 219 // (width - 1), (height, 1)).astype(np.int32)
+    quarter = width // 4
+    third = height // 3
     luma[:third, :quarter] = np.where(columns[:quarter] % 2 == 0, 235, 16)
     luma[:third, quarter : 2 * quarter] = np.where(rows[:third, None] % 2 == 0, 235, 16)
-    luma[third : 2 * third, :] = draw_text(generator, (third, WIDTH))
-    luma[2 * third :, :] = np.clip(luma[2 * third :, :] + weave((HEIGHT - 2 * third, WIDTH)), 16, 235)
+    luma[third : 2 * third, :] = draw_text(generator, (third, width))
+    luma[2 * third :, :] = np.clip(luma[2 * third :, :] + weave((height - 2 * third, width)), 16, 235)
     return luma.astype(np.uint8)
 
 
@@ -72,21 +77,24 @@ def draw_text(generator: np.random.Generator, shape: tuple[int, int]) -> NDArray
     return page
 
 
-def reference_chroma() -> tuple[Plane, Plane]:
-    rows = np.arange(HEIGHT // 2)[:, None]
-    columns = np.arange(WIDTH // 2)[None, :]
-    blue = 16 + (columns * 224 // (WIDTH // 2 - 1)) + rows * 0
-    red = 16 + (rows * 224 // (HEIGHT // 2 - 1)) + columns * 0
+def reference_chroma(width: int, height: int) -> tuple[Plane, Plane]:
+    rows = np.arange(height // 2)[:, None]
+    columns = np.arange(width // 2)[None, :]
+    blue = 16 + (columns * 224 // (width // 2 - 1)) + rows * 0
+    red = 16 + (rows * 224 // (height // 2 - 1)) + columns * 0
     return blue.astype(np.uint8), red.astype(np.uint8)
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        print("usage: python -m wcam.tools.make_reference <output.y4m>", file=sys.stderr)
-        sys.exit(EXIT_USAGE)
-    output = Path(sys.argv[1])
+    parser = argparse.ArgumentParser(prog="python -m wcam.tools.make_reference")
+    parser.add_argument("output", type=Path)
+    parser.add_argument("--width", type=int, default=WIDTH)
+    parser.add_argument("--height", type=int, default=HEIGHT)
+    parser.add_argument("--fps", type=int, default=FPS)
+    arguments = parser.parse_args()
+    output: Path = arguments.output
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_bytes(reference_frame())
+    output.write_bytes(reference_frame(arguments.width, arguments.height, arguments.fps))
 
 
 if __name__ == "__main__":

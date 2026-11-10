@@ -1,4 +1,5 @@
 import ctypes
+import logging
 from pathlib import Path
 from typing import Protocol
 
@@ -7,17 +8,37 @@ from numpy.typing import NDArray
 
 from wcam.virtualcam.sink import (
     UNAVAILABLE_UNTIL_OPENED,
+    AnnouncedFormat,
     CameraState,
     I420Frame,
     SinkStatus,
     UnavailableReason,
+    frame_size,
 )
 
 BACKEND = "media_foundation"
 CAMERA_NAME = "WCam"
 FIRST_FAILURE_HRESULT = 0
+E_FAIL = -2147467259
+FORMAT_REFUSED = "The WCam camera did not accept the new format"
+
+logger = logging.getLogger(__name__)
 
 type Nv12Frame = NDArray[np.uint8]
+
+
+class FormatState(ctypes.Structure):
+    _fields_ = (
+        ("width", ctypes.c_uint32),
+        ("height", ctypes.c_uint32),
+        ("fps", ctypes.c_uint32),
+        ("requested_width", ctypes.c_uint32),
+        ("requested_height", ctypes.c_uint32),
+        ("requested_fps", ctypes.c_uint32),
+        ("pending", ctypes.c_uint32),
+        ("streaming_apps", ctypes.c_uint32),
+        ("running", ctypes.c_uint32),
+    )
 
 
 class CameraLibrary(Protocol):
@@ -26,6 +47,10 @@ class CameraLibrary(Protocol):
     def stop(self) -> int: ...
 
     def publish(self, frame: Nv12Frame, width: int, height: int) -> int: ...
+
+    def set_format(self, width: int, height: int, fps: int) -> int: ...
+
+    def get_format(self) -> AnnouncedFormat | None: ...
 
 
 class NativeCameraLibrary:
@@ -39,6 +64,12 @@ class NativeCameraLibrary:
         self._publish = library.WcamFramePublish
         self._publish.argtypes = [ctypes.POINTER(ctypes.c_uint8), ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32]
         self._publish.restype = ctypes.c_int32
+        self._format_set = library.WcamFormatSet
+        self._format_set.argtypes = [ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32]
+        self._format_set.restype = ctypes.c_int32
+        self._format_get = library.WcamFormatGet
+        self._format_get.argtypes = [ctypes.POINTER(FormatState)]
+        self._format_get.restype = ctypes.c_int32
 
     def start(self) -> int:
         result: int = self._start()
@@ -53,14 +84,41 @@ class NativeCameraLibrary:
         result: int = self._publish(pointer, frame.size, width, height)
         return result
 
+    def set_format(self, width: int, height: int, fps: int) -> int:
+        result: int = self._format_set(width, height, fps)
+        return result
+
+    def get_format(self) -> AnnouncedFormat | None:
+        state = FormatState()
+        result: int = self._format_get(ctypes.byref(state))
+        if result < FIRST_FAILURE_HRESULT:
+            return None
+        return AnnouncedFormat(state.width, state.height, state.fps, bool(state.pending), bool(state.running))
+
+
+class IncompleteCameraLibrary:
+    def start(self) -> int:
+        return E_FAIL
+
+    def stop(self) -> int:
+        return E_FAIL
+
+    def publish(self, frame: Nv12Frame, width: int, height: int) -> int:
+        return E_FAIL
+
+    def set_format(self, width: int, height: int, fps: int) -> int:
+        return E_FAIL
+
+    def get_format(self) -> AnnouncedFormat | None:
+        return None
+
 
 class MediaFoundationSink:
     def __init__(self, library: CameraLibrary | None) -> None:
         self._library = library
         self._status = UNAVAILABLE_UNTIL_OPENED
         self._nv12: Nv12Frame | None = None
-        self._width = 0
-        self._height = 0
+        self._announced: AnnouncedFormat | None = None
 
     @property
     def backend(self) -> str:
@@ -74,30 +132,51 @@ class MediaFoundationSink:
     def status(self) -> SinkStatus:
         return self._status
 
+    @property
+    def reports_format_changes(self) -> bool:
+        return True
+
     def open(self, width: int, height: int, fps: int) -> None:
         if self._status.state is CameraState.ACTIVE:
             return
         if self._library is None:
             self._status = SinkStatus(CameraState.UNAVAILABLE, UnavailableReason.DRIVER_MISSING)
             return
-        if self._library.start() < FIRST_FAILURE_HRESULT:
+        refused = self._library.set_format(width, height, fps) < FIRST_FAILURE_HRESULT
+        if refused or self._library.start() < FIRST_FAILURE_HRESULT:
             self._status = SinkStatus(CameraState.UNAVAILABLE, UnavailableReason.ERROR)
             return
-        self._width = width
-        self._height = height
-        self._nv12 = np.empty(width * height * 3 // 2, dtype=np.uint8)
+        self._announced = AnnouncedFormat(width, height, fps, pending=False, running=True)
         self._status = SinkStatus(CameraState.ACTIVE)
 
+    def request_format(self, width: int, height: int, fps: int) -> bool:
+        if self._library is None or self._status.state is not CameraState.ACTIVE:
+            return False
+        if self._library.set_format(width, height, fps) < FIRST_FAILURE_HRESULT:
+            logger.warning(FORMAT_REFUSED)
+            return False
+        return True
+
+    def announced_format(self) -> AnnouncedFormat | None:
+        if self._library is not None and self._status.state is CameraState.ACTIVE:
+            self._announced = self._library.get_format() or self._announced
+        return self._announced
+
     def send(self, frame: I420Frame) -> None:
-        if self._library is None or self._nv12 is None:
+        if self._library is None or self._status.state is not CameraState.ACTIVE:
             return
-        i420_to_nv12(frame, self._width, self._height, self._nv12)
-        self._library.publish(self._nv12, self._width, self._height)
+        width, height = frame_size(frame)
+        buffer_size = width * height * 3 // 2
+        if self._nv12 is None or self._nv12.size != buffer_size:
+            self._nv12 = np.empty(buffer_size, dtype=np.uint8)
+        i420_to_nv12(frame, width, height, self._nv12)
+        self._library.publish(self._nv12, width, height)
 
     def close(self) -> None:
         if self._library is not None and self._status.state is CameraState.ACTIVE:
             self._library.stop()
         self._nv12 = None
+        self._announced = None
         self._status = UNAVAILABLE_UNTIL_OPENED
 
 
@@ -115,6 +194,10 @@ def load_native_library(path: Path) -> CameraLibrary | None:
     if not path.is_file():
         return None
     try:
-        return NativeCameraLibrary(ctypes.CDLL(str(path)))
-    except (OSError, AttributeError):
+        library = ctypes.CDLL(str(path))
+    except OSError:
         return None
+    try:
+        return NativeCameraLibrary(library)
+    except AttributeError:
+        return IncompleteCameraLibrary()

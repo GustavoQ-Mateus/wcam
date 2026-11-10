@@ -37,8 +37,8 @@ from wcam.media.peer import (
     video_jitter_buffer,
 )
 from wcam.media.pipeline import FramePipeline, FrameSource
-from wcam.media.quality_preset import QualityPreset
 from wcam.media.sdp_filter import candidate_addresses, sha256_fingerprint
+from wcam.media.video_format import VideoFormat
 from wcam.network.certificates import load_or_create_certificate
 from wcam.network.lan import LanInterface, detect_lan_interface, is_in_network
 from wcam.pairing.confirmation_code import confirmation_code
@@ -115,16 +115,16 @@ class RecordingPeerFactory:
 class PhoneClient:
     connection: RTCPeerConnection
     channel: RTCDataChannel
-    messages: defaultdict[str, asyncio.Queue[dict[str, str]]]
+    messages: defaultdict[str, asyncio.Queue[dict[str, object]]]
 
     async def offer(self) -> str:
         await self.connection.setLocalDescription(await self.connection.createOffer())
         return self.connection.localDescription.sdp
 
-    async def next_state(self) -> dict[str, str]:
+    async def next_state(self) -> dict[str, object]:
         return await self.next_message("session_state")
 
-    async def next_message(self, kind: str) -> dict[str, str]:
+    async def next_message(self, kind: str) -> dict[str, object]:
         return await asyncio.wait_for(self.messages[kind].get(), WAIT_SECONDS)
 
     def send(self, message: dict[str, object]) -> None:
@@ -139,7 +139,7 @@ class FlowResult:
     received_before_confirmation: int
     released_before_confirmation: int
     video_before_confirmation: object
-    states: list[str]
+    states: list[object]
     video_after_confirmation: dict[str, Any]
     source_before_confirmation: FrameSource
     live_frame_shape: tuple[int, ...] | None
@@ -171,7 +171,7 @@ def silent_events() -> PeerEvents:
 
 def phone_client_peer(track: VideoStreamTrack | None = None) -> PhoneClient:
     connection = RTCPeerConnection(RTCConfiguration(iceServers=[]))
-    messages: defaultdict[str, asyncio.Queue[dict[str, str]]] = defaultdict(asyncio.Queue)
+    messages: defaultdict[str, asyncio.Queue[dict[str, object]]] = defaultdict(asyncio.Queue)
     channel: RTCDataChannel = connection.createDataChannel("control")
 
     def receive(data: str) -> None:
@@ -289,7 +289,7 @@ async def test_aiortc_phone_goes_live_only_after_confirmation(
     assert result.seconds_to_placeholder < PLACEHOLDER_DEADLINE_SECONDS
 
 
-async def test_phone_messages_reach_status_and_presets_echo_on_the_channel(
+async def test_phone_messages_reach_status_and_formats_echo_on_the_channel(
     settings: Settings,
     lan: LanInterface,
     pipeline: FramePipeline,
@@ -305,26 +305,31 @@ async def test_phone_messages_reach_status_and_presets_echo_on_the_channel(
         created = (await phone.post("/api/sessions", json={"token": token, "sdp": await client.offer()})).json()
         await client.connection.setRemoteDescription(RTCSessionDescription(created["sdp"], "answer"))
         await client.next_state()
-        first_preset = await client.next_message("quality_preset")
+        first_format = await client.next_message("video_format")
         client.send(PHONE_CAPABILITIES)
+        offered = await client.next_message("video_format")
         await console.post("/api/sessions/current/confirm")
         await client.next_state()
-        client.send({"type": "set_quality_preset", "preset": "light"})
-        phone_change = await client.next_message("quality_preset")
-        await console.put("/api/quality-preset", json={"preset": "maximum"})
-        console_change = await client.next_message("quality_preset")
+        client.send({"type": "set_video_format", "format": "720p60"})
+        phone_change = await client.next_message("video_format")
+        await console.put("/api/video-format", json={"format": "2160p30"})
+        console_change = await client.next_message("video_format")
         status = await current_status(console)
         await console.delete("/api/sessions/current")
     await client.connection.close()
 
-    assert [first_preset["preset"], phone_change["preset"], console_change["preset"]] == [
-        "balanced",
-        "light",
-        "maximum",
+    assert [first_format["format"], phone_change["format"], console_change["format"]] == [
+        "1080p30",
+        "720p60",
+        "2160p30",
     ]
-    assert status["qualityPreset"] == "maximum"
+    assert first_format["available"] == ["1080p30"]
+    assert offered["available"] == [str(video_format) for video_format in VideoFormat]
+    assert console_change["maxBitrate"] == VideoFormat.UHD_30.size.max_bitrate_bps
+    assert status["videoFormat"]["selected"] == "2160p30"
     assert status["session"]["cameraCapabilities"] == {
-        key: value for key, value in PHONE_CAPABILITIES.items() if key != "type"
+        **{key: value for key, value in PHONE_CAPABILITIES.items() if key != "type"},
+        "modes": None,
     }
 
 
@@ -387,11 +392,11 @@ async def test_video_receiver_jitter_buffer_holds_large_frames(lan: LanInterface
     assert VIDEO_JITTER_BUFFER_PACKETS > AIORTC_DEFAULT_VIDEO_JITTER_PACKETS
 
 
-@pytest.mark.parametrize("preset", list(QualityPreset))
-async def test_remb_starts_at_the_preset_bitrate_and_never_exceeds_it(
+@pytest.mark.parametrize("video_format", list(VideoFormat))
+async def test_remb_starts_at_the_format_bitrate_and_never_exceeds_it(
     lan: LanInterface,
     pipeline: FramePipeline,
-    preset: QualityPreset,
+    video_format: VideoFormat,
 ) -> None:
     client = phone_client_peer()
     factory = RecordingPeerFactory(lan, pipeline)
@@ -399,14 +404,14 @@ async def test_remb_starts_at_the_preset_bitrate_and_never_exceeds_it(
     peer = factory.peers[0]
     receiver = next(t.receiver for t in peer.connection.getTransceivers() if t.kind == "video")
 
-    peer.limit_bitrate(preset.max_bitrate_bps)
+    peer.limit_bitrate(video_format.size.max_bitrate_bps)
     rembs = rembs_for_steady_stream(video_bitrate_estimator(receiver))
     await peer.close()
     await client.connection.close()
 
     assert rembs
-    assert rembs[0] >= FIRST_REMB_MINIMUM_SHARE * preset.max_bitrate_bps
-    assert max(rembs) <= preset.max_bitrate_bps
+    assert rembs[0] >= FIRST_REMB_MINIMUM_SHARE * video_format.size.max_bitrate_bps
+    assert max(rembs) <= video_format.size.max_bitrate_bps
 
 
 def rembs_for_steady_stream(estimator: RemoteBitrateEstimator) -> list[int]:

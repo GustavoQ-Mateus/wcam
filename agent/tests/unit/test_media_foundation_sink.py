@@ -15,6 +15,8 @@ from wcam.virtualcam.factory import FallbackReason, SinkChoice, select_sink
 from wcam.virtualcam.fake_sink import FakeSink
 from wcam.virtualcam.media_foundation_sink import (
     CameraLibrary,
+    FormatState,
+    IncompleteCameraLibrary,
     MediaFoundationSink,
     NativeCameraLibrary,
     Nv12Frame,
@@ -22,7 +24,15 @@ from wcam.virtualcam.media_foundation_sink import (
     load_native_library,
 )
 from wcam.virtualcam.pyvirtualcam_sink import PyvirtualcamSink
-from wcam.virtualcam.sink import OUTPUT_FPS, OUTPUT_HEIGHT, OUTPUT_WIDTH, CameraState, I420Frame, UnavailableReason
+from wcam.virtualcam.sink import (
+    OUTPUT_FPS,
+    OUTPUT_HEIGHT,
+    OUTPUT_WIDTH,
+    AnnouncedFormat,
+    CameraState,
+    I420Frame,
+    UnavailableReason,
+)
 
 S_OK = 0
 S_FALSE = 1
@@ -40,9 +50,12 @@ REAL_VCAM_VARIABLE = "WCAM_TEST_REAL_VCAM"
 class FakeCameraLibrary:
     start_result: int = S_OK
     publish_result: int = S_OK
+    format_result: int = S_OK
     started: int = 0
     stopped: int = 0
     published: list[tuple[bytes, int, int]] = field(default_factory=list[tuple[bytes, int, int]])
+    formats: list[tuple[int, int, int]] = field(default_factory=list[tuple[int, int, int]])
+    announced: AnnouncedFormat | None = None
 
     def start(self) -> int:
         self.started += 1
@@ -55,6 +68,13 @@ class FakeCameraLibrary:
     def publish(self, frame: Nv12Frame, width: int, height: int) -> int:
         self.published.append((frame.tobytes(), width, height))
         return self.publish_result
+
+    def set_format(self, width: int, height: int, fps: int) -> int:
+        self.formats.append((width, height, fps))
+        return self.format_result
+
+    def get_format(self) -> AnnouncedFormat | None:
+        return self.announced
 
 
 def random_i420(width: int, height: int) -> I420Frame:
@@ -170,6 +190,8 @@ def test_native_library_passes_frame_pointer_length_and_size() -> None:
         "WcamCameraStart": RecordingExport(S_OK, lambda: None),
         "WcamCameraStop": RecordingExport(S_OK, lambda: None),
         "WcamFramePublish": RecordingExport(S_FALSE, record_publish),
+        "WcamFormatSet": RecordingExport(S_OK, ignore_format),
+        "WcamFormatGet": RecordingExport(S_OK, ignore_state),
     }
     library = NativeCameraLibrary(cast(ctypes.CDLL, type("Dll", (), exports)()))
     frame = np.arange(SMALL_WIDTH * SMALL_HEIGHT * 3 // 2, dtype=np.uint8)
@@ -179,6 +201,18 @@ def test_native_library_passes_frame_pointer_length_and_size() -> None:
     assert result == S_FALSE
     assert calls == [(frame.tobytes(), frame.size, SMALL_WIDTH, SMALL_HEIGHT)]
     assert exports["WcamFramePublish"].restype is ctypes.c_int32
+
+
+def ignore_format(width: int, height: int, fps: int) -> None:
+    return None
+
+
+def ignore_state(pointer: object) -> None:
+    return None
+
+
+def ignore_publish(pointer: object, length: int, width: int, height: int) -> None:
+    return None
 
 
 def library_loader(library: CameraLibrary | None) -> Callable[[], CameraLibrary | None]:
@@ -266,3 +300,134 @@ def test_real_dll_starts_publishes_and_stops_the_camera() -> None:
 
     assert sink.status.state is CameraState.UNAVAILABLE
     assert published in (S_OK, S_FALSE)
+
+
+def test_open_announces_the_format_to_the_native_camera() -> None:
+    library = FakeCameraLibrary()
+    sink = MediaFoundationSink(library)
+
+    sink.open(1280, 720, 60)
+
+    assert library.formats == [(1280, 720, 60)]
+    assert sink.status.state is CameraState.ACTIVE
+
+
+def test_format_request_is_passed_on_and_publishing_follows_the_frame_size() -> None:
+    library = FakeCameraLibrary()
+    sink = MediaFoundationSink(library)
+    sink.open(OUTPUT_WIDTH, OUTPUT_HEIGHT, OUTPUT_FPS)
+
+    accepted = sink.request_format(SMALL_WIDTH, SMALL_HEIGHT, 60)
+    sink.send(random_i420(SMALL_WIDTH, SMALL_HEIGHT))
+
+    assert accepted
+    assert library.formats[-1] == (SMALL_WIDTH, SMALL_HEIGHT, 60)
+    assert library.published[-1][1:] == (SMALL_WIDTH, SMALL_HEIGHT)
+
+
+def test_refused_format_request_is_reported() -> None:
+    library = FakeCameraLibrary()
+    sink = MediaFoundationSink(library)
+    sink.open(OUTPUT_WIDTH, OUTPUT_HEIGHT, OUTPUT_FPS)
+    library.format_result = E_FAIL
+
+    assert not sink.request_format(SMALL_WIDTH, SMALL_HEIGHT, 60)
+
+
+def test_announced_format_comes_from_the_native_camera() -> None:
+    library = FakeCameraLibrary()
+    sink = MediaFoundationSink(library)
+    sink.open(OUTPUT_WIDTH, OUTPUT_HEIGHT, OUTPUT_FPS)
+    pending = AnnouncedFormat(OUTPUT_WIDTH, OUTPUT_HEIGHT, OUTPUT_FPS, pending=True, running=True)
+
+    opened = sink.announced_format()
+    library.announced = pending
+
+    assert opened == AnnouncedFormat(OUTPUT_WIDTH, OUTPUT_HEIGHT, OUTPUT_FPS, pending=False, running=True)
+    assert sink.announced_format() == pending
+    assert sink.reports_format_changes
+
+
+def test_unreadable_format_keeps_the_last_announced() -> None:
+    library = FakeCameraLibrary()
+    sink = MediaFoundationSink(library)
+    sink.open(OUTPUT_WIDTH, OUTPUT_HEIGHT, OUTPUT_FPS)
+    library.announced = AnnouncedFormat(SMALL_WIDTH, SMALL_HEIGHT, 60, pending=False, running=True)
+    sink.announced_format()
+    library.announced = None
+
+    assert sink.announced_format() == AnnouncedFormat(SMALL_WIDTH, SMALL_HEIGHT, 60, pending=False, running=True)
+
+
+def test_native_library_reads_the_format_state_structure() -> None:
+    def fill_state(pointer: object) -> None:
+        state = ctypes.cast(cast(ctypes.c_void_p, pointer), ctypes.POINTER(FormatState)).contents
+        state.width, state.height, state.fps = 1280, 720, 30
+        state.requested_width, state.requested_height, state.requested_fps = 1920, 1080, 30
+        state.pending, state.streaming_apps, state.running = 1, 2, 1
+
+    exports = {
+        "WcamCameraStart": RecordingExport(S_OK, lambda: None),
+        "WcamCameraStop": RecordingExport(S_OK, lambda: None),
+        "WcamFramePublish": RecordingExport(S_OK, ignore_publish),
+        "WcamFormatSet": RecordingExport(S_OK, ignore_format),
+        "WcamFormatGet": RecordingExport(S_OK, fill_state),
+    }
+    library = NativeCameraLibrary(cast(ctypes.CDLL, type("Dll", (), exports)()))
+
+    assert library.get_format() == AnnouncedFormat(1280, 720, 30, pending=True, running=True)
+
+
+def test_refused_first_format_makes_the_camera_unavailable_with_error() -> None:
+    sink = MediaFoundationSink(FakeCameraLibrary(format_result=E_FAIL))
+
+    sink.open(OUTPUT_WIDTH, OUTPUT_HEIGHT, OUTPUT_FPS)
+
+    assert (sink.status.state, sink.status.reason) == (CameraState.UNAVAILABLE, UnavailableReason.ERROR)
+
+
+def test_native_library_passes_width_height_and_fps_to_format_set() -> None:
+    calls: list[tuple[int, int, int]] = []
+
+    def record_format(width: int, height: int, fps: int) -> None:
+        calls.append((width, height, fps))
+
+    exports = {
+        "WcamCameraStart": RecordingExport(S_OK, lambda: None),
+        "WcamCameraStop": RecordingExport(S_OK, lambda: None),
+        "WcamFramePublish": RecordingExport(S_OK, ignore_publish),
+        "WcamFormatSet": RecordingExport(S_OK, record_format),
+        "WcamFormatGet": RecordingExport(S_OK, ignore_state),
+    }
+    library = NativeCameraLibrary(cast(ctypes.CDLL, type("Dll", (), exports)()))
+
+    result = library.set_format(3840, 2160, 30)
+
+    assert result == S_OK
+    assert calls == [(3840, 2160, 30)]
+    assert exports["WcamFormatSet"].restype is ctypes.c_int32
+
+
+def test_auto_with_dll_missing_format_set_uses_obs_with_native_error() -> None:
+    selection = select_sink("auto", library_loader(IncompleteCameraLibrary()), "win32", WINDOWS_11_BUILD)
+
+    assert selection.fallback_reason is FallbackReason.NATIVE_ERROR
+    assert isinstance(selection.sink, PyvirtualcamSink)
+
+
+def test_explicit_native_camera_with_dll_missing_format_set_is_unavailable_with_error() -> None:
+    selection = select_sink("media_foundation", library_loader(IncompleteCameraLibrary()), "win32", WINDOWS_11_BUILD)
+    selection.sink.open(OUTPUT_WIDTH, OUTPUT_HEIGHT, OUTPUT_FPS)
+
+    assert selection.fallback_reason is None
+    assert (selection.sink.status.state, selection.sink.status.reason) == (
+        CameraState.UNAVAILABLE,
+        UnavailableReason.ERROR,
+    )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="needs a Windows system DLL")
+def test_dll_without_the_wcam_exports_loads_as_incomplete() -> None:
+    system_dll = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "kernel32.dll"
+
+    assert isinstance(load_native_library(system_dll), IncompleteCameraLibrary)

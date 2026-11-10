@@ -37,10 +37,9 @@ def sample(
     rtp_bytes: int = 0,
     keyframe_requests: int = 0,
     stalls: int = 0,
-    portrait: bool = False,
     black: bool = False,
 ) -> LinkSample:
-    return LinkSample(at, frame_age, portrait, black, rtp_bytes, keyframe_requests, stalls)
+    return LinkSample(at, frame_age, black, rtp_bytes, keyframe_requests, stalls)
 
 
 def tracker() -> tuple[EpisodeTracker, Recorder]:
@@ -100,15 +99,8 @@ def test_stall_during_the_gap_is_recorded_with_bytes_and_keyframe_requests() -> 
     assert (episode.cause, episode.rtp_bytes, episode.pli_sent) == (EpisodeCause.STALLED, 50_000, 1)
 
 
-def test_portrait_frames_are_a_black_episode() -> None:
-    episodes, recorder = tracker()
-    episodes.observe(sample(0.0, 0.0))
-
-    episodes.observe(sample(0.7, 0.7, portrait=True, black=True))
-    episodes.observe(sample(0.8, 0.0))
-
-    episode = recorder.episodes[0]
-    assert (episode.cause, episode.action) == (EpisodeCause.PORTRAIT, EpisodeAction.BLACK)
+def test_episode_causes_are_only_silence_and_stalled() -> None:
+    assert [str(cause) for cause in EpisodeCause] == ["silence", "stalled"]
 
 
 def test_gap_that_reaches_black_is_recorded_as_black() -> None:

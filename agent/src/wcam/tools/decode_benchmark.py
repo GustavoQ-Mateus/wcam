@@ -3,13 +3,12 @@ from dataclasses import dataclass
 
 import psutil
 
-from wcam.media.quality_preset import QualityPreset
 from wcam.tools.synthetic_h264 import decode, encode, h264_decoder, h264_encoder, moving_frames
 
 FORMATS = ((1280, 720), (1920, 1080), (2560, 1440), (3840, 2160))
 FRAME_RATES = (30, 60)
 VIDEO_SECONDS = 2
-BITRATE_BPS = QualityPreset.MAXIMUM.max_bitrate_bps
+BITRATE_BPS = 20_000_000
 PERCENT = 100
 MILLISECONDS_PER_SECOND = 1000
 TABLE_HEADER = (
