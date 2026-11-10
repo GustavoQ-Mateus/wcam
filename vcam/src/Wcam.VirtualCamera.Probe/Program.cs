@@ -7,15 +7,14 @@ internal static class Program
     private const string PatchesOption = "--patches";
     private const string MovingOption = "--moving";
     private const string FormatOption = "--format";
-    private const string ModeOption = "--mode";
     private const string ControlOption = "--control";
     private const string FormatCommand = "format";
-    private const string ModeCommand = "mode";
+    private const string StateCommand = "state";
     private const string StopCommand = "stop";
     private const int ControlPollMilliseconds = 100;
     private const string Usage =
         "usage: Wcam.VirtualCamera.Probe [--dll <path>] [--pattern | --patches | --moving] [--format <w>x<h>@<fps>] " +
-        "[--mode <n>] [--control <file with lines 'format <w>x<h>@<fps>', 'mode <n>', 'stop'>]";
+        "[--control <file with lines 'format <w>x<h>@<fps>', 'state', 'stop'>]";
 
     private static int Main(string[] args)
     {
@@ -33,14 +32,13 @@ internal static class Program
         Console.WriteLine($"loading {dllPath}");
         var library = new CameraLibrary(dllPath);
         Console.WriteLine($"WcamFormatSet {options.Format}: 0x{library.SetFormat(options.Format):X8}");
-        Console.WriteLine($"WcamSpikeFormatChangeMode {options.Mode}: 0x{library.SetChangeMode(options.Mode):X8}");
         int status = library.Start();
         Console.WriteLine($"WcamCameraStart: 0x{status:X8}");
         if (status < 0)
         {
             return 1;
         }
-        using (PatternPublisher? publisher = options.Render is null ? null : new PatternPublisher(library, options.Render, options.Format))
+        using (PatternPublisher? publisher = options.Render is null ? null : new PatternPublisher(library, options.Render))
         {
             if (options.ControlPath is null)
             {
@@ -50,7 +48,7 @@ internal static class Program
             else
             {
                 Console.WriteLine($"camera \"WCam\" is running; commands from {options.ControlPath}");
-                FollowControlFile(options.ControlPath, library, publisher);
+                FollowControlFile(options.ControlPath, library);
             }
         }
         status = library.Stop();
@@ -58,7 +56,7 @@ internal static class Program
         return status < 0 ? 1 : 0;
     }
 
-    private static void FollowControlFile(string path, CameraLibrary library, PatternPublisher? publisher)
+    private static void FollowControlFile(string path, CameraLibrary library)
     {
         int handled = 0;
         while (true)
@@ -66,7 +64,7 @@ internal static class Program
             string[] lines = ReadControlLines(path);
             for (; handled < lines.Length; handled++)
             {
-                if (!Apply(lines[handled].Trim(), library, publisher))
+                if (!Apply(lines[handled].Trim(), library))
                 {
                     return;
                 }
@@ -87,7 +85,7 @@ internal static class Program
         }
     }
 
-    private static bool Apply(string command, CameraLibrary library, PatternPublisher? publisher)
+    private static bool Apply(string command, CameraLibrary library)
     {
         string[] parts = command.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0)
@@ -100,17 +98,13 @@ internal static class Program
         }
         if (parts.Length == 2 && parts[0] == FormatCommand && TryParseFormat(parts[1], out FrameFormat format))
         {
-            int status = library.SetFormat(format);
-            if (status >= 0 && publisher is not null)
-            {
-                publisher.Format = format;
-            }
-            Console.WriteLine($"{DateTime.UtcNow:O} WcamFormatSet {format}: 0x{status:X8}");
+            Console.WriteLine($"{DateTime.UtcNow:O} WcamFormatSet {format}: 0x{library.SetFormat(format):X8}");
+            Console.WriteLine($"{DateTime.UtcNow:O} {library.FormatState()}");
             return true;
         }
-        if (parts.Length == 2 && parts[0] == ModeCommand && uint.TryParse(parts[1], out uint mode))
+        if (parts[0] == StateCommand)
         {
-            Console.WriteLine($"{DateTime.UtcNow:O} WcamSpikeFormatChangeMode {mode}: 0x{library.SetChangeMode(mode):X8}");
+            Console.WriteLine($"{DateTime.UtcNow:O} {library.FormatState()}");
             return true;
         }
         Console.WriteLine($"unknown command: {command}");
@@ -139,9 +133,6 @@ internal static class Program
                     break;
                 case FormatOption when hasValue && TryParseFormat(args[++index], out FrameFormat format):
                     options.Format = format;
-                    break;
-                case ModeOption when hasValue && uint.TryParse(args[++index], out uint mode):
-                    options.Mode = mode;
                     break;
                 case ControlOption when hasValue:
                     options.ControlPath = Path.GetFullPath(args[++index]);
@@ -188,8 +179,6 @@ internal static class Program
         public FrameRenderer? Render { get; set; }
 
         public FrameFormat Format { get; set; } = FrameFormat.Default;
-
-        public uint Mode { get; set; }
 
         public string? ControlPath { get; set; }
     }

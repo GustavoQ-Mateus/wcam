@@ -10,42 +10,20 @@ internal sealed class PatternPublisher : IDisposable
     private readonly CameraLibrary _library;
     private readonly FrameRenderer _render;
     private readonly Thread _thread;
-    private readonly Lock _lock = new();
-    private FrameFormat _format;
     private volatile bool _stopping;
 
-    public PatternPublisher(CameraLibrary library, FrameRenderer render, FrameFormat format)
+    public PatternPublisher(CameraLibrary library, FrameRenderer render)
     {
         _library = library;
         _render = render;
-        _format = format;
         _thread = new Thread(Run) { IsBackground = true, Name = "WCam probe pattern" };
         _thread.Start();
-    }
-
-    public FrameFormat Format
-    {
-        set
-        {
-            lock (_lock)
-            {
-                _format = value;
-            }
-        }
     }
 
     public void Dispose()
     {
         _stopping = true;
         _thread.Join();
-    }
-
-    private FrameFormat CurrentFormat()
-    {
-        lock (_lock)
-        {
-            return _format;
-        }
     }
 
     private void Run()
@@ -55,7 +33,7 @@ internal sealed class PatternPublisher : IDisposable
         long reportAt = deadline;
         for (long frameNumber = 0; !_stopping; frameNumber++)
         {
-            FrameFormat format = CurrentFormat();
+            FrameFormat format = _library.AnnouncedFormat() ?? FrameFormat.Default;
             if (frame.Length != format.FrameSize)
             {
                 frame = new byte[format.FrameSize];
