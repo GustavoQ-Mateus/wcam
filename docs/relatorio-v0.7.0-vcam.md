@@ -1,6 +1,6 @@
 # Relatório v0.7.0, sessão vcam
 
-Status: em andamento (spike e código prontos; falta a verificação no Frame Server com a DLL final)
+Status: pronto da parte da vcam (spike, código e verificação no Frame Server); falta Teams e OBS com o usuário
 Branch: `feature/formato-vcam` (spike em `spike/vcam-format`)
 Spec: `docs/specs/spec-v0.7.0.md` §0 e §1.3; ADR 0013; handoff `docs/handoff-v0.7.0.md`, seção vcam e adendos
 
@@ -54,8 +54,31 @@ Na rodada B do spike `h264-levels`, o pipeline do agente entregou de 6 a 10 quad
 - `dotnet build`: 0 avisos.
 - `dotnet test`: 138 de 138, entre eles `FrameFormatTests`, `FrameChannelTests` (troca de formato, quadro de outro tamanho recusado, leitura no formato antigo recusada, formato sendo escrito), `FormatSwitchTests`, `WcamFormatStateTests` (layout de 36 bytes) e `StreamingMonitorTests`.
 - `dotnet publish -r win-x64 -c Release` da DLL e do probe: 0 avisos de trimming ou AOT. DLL final (commit 140e464) publicada em pasta separada, SHA-256 `F093581B0092697B9640397ABCFF245C417706D2EA3A04210C91A5B66166B50D`; a publicação AOT não é reprodutível, então o hash vale para esse arquivo.
-- **Não verificado ainda**, porque a DLL final não está registrada:
-  - o reinício feito pela própria DLL e o monitor dentro dela no Frame Server;
-  - os 2 min por formato (CA 2);
-  - o modo de manter o formato no app Câmera, só pelo log;
-  - com o usuário, Teams e OBS, inclusive app que segura a câmera sem receber vídeo durante o reinício.
+
+## Verificação no Frame Server com a DLL final (CA 2 e CA 4)
+
+Medição de 2026-11-10, das 16:19 às 16:32 UTC, com a DLL final (`F093581B...B50D`) registrada pelo usuário, o WCam dele fechado e o probe da mesma versão publicando o padrão em movimento no formato anunciado. Sem captura de tela: só o log da DLL (`C:\ProgramData\WCam\logs\vcam.log`) e `track.stats` no Google Chrome 157 pelo Playwright.
+
+1. **Reinício pela própria DLL, sem app aberto:** `WcamFormatSet(1920, 1080, 30)` com a câmera em 720p30 retornou `S_OK` e `WcamFormatGet` já mostrou 1920x1080@30, sem pendência, `running` 1. O reinício levou 0,17 s (pedido às 16:19:15,838, câmera reiniciada às 16:19:16,001), bem menos que os 5 s medidos no spike, que eram do primeiro início da câmera com o monitor.
+2. **Troca pendente com o Chrome recebendo vídeo:**
+   - `WcamFormatSet(1280, 720, 30)` retornou `S_FALSE`, e `WcamFormatGet` mostrou anunciado 1920x1080@30, pedido 1280x720@30, `pending` 1 e `streamingApps` 1.
+   - O Chrome continuou em 1920x1080 a 29,97 fps, sem quadro descartado.
+   - Ao fechar o Chrome, o monitor viu 0 apps às 16:19:58,954, e a DLL reiniciou a câmera em 1280x720@30 às 16:19:59,076 (0,12 s depois), sem nenhuma chamada do produtor.
+3. **Troca pendente com o app Câmera recebendo vídeo:**
+   - `WcamFormatSet(2560, 1440, 30)` retornou `S_FALSE`, com `streamingApps` 1, e a entrega seguiu a 30,0 quadros/s no formato antigo.
+   - Com o app fechado, o monitor viu 0 apps às 16:20:37,206, e a DLL reiniciou em 2560x1440@30 às 16:20:37,532 (0,33 s).
+4. **2 min por formato** (CA 2), cada um com a câmera reiniciada pela DLL e o Chrome abrindo depois. Os números são do `track.stats`, em 120 s depois de 3 s de aquecimento:
+
+| Formato | Chrome recebeu | Quadros/s entregues | Descartados | % do nominal | Log da DLL |
+|---|---|---|---|---|---|
+| 720p30 | 1280x720, 30 | 30,00 | 0 | 100% | 30,0 fps, 0,57 ms por amostra |
+| 720p60 | 1280x720, 60 | 59,96 | 0 | 99,9% | 60,0 fps, 0,60 ms |
+| 1080p30 | 1920x1080, 30 | 30,01 | 0 | 100% | 30,0 fps, 1,31 ms |
+| 1440p30 | 2560x1440, 30 | 30,00 | 0 | 100% | 30,0 fps, 1,53 ms |
+| 2160p30 | 3840x2160, 30 | 29,84 | 0 | 99,5% | 30,0 fps, 3,30 ms |
+
+Os cinco formatos ficaram acima dos 95% do nominal, sem quadro de tamanho diferente do anunciado.
+
+- **Achado:** o Chrome, ao abrir a câmera, faz um início e uma parada rápidos antes do início definitivo. O monitor viu 1, 0 e 1 app em 0,3 s (16:19:40,50, 40,61 e 40,82). Se houvesse uma troca pendente nesse instante, a DLL reiniciaria a câmera no meio da abertura do Chrome. Não aconteceu na medição, porque a pendência só foi criada depois. Fica registrado como risco para a verificação com Teams e OBS. Se aparecer, a correção é esperar alguns centésimos de segundo com 0 apps antes de aplicar.
+- **Ainda falta, com o usuário:** Teams e OBS, inclusive app que segura a câmera sem receber vídeo (Teams) durante o reinício.
+- Ao fim da medição, o probe foi encerrado (`WcamCameraStop` `S_OK`, monitor parado, câmera virtual parada), e o app Câmera e o Chrome foram fechados.
