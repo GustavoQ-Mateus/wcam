@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from tests.unit.test_pipeline import SteppingClock, phone_frame
 from wcam.media.color_correction import (
@@ -70,6 +71,22 @@ def test_reference_file_has_one_full_hd_frame(tmp_path: Path) -> None:
     assert luma.shape == (HEIGHT, WIDTH)
     assert output.stat().st_size == len(reference_frame())
     assert output.read_bytes().startswith(b"YUV4MPEG2 W1920 H1080 F30:1")
+
+
+def test_reference_file_follows_the_requested_format(tmp_path: Path) -> None:
+    output = tmp_path / "reference-2160p60.y4m"
+    arguments = ["--width", "3840", "--height", "2160", "--fps", "60"]
+
+    subprocess.run([sys.executable, "-m", "wcam.tools.make_reference", str(output), *arguments], check=True)  # noqa: S603
+
+    assert read_y4m_luma(output).shape == (2160, 3840)
+    assert output.read_bytes().startswith(b"YUV4MPEG2 W3840 H2160 F60:1")
+    assert output.stat().st_size == len(reference_frame(3840, 2160, 60))
+
+
+def test_reference_rejects_odd_sizes() -> None:
+    with pytest.raises(ValueError, match="even"):
+        reference_frame(1279, 720)
 
 
 def test_quality_ignores_warmup_and_reports_average_and_minimum() -> None:
