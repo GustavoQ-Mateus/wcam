@@ -1,4 +1,7 @@
+import { constraintFailure } from "../data/constraint-failure";
+
 const CONTINUOUS = "continuous";
+const CONTINUOUS_MODES = "continuous camera modes";
 const MODE_NAMES = ["exposureMode", "whiteBalanceMode", "focusMode"] as const;
 
 type ModeName = (typeof MODE_NAMES)[number];
@@ -18,6 +21,10 @@ export function continuousModes(track: MediaStreamTrack): MediaTrackConstraintSe
 export async function requestContinuousModes(track: MediaStreamTrack): Promise<void> {
   const advanced = continuousModes(track);
   if (advanced.length > 0) {
-    await track.applyConstraints({ ...track.getConstraints(), advanced }).catch(() => undefined);
+    try {
+      await track.applyConstraints({ ...track.getConstraints(), advanced });
+    } catch (error) {
+      console.warn(constraintFailure(CONTINUOUS_MODES, error));
+    }
   }
 }
