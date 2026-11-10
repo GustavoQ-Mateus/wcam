@@ -184,13 +184,12 @@ Substitui a "Opção de qualidade" da 0.6.0 (`PUT /api/quality-preset`, `quality
 | `720p30` | 1280 | 720 | 30 | 5 000 000 |
 | `720p60` | 1280 | 720 | 60 | 8 000 000 |
 | `1080p30` (padrão) | 1920 | 1080 | 30 | 10 000 000 |
-| `1080p60` | 1920 | 1080 | 60 | 16 000 000 |
 | `1440p30` | 2560 | 1440 | 30 | 18 000 000 |
-| `1440p60` | 2560 | 1440 | 60 | 28 000 000 |
 | `2160p30` | 3840 | 2160 | 30 | 35 000 000 |
-| `2160p60` | 3840 | 2160 | 60 | 50 000 000 |
 
-A tabela é a inicial; o spike `h264-levels` da spec v0.7.0 confirma as taxas e pode tirar formatos, e a tabela aqui é atualizada antes do código que depende dela.
+Tabela confirmada pelo spike `h264-levels` (2026-11-10, iPhone do usuário, câmeras frontal e traseira, Safari): taxas recebidas de 3,6 a 4,9 Mbit/s em 720p30, 5,8 a 7,9 em 720p60, 7,5 a 9,6 em 1080p30, 16,6 em 1440p30 e 17,4 a 19,1 em 2160p30. Saíram `1080p60`, `1440p60` e `2160p60`: o Safari aceita o pedido de 60 fps acima de 720p e entrega 30 nas duas câmeras.
+
+A resposta SDP do agente declara H.264 nível 5.1 (`profile-level-id` `42e033` e `420033`), o do maior formato da tabela. O Safari envia o nível do formato que codifica, independentemente do nível da resposta (spike: 3.1, 4.0, 5.0 e 5.1 com resposta 3.1); a resposta só fica coerente com o que o agente aceita.
 
 - `available`: os formatos da tabela cuja largura, altura e fps cabem nos máximos da última `camera_capabilities` (largura e altura comparadas na orientação paisagem). Até a primeira, só `1080p30`.
 - `PUT /api/video-format` com `{"format": "<chave>"}` muda o formato; vale para a sessão atual e as próximas, até o agente fechar. Chave desconhecida ou fora de `available`: `422 invalid_request`. Com sessão aberta, o agente envia `video_format` ao celular.
@@ -237,7 +236,7 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
     "output": {"width": 1920, "height": 1080, "fps": 30},
     "source": "phone"
   },
-  "videoFormat": {"selected": "1080p30", "available": ["720p30", "720p60", "1080p30", "1080p60"], "camera": "1080p30", "pending": false},
+  "videoFormat": {"selected": "1080p30", "available": ["720p30", "720p60", "1080p30", "1440p30", "2160p30"], "camera": "1080p30", "pending": false},
   "session": {
     "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800, "codec": "H264", "framesScaled": 0, "orientation": "landscape", "colorRange": "full", "colorMatrix": "unspecified", "colorCorrection": {"state": "applied", "transfer": "bt709", "display": "apple"}},
     "cameraCapabilities": {"width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"], "colorSpace": null, "modes": {"exposureMode": "continuous", "whiteBalanceMode": "continuous", "focusMode": "continuous"}}
