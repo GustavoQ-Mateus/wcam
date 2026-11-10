@@ -1,6 +1,6 @@
 # Contrato entre web e agent
 
-Versão: 0.6.0
+Versão: 0.7.0
 
 Fonte da verdade da comunicação entre `web` e `agent`. Mudou aqui, muda na spec da versão antes do código.
 
@@ -71,7 +71,7 @@ Nos dois servidores.
 | `POST /api/pairing` | nenhum | `201 {"url","qrSvg","expiresAt"}` | `409 session_already_active` |
 | `DELETE /api/pairing` | nenhum | `204` | nenhum |
 | `GET /api/status` | nenhum | `200` (abaixo) | nenhum |
-| `PUT /api/quality-preset` | `{"preset"}` | `204` | `422 invalid_request` |
+| `PUT /api/video-format` | `{"format"}` | `204` | `422 invalid_request` |
 | `POST /api/sessions/current/confirm` | nenhum | `204` | `409 no_session_awaiting_confirmation` |
 | `POST /api/sessions/current/reject` | nenhum | `204` | `409 no_session_awaiting_confirmation` |
 | `DELETE /api/sessions/current` | nenhum | `204` | `404 no_active_session` |
@@ -159,12 +159,12 @@ Do agente para o celular, JSON:
 - `{"type": "session_state", "state": "awaiting_confirmation"}` quando a conexão sobe;
 - `{"type": "session_state", "state": "live"}` depois do Confirmar;
 - `{"type": "session_state", "state": "ended", "reason": "<motivo de lastEnded>"}` antes de fechar;
-- `{"type": "quality_preset", "preset": "<chave>"}` quando o canal abre e a cada mudança de opção, venha ela do console ou do próprio celular.
+- `{"type": "video_format", "format": "1080p30", "width": 1920, "height": 1080, "fps": 30, "maxBitrate": 10000000, "available": ["720p30", "720p60", "1080p30"]}` quando o canal abre, a cada mudança de formato, venha ela do console ou do próprio celular, e a cada `camera_capabilities` (ver "Formato de vídeo").
 
 Do celular para o agente, JSON:
 
-- `{"type": "set_quality_preset", "preset": "<chave>"}` quando o usuário escolhe uma opção no celular. O agente aplica e responde com `quality_preset` (inclusive ao próprio celular), que é a fonte da verdade do que está em uso. Só vale com a sessão em `live`: antes do Confirmar o aparelho ainda não foi aceito, e a mensagem é ignorada com registro no log, sem resposta. O seletor do celular só aparece depois de `session_state` `live`;
-- `{"type": "camera_capabilities", "width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"], "colorSpace": {"primaries": "bt709", "transfer": "bt709", "matrix": "bt709", "fullRange": true}}` quando o canal abre e a cada troca de câmera. `width`, `height` e `frameRate` são os máximos de `getCapabilities()` da faixa em uso (`null` quando o navegador não informa); `facingMode` é `user`, `environment` ou `null`; `codecs` são os `mimeType` de vídeo de `RTCRtpSender.getCapabilities("video")`, sem repetição e sem `video/rtx`, `video/red` e `video/ulpfec`; `colorSpace` é o `VideoFrame.colorSpace` de um quadro da câmera em uso (`primaries`, `transfer`, `matrix` com os nomes do WebCodecs, `fullRange` booleano; campo `null` quando o navegador não informa) ou `null` quando o navegador não expõe `VideoFrame` (spec v0.6.0 §1.1).
+- `{"type": "set_video_format", "format": "<chave>"}` quando o usuário escolhe um formato no celular. O agente aplica e responde com `video_format` (inclusive ao próprio celular), que é a fonte da verdade do que está em uso. Só vale com a sessão em `live`: antes do Confirmar o aparelho ainda não foi aceito, e a mensagem é ignorada com registro no log, sem resposta. Chave fora de `available` também é ignorada com log, e o agente reenvia o `video_format` atual. O seletor do celular só aparece depois de `session_state` `live`;
+- `{"type": "camera_capabilities", "width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"], "colorSpace": {"primaries": "bt709", "transfer": "bt709", "matrix": "bt709", "fullRange": true}}` quando o canal abre e a cada troca de câmera. `width`, `height` e `frameRate` são os máximos de `getCapabilities()` da faixa em uso (`null` quando o navegador não informa); `facingMode` é `user`, `environment` ou `null`; `codecs` são os `mimeType` de vídeo de `RTCRtpSender.getCapabilities("video")`, sem repetição e sem `video/rtx`, `video/red` e `video/ulpfec`; `colorSpace` é o `VideoFrame.colorSpace` de um quadro da câmera em uso (`primaries`, `transfer`, `matrix` com os nomes do WebCodecs, `fullRange` booleano; campo `null` quando o navegador não informa) ou `null` quando o navegador não expõe `VideoFrame` (spec v0.6.0 §1.1). `modes` é `{"exposureMode", "whiteBalanceMode", "focusMode"}` com os valores de `getSettings()` da faixa em uso, cada um `null` quando o navegador não informa (spec v0.7.0 §4).
 
 
 Comparação lado a lado (só com `WCAM_DEV_TOOLS=1`; sem a variável, o agente não envia `snapshot_request` e ignora as respostas com log):
@@ -175,23 +175,34 @@ Comparação lado a lado (só com `WCAM_DEV_TOOLS=1`; sem a variável, o agente 
 
 Mensagem com `type` desconhecido, JSON inválido ou campo fora do formato é ignorada pelo agente e registrada no log, sem encerrar a sessão.
 
-## Opção de qualidade
+## Formato de vídeo
 
-| Chave | Nome | Taxa máxima |
-|---|---|---|
-| `maximum` | Máxima | 20 000 000 bit/s |
-| `balanced` | Equilibrada (padrão) | 10 000 000 bit/s |
-| `light` | Leve | 5 000 000 bit/s |
+Substitui a "Opção de qualidade" da 0.6.0 (`PUT /api/quality-preset`, `qualityPreset`, `quality_preset` e `set_quality_preset` saem). Spec v0.7.0 §1.
 
-- `PUT /api/quality-preset` com `{"preset": "<chave>"}` muda a opção; vale para a sessão atual e as próximas, até o agente fechar. Chave desconhecida: `422 invalid_request`. Com sessão aberta, o agente envia `quality_preset` ao celular.
-- O celular aplica a taxa em `maxBitrate` do envio com `setParameters`, sem renegociar; o agente ajusta o teto da estimativa de banda (REMB) ao mesmo valor.
-- `qualityPreset` no primeiro nível de `GET /api/status`, sempre presente.
+| Chave | Largura | Altura | fps | Taxa máxima (bit/s) |
+|---|---|---|---|---|
+| `720p30` | 1280 | 720 | 30 | 5 000 000 |
+| `720p60` | 1280 | 720 | 60 | 8 000 000 |
+| `1080p30` (padrão) | 1920 | 1080 | 30 | 10 000 000 |
+| `1080p60` | 1920 | 1080 | 60 | 16 000 000 |
+| `1440p30` | 2560 | 1440 | 30 | 18 000 000 |
+| `1440p60` | 2560 | 1440 | 60 | 28 000 000 |
+| `2160p30` | 3840 | 2160 | 30 | 35 000 000 |
+| `2160p60` | 3840 | 2160 | 60 | 50 000 000 |
+
+A tabela é a inicial; o spike `h264-levels` da spec v0.7.0 confirma as taxas e pode tirar formatos, e a tabela aqui é atualizada antes do código que depende dela.
+
+- `available`: os formatos da tabela cuja largura, altura e fps cabem nos máximos da última `camera_capabilities` (largura e altura comparadas na orientação paisagem). Até a primeira, só `1080p30`.
+- `PUT /api/video-format` com `{"format": "<chave>"}` muda o formato; vale para a sessão atual e as próximas, até o agente fechar. Chave desconhecida ou fora de `available`: `422 invalid_request`. Com sessão aberta, o agente envia `video_format` ao celular.
+- Se uma `camera_capabilities` nova deixar o formato escolhido fora de `available`, o agente passa ao maior formato de `available` (mais pixels, depois mais fps) e envia `video_format`.
+- O celular aplica largura, altura e fps com `applyConstraints` na faixa em uso (largura e altura trocadas em retrato) e a taxa em `maxBitrate` com `setParameters`, sem renegociar; o agente ajusta o teto da estimativa de banda (REMB) ao mesmo valor.
+- `GET /api/status` traz no primeiro nível, sempre presente, `"videoFormat": {"selected": "1080p30", "available": ["1080p30"], "camera": "1080p30", "pending": false}`. `camera` é o formato que a câmera WCam anuncia agora; `pending` é `true` enquanto `selected` espera um app reabrir a câmera (spec v0.7.0 §1.3; sempre `false` se o spike mostrar troca imediata).
 
 ## WebRTC
 
 - Os dois lados sem STUN e sem TURN: `iceServers: []` no navegador e `RTCConfiguration(iceServers=[])` no aiortc (o aiortc usa um STUN público quando a configuração é omitida; omitir é proibido).
 - O agente descarta, antes de `setRemoteDescription`, toda linha `a=candidate` da oferta cujo endereço não esteja na sub-rede da LAN (inclui nomes `.local`), e remove da resposta os candidatos das suas outras interfaces (WSL, Hyper-V, Docker).
-- Celular: uma faixa de vídeo, `contentHint = "detail"`, `maxBitrate` da opção de qualidade em uso (ver "Opção de qualidade"; padrão 10 000 000) e `degradationPreference` `maintain-resolution` quando o navegador aceitar (o que não for aceito é registrado no relatório, não é erro).
+- Celular: uma faixa de vídeo, `contentHint = "detail"`, `maxBitrate` do formato em uso (ver "Formato de vídeo"; padrão 10 000 000) e `degradationPreference` `maintain-resolution` quando o navegador aceitar (o que não for aceito é registrado no relatório, não é erro).
 - Codecs: os que o navegador e o aiortc têm em comum (H.264 ou VP8); o relatório registra qual foi negociado no aparelho real.
 
 ## Código de confirmação
@@ -226,10 +237,10 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
     "output": {"width": 1920, "height": 1080, "fps": 30},
     "source": "phone"
   },
-  "qualityPreset": "balanced",
+  "videoFormat": {"selected": "1080p30", "available": ["720p30", "720p60", "1080p30", "1080p60"], "camera": "1080p30", "pending": false},
   "session": {
-    "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800, "codec": "H264", "framesScaled": 0, "colorRange": "full", "colorMatrix": "unspecified", "colorCorrection": {"state": "applied", "transfer": "bt709", "display": "apple"}},
-    "cameraCapabilities": {"width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"]}
+    "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800, "codec": "H264", "framesScaled": 0, "orientation": "landscape", "colorRange": "full", "colorMatrix": "unspecified", "colorCorrection": {"state": "applied", "transfer": "bt709", "display": "apple"}},
+    "cameraCapabilities": {"width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"], "colorSpace": null, "modes": {"exposureMode": "continuous", "whiteBalanceMode": "continuous", "focusMode": "continuous"}}
   },
   "process": {"cpuPercent": 12.5},
   "quality": null
@@ -243,7 +254,7 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
 - `session.video.colorRange`: faixa declarada pelo celular no quadro mais recente, `full`, `limited` ou `unspecified`. `colorMatrix`: matriz declarada, `bt709`, `bt601`, outro nome do FFmpeg ou `unspecified`. A câmera sempre entrega faixa limitada; quadro em faixa cheia é ajustado pelo agente (CA-2, emenda da v0.6.0).
 - `session.video.colorCorrection`: correção de cor da conexão atual, derivada do `colorSpace` declarado pela câmera em `camera_capabilities` (spec v0.6.0 §1.1). `state`: `applied` (curva de exibição aplicada ao Y) ou `default` (só a faixa: sem `colorSpace`, transferência `srgb`, HDR ou convenção `standard`). `transfer`: o declarado, ou `null`. `display`: convenção de exibição do celular pela plataforma do `User-Agent`, `apple` (iPhone, iPad, Safari no macOS) ou `standard`. Recalculada a cada `camera_capabilities`; nada é guardado entre conexões.
 - `session.cameraCapabilities`: a última mensagem `camera_capabilities` do celular, sem o `type`; `null` até chegar a primeira.
-- `session.video.codec`: o codec negociado (`H264` ou `VP8`). `framesScaled`: quantos quadros precisaram ser redimensionados na sessão (o esperado é 0; ver "Formato de saída").
+- `session.video.codec`: o codec negociado (`H264` ou `VP8`). `framesScaled`: quantos quadros foram reduzidos na sessão; só quadros de retrato (faixas laterais, spec v0.7.0 §2), 0 em paisagem. `orientation`: `landscape` ou `portrait`, do quadro mais recente. `width` e `height` são os do quadro recebido (em retrato, altura maior que largura). `virtualCamera.output` é o formato anunciado pela câmera (`videoFormat.camera`).
 - `process.cpuPercent`: uso de CPU do processo do agente, média da última janela de 1 s, via psutil.
 - `quality`: só existe com `WCAM_QUALITY_REFERENCE` definido (desenvolvimento e e2e); fora disso é sempre `null`. Ver "Qualidade".
 
@@ -259,7 +270,7 @@ Variáveis de ambiente (somam-se à tabela abaixo):
 ## Qualidade (`quality`)
 
 Medição automática:
-- Com `WCAM_QUALITY_REFERENCE` definido, o agente lê o arquivo `.y4m` de referência (1920x1080, um quadro estático de alto detalhe) e compara cada quadro entregue ao sink com ele: SSIM no plano Y, janela de 8x8, implementado com numpy. Os quadros dos primeiros 3 s da sessão `live` são ignorados, enquanto o codificador estabiliza.
+- Com `WCAM_QUALITY_REFERENCE` definido, o agente lê o arquivo `.y4m` de referência (1920x1080, um quadro estático de alto detalhe) e compara cada quadro entregue ao sink com ele: SSIM no plano Y, janela de 8x8, implementado com numpy. Os quadros dos primeiros 3 s da sessão `live` são ignorados, enquanto o codificador estabiliza. A referência tem o tamanho de um formato da tabela (o gerador aceita largura e altura, spec v0.7.0 §3); quadro de outro tamanho não é medido.
 - `quality` no status: `{"ssim": <média>, "minimum": <menor>, "frames": <quantos>}`. Com a referência definida e nenhum quadro medido ainda, vem `{"ssim": null, "minimum": null, "frames": 0}`; o cliente espera `frames >= 30` antes de ler `ssim`.
 - O arquivo de referência é gerado por um script do agente (`python -m wcam.tools.make_reference <saida.y4m>`), deterministicamente, com padrão de alto detalhe representativo de imagem de câmera: texto fino, linhas de 1 px, gradientes e uma textura fina estruturada, estática, com detalhe de 2 a 4 px (trama, como tecido). Sem ruído aleatório pixel a pixel, que nenhuma câmera entrega (o celular remove o ruído do sensor) e que o codificador de câmera do Chromium descarta por definição. Ele não é commitado.
 - No e2e, o Chromium recebe a referência como câmera falsa (`--use-file-for-fake-video-capture`), faz o fluxo completo até `live`, e o teste confere `quality.ssim >= 0.98` depois de pelo menos 30 quadros medidos.
