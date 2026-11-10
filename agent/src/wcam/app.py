@@ -24,6 +24,7 @@ CONSOLE_PAGES = ("/",)
 PHONE_PAGES = ("/cam",)
 STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM)
 SERVER_LOG_LEVEL = "warning"
+GRACEFUL_SHUTDOWN_SECONDS = 2
 
 
 class SupervisedServer(uvicorn.Server):
@@ -78,6 +79,7 @@ def create_servers(
         port=settings.console_port,
         log_level=SERVER_LOG_LEVEL,
         proxy_headers=False,
+        timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
     )
     phone = uvicorn.Config(
         create_phone_app(settings, lan, services),
@@ -87,6 +89,7 @@ def create_servers(
         ssl_keyfile=certificate.key_path,
         log_level=SERVER_LOG_LEVEL,
         proxy_headers=False,
+        timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
     )
     return [SupervisedServer(console), SupervisedServer(phone)]
 
@@ -105,13 +108,20 @@ async def run(servers: Sequence[uvicorn.Server], services: AgentServices) -> Non
 
 
 async def serve(servers: Sequence[uvicorn.Server]) -> None:
+    await asyncio.gather(*(server.serve() for server in servers))
+
+
+@contextlib.contextmanager
+def stop_signals_handled(servers: Sequence[uvicorn.Server]) -> Generator[None]:
+    # Installed before asyncio.run, so the runner keeps this handler instead of its own, which would cancel the
+    # shutdown on a second Ctrl+C and end with a KeyboardInterrupt traceback.
     def stop(signal_number: int, frame: FrameType | None) -> None:
         for server in servers:
             server.should_exit = True
 
     previous_handlers = {stop_signal: signal.signal(stop_signal, stop) for stop_signal in STOP_SIGNALS}
     try:
-        await asyncio.gather(*(server.serve() for server in servers))
+        yield
     finally:
         for stop_signal, handler in previous_handlers.items():
             signal.signal(stop_signal, handler)

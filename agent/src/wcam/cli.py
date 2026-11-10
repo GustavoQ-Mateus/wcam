@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import contextlib
 import io
 import sys
 from typing import TextIO
@@ -8,7 +9,7 @@ import segno
 
 from wcam import __version__
 from wcam.api.console_routes import pairing_url
-from wcam.app import create_servers, phone_page_url, run
+from wcam.app import create_servers, phone_page_url, run, stop_signals_handled
 from wcam.config import Settings
 from wcam.i18n import Messages, load_messages, resolve_language, system_language_tag
 from wcam.media.color_correction import IDENTITY_TABLE, CorrectionState, DisplayConvention
@@ -41,6 +42,12 @@ def main() -> None:
     use_utf8_output(sys.stdout)
     settings = Settings()
     messages = load_messages(settings.locales_dir, resolve_language(system_language_tag()))
+    with contextlib.suppress(KeyboardInterrupt):
+        start(settings, messages)
+    print(messages.text("terminal.stopped"))
+
+
+def start(settings: Settings, messages: Messages) -> None:
     try:
         lan = detect_lan_interface(settings.lan_ip)
     except NoLanInterfaceError:
@@ -63,8 +70,9 @@ def main() -> None:
     print_banner(messages, console_url, phone_url, certificate)
     print_virtual_camera(messages, selection)
     announce_pairing(messages, manager, phone_url, console_url, sys.stdout)
-    asyncio.run(run(create_servers(settings, lan, certificate, services), services))
-    print(messages.text("terminal.stopped"))
+    servers = create_servers(settings, lan, certificate, services)
+    with stop_signals_handled(servers):
+        asyncio.run(run(servers, services))
 
 
 def use_utf8_output(stream: TextIO) -> None:
