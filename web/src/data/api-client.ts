@@ -5,8 +5,8 @@ import type {
   ErrorBody,
   Health,
   PairingWindow,
-  QualityPresetRequest,
   Status,
+  VideoFormatRequest,
 } from "./contract";
 
 export interface RequestOptions {
@@ -62,8 +62,8 @@ export function disconnectSession(): Promise<null> {
   return requestJson<null>("/api/sessions/current", { method: "DELETE" });
 }
 
-export function changeQualityPreset(request: QualityPresetRequest): Promise<null> {
-  return requestJson<null>("/api/quality-preset", { method: "PUT", body: request });
+export function changeVideoFormat(request: VideoFormatRequest): Promise<null> {
+  return requestJson<null>("/api/video-format", { method: "PUT", body: request });
 }
 
 export function createComparison(): Promise<{ id: string }> {

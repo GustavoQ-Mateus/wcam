@@ -2,6 +2,7 @@ import {
   cameraCapabilitiesMessage,
   type CameraCapabilitiesMessage,
   type DeclaredColorSpace,
+  type ModeSettings,
 } from "../data/camera-capabilities";
 
 const VIDEO_KIND = "video";
@@ -22,6 +23,7 @@ export async function readCameraCapabilities(
     track.getSettings().facingMode,
     senderVideoCodecs(),
     colorSpace,
+    track.getSettings() as ModeSettings,
   );
 }
 

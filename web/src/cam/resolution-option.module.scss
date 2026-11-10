@@ -1,0 +1,54 @@
+.pill {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--hit-min);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  color: var(--ink);
+  font-weight: var(--weight-strong);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform var(--duration-press) var(--ease-out);
+
+  &:active {
+    transform: scale(var(--scale-press));
+  }
+
+  &:has(:focus-visible) {
+    outline: var(--focus-width) solid var(--focus);
+    outline-offset: var(--focus-offset);
+  }
+
+  &[data-checked="true"] {
+    background: var(--ink);
+    color: var(--ground);
+  }
+}
+
+.pending {
+  flex: none;
+  width: var(--indicator-size);
+  height: var(--indicator-size);
+  border: var(--indicator-stroke) solid currentColor;
+  border-radius: 50%;
+  animation: pulse var(--duration-pulse) ease-in-out infinite alternate;
+}
+
+@keyframes pulse {
+  to {
+    opacity: var(--opacity-dimmed);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pending {
+    animation: none;
+  }
+}

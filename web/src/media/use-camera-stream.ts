@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { cameraFailureFromError, type CamEvent, type Facing, type FrameSize } from "../data/cam-state";
+import { requestContinuousModes } from "./camera-modes";
 import { captureConstraints, captureFormat, oppositeFacing } from "./capture";
 
 export interface CameraStream {
@@ -40,6 +41,13 @@ export function useCameraStream(
         }
         streamRef.current = stream;
         const frame = await attachStream(videoRef.current, stream);
+        if (!isCurrent()) {
+          return;
+        }
+        const track = videoTrack(stream);
+        if (track) {
+          await requestContinuousModes(track);
+        }
         if (!isCurrent()) {
           return;
         }

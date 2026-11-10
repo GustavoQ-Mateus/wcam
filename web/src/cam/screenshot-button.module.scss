@@ -59,3 +59,7 @@
     color: var(--warning);
   }
 }
+
+[data-portrait="true"] .dock {
+  bottom: calc(var(--margin-bottom) + var(--control-size) + var(--portrait-notice-room) + var(--space-4) * 2);
+}

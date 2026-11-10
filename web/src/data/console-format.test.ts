@@ -29,6 +29,7 @@ describe("console format", () => {
       bitrateKbps: 9800,
       codec: "H264",
       framesScaled: 0,
+      orientation: "landscape",
       colorRange: "full",
       colorMatrix: "unspecified",
       colorCorrection: { state: "default", transfer: null, display: "standard" },

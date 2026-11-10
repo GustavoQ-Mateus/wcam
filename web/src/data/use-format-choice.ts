@@ -1,19 +1,19 @@
 import { useEffect, useState } from "react";
-import type { QualityPreset } from "./quality-preset";
+import type { VideoFormat } from "./video-format";
 
-export interface QualityChoice {
-  pending: QualityPreset | null;
-  choose: (preset: QualityPreset) => void;
+export interface FormatChoice {
+  pending: VideoFormat | null;
+  choose: (format: VideoFormat) => void;
 }
 
 const PENDING_TIMEOUT_MS = 2000;
 
-export function useQualityChoice(
-  confirmed: QualityPreset | null,
-  send: (preset: QualityPreset) => void,
+export function useFormatChoice(
+  confirmed: VideoFormat | null,
+  send: (format: VideoFormat) => void,
   onConfirmed?: () => void,
-): QualityChoice {
-  const [pending, setPending] = useState<QualityPreset | null>(null);
+): FormatChoice {
+  const [pending, setPending] = useState<VideoFormat | null>(null);
   const [lastConfirmed, setLastConfirmed] = useState(confirmed);
   if (confirmed !== lastConfirmed) {
     setLastConfirmed(confirmed);
@@ -37,12 +37,12 @@ export function useQualityChoice(
 
   return {
     pending,
-    choose: (preset) => {
-      if (preset === confirmed) {
+    choose: (format) => {
+      if (format === confirmed) {
         return;
       }
-      setPending(preset);
-      send(preset);
+      setPending(format);
+      send(format);
     },
   };
 }

@@ -1,5 +1,5 @@
 import type { CameraCapabilitiesMessage } from "./camera-capabilities";
-import type { QualityPreset } from "./quality-preset";
+import type { VideoFormat } from "./video-format";
 
 export type Surface = "console" | "phone";
 
@@ -33,6 +33,7 @@ export interface Video {
   bitrateKbps: number;
   codec: string;
   framesScaled: number;
+  orientation: "landscape" | "portrait";
   colorRange: "full" | "limited" | "unspecified";
   colorMatrix: string;
   colorCorrection: ColorCorrection;
@@ -76,10 +77,17 @@ export interface Status {
   session: Session | null;
   lastEnded: { reason: EndReason; at: string } | null;
   virtualCamera: VirtualCamera;
-  qualityPreset: QualityPreset;
+  videoFormat: VideoFormatStatus;
   process: { cpuPercent: number };
   quality: Quality | null;
   devTools: boolean;
+}
+
+export interface VideoFormatStatus {
+  selected: VideoFormat;
+  available: VideoFormat[];
+  camera: VideoFormat;
+  pending: boolean;
 }
 
 export type ComparisonState = "pending" | "ready" | "failed";
@@ -123,9 +131,17 @@ export type ControlMessage =
   | { type: "session_state"; state: "awaiting_confirmation" }
   | { type: "session_state"; state: "live" }
   | { type: "session_state"; state: "ended"; reason: string }
-  | { type: "quality_preset"; preset: QualityPreset }
+  | {
+      type: "video_format";
+      format: VideoFormat;
+      width: number;
+      height: number;
+      fps: number;
+      maxBitrate: number;
+      available: VideoFormat[];
+    }
   | { type: "snapshot_request"; id: string };
 
-export interface QualityPresetRequest {
-  preset: QualityPreset;
+export interface VideoFormatRequest {
+  format: VideoFormat;
 }

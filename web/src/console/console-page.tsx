@@ -6,7 +6,7 @@ import { useHealth, type HealthState } from "../data/use-health";
 import styles from "./console-page.module.scss";
 import { ComparisonPanel } from "./comparison-panel";
 import { PairingPanel } from "./pairing-panel";
-import { QualityPanel } from "./quality-panel";
+import { FormatPanel } from "./format-panel";
 import { SessionPanel } from "./session-panel";
 import { useComparison } from "./use-comparison";
 import { VirtualCameraPanel } from "./virtual-camera-panel";
@@ -42,7 +42,7 @@ export default function ConsolePage() {
         />
       )}
       {data.status?.devTools && <ComparisonPanel view={comparison.view} onAddScreen={comparison.addScreen} />}
-      {data.status && <QualityPanel preset={data.status.qualityPreset} onChoose={data.chooseQualityPreset} />}
+      {data.status && <FormatPanel videoFormat={data.status.videoFormat} onChoose={data.chooseVideoFormat} />}
       {data.errorCode && (
         <p className={styles.error} role="alert">
           {t(errorMessageKey(data.errorCode))}

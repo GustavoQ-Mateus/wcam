@@ -17,7 +17,11 @@ describe("cam state", () => {
     const requesting = camReducer(intro, { type: "start" });
     const ready = camReducer(requesting, { type: "granted", capture: CAPTURE, frame: LANDSCAPE });
 
-    expect([intro.kind, requesting.kind, ready]).toEqual(["intro", "requesting", { kind: "ready", capture: CAPTURE }]);
+    expect([intro.kind, requesting.kind, ready]).toEqual([
+      "intro",
+      "requesting",
+      { kind: "ready", capture: CAPTURE, portrait: false },
+    ]);
   });
 
   it("cam state goes to denied when permission is refused", () => {
@@ -26,13 +30,13 @@ describe("cam state", () => {
     expect(state).toEqual({ kind: "denied" });
   });
 
-  it("cam state goes to rotate when the frame is portrait", () => {
+  it("a portrait frame is ready to stream and marked portrait", () => {
     const state = run(initialCamState(true), { type: "start" }, { type: "granted", capture: CAPTURE, frame: PORTRAIT });
 
-    expect(state).toEqual({ kind: "rotate", capture: CAPTURE });
+    expect(state).toEqual({ kind: "ready", capture: CAPTURE, portrait: true });
   });
 
-  it("cam state returns to ready when the frame turns landscape", () => {
+  it("cam state stays ready and drops the portrait mark when the frame turns landscape", () => {
     const state = run(
       initialCamState(true),
       { type: "start" },
@@ -40,7 +44,7 @@ describe("cam state", () => {
       { type: "frame_changed", frame: LANDSCAPE },
     );
 
-    expect(state).toEqual({ kind: "ready", capture: CAPTURE });
+    expect(state).toEqual({ kind: "ready", capture: CAPTURE, portrait: false });
   });
 
   it("cam state maps each getUserMedia error to its unavailable reason", () => {
@@ -63,11 +67,11 @@ describe("cam state", () => {
   });
 
   it("cam state toggles the preview off and back on keeping the capture", () => {
-    const ready: CamState = { kind: "ready", capture: CAPTURE };
+    const ready: CamState = { kind: "ready", capture: CAPTURE, portrait: false };
     const off = camReducer(ready, { type: "preview_toggled" });
 
     expect([off, camReducer(off, { type: "preview_toggled" })]).toEqual([
-      { kind: "preview_off", capture: CAPTURE },
+      { kind: "preview_off", capture: CAPTURE, portrait: false },
       ready,
     ]);
   });
@@ -82,8 +86,14 @@ describe("cam state", () => {
     expect(state).toEqual({ kind: "missing_pairing" });
   });
 
+  it("a phone held upright starts the session marked portrait", () => {
+    const state = camReducer({ kind: "ready", capture: CAPTURE, portrait: true }, { type: "session_started" });
+
+    expect(state).toEqual({ kind: "connecting", capture: CAPTURE, portrait: true });
+  });
+
   it("cam state goes from ready to connecting when the session starts", () => {
-    const state = camReducer({ kind: "ready", capture: CAPTURE }, { type: "session_started" });
+    const state = camReducer({ kind: "ready", capture: CAPTURE, portrait: false }, { type: "session_started" });
 
     expect(state).toEqual({ kind: "connecting", capture: CAPTURE, portrait: false });
   });

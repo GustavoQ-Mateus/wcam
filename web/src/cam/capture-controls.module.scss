@@ -19,3 +19,12 @@
     transition-duration: var(--duration-cover);
   }
 }
+
+[data-portrait="true"] .rail {
+  top: auto;
+  right: auto;
+  bottom: var(--margin-bottom);
+  left: 50%;
+  flex-direction: row;
+  transform: translateX(-50%);
+}

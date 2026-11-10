@@ -62,23 +62,6 @@
   color: var(--muted);
 }
 
-.warning {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  color: var(--warning);
-}
-
-.warningMark {
-  flex: none;
-  width: 0;
-  height: 0;
-  margin-top: calc((var(--line-body) * 1em - var(--indicator-size)) / 2);
-  border-right: calc(var(--indicator-size) / 2) solid transparent;
-  border-bottom: var(--indicator-size) solid var(--warning);
-  border-left: calc(var(--indicator-size) / 2) solid transparent;
-}
-
 .actions {
   display: flex;
   flex-wrap: wrap;
