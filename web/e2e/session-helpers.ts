@@ -1,5 +1,5 @@
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
-import type { PairingWindow, Status } from "../src/data/contract";
+import type { ColorCorrection, PairingWindow, Status } from "../src/data/contract";
 import { translate } from "../src/data/i18n";
 import { turnOnCamera } from "./cam-helpers";
 import { requiredUrl } from "./environment";
@@ -39,4 +39,18 @@ export async function goLive(page: Page, request: APIRequestContext): Promise<vo
 
 export async function endSession(request: APIRequestContext): Promise<void> {
   await request.delete(consoleUrl("/api/sessions/current"));
+}
+
+export async function colorCorrection(request: APIRequestContext): Promise<ColorCorrection | undefined> {
+  const { session } = await status(request);
+  return session?.cameraCapabilities ? session.video?.colorCorrection : undefined;
+}
+
+export async function waitForColorCorrection(request: APIRequestContext, timeout: number): Promise<ColorCorrection> {
+  await expect.poll(async () => (await colorCorrection(request)) !== undefined, { timeout }).toBe(true);
+  const correction = await colorCorrection(request);
+  if (!correction) {
+    throw new Error("Color correction disappeared after it was set");
+  }
+  return correction;
 }

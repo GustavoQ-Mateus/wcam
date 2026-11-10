@@ -1,14 +1,26 @@
-import type { CreateSessionRequest, CreateSessionResponse, ErrorBody, Health, PairingWindow, Status } from "./contract";
+import type {
+  Comparison,
+  CreateSessionRequest,
+  CreateSessionResponse,
+  ErrorBody,
+  Health,
+  PairingWindow,
+  QualityPresetRequest,
+  Status,
+} from "./contract";
 
 export interface RequestOptions {
-  method?: "GET" | "POST" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
+  png?: Blob;
   signal?: AbortSignal;
 }
 
 const NETWORK_ERROR_CODE = "network_error";
 const UNKNOWN_ERROR_CODE = "unknown";
 const NETWORK_ERROR_STATUS = 0;
+const PNG_TYPE = "image/png";
+const COMPARISONS_PATH = "/api/dev/comparisons";
 
 export class ApiError extends Error {
   readonly code: string;
@@ -50,6 +62,31 @@ export function disconnectSession(): Promise<null> {
   return requestJson<null>("/api/sessions/current", { method: "DELETE" });
 }
 
+export function changeQualityPreset(request: QualityPresetRequest): Promise<null> {
+  return requestJson<null>("/api/quality-preset", { method: "PUT", body: request });
+}
+
+export function createComparison(): Promise<{ id: string }> {
+  return requestJson<{ id: string }>(COMPARISONS_PATH, { method: "POST" });
+}
+
+export function fetchComparison(id: string, signal?: AbortSignal): Promise<Comparison> {
+  return requestJson<Comparison>(comparisonPath(id), signal ? { signal } : {});
+}
+
+export function uploadComparisonPc(id: string, png: Blob, capturedAt: number): Promise<null> {
+  const query = new URLSearchParams({ capturedAt: String(Math.round(capturedAt)) });
+  return requestJson<null>(`${comparisonPath(id)}/pc?${query.toString()}`, { method: "PUT", png });
+}
+
+export function uploadComparisonScreen(id: string, png: Blob): Promise<null> {
+  return requestJson<null>(`${comparisonPath(id)}/screen`, { method: "PUT", png });
+}
+
+export function comparisonImageUrl(id: string, image: "phone" | "screen"): string {
+  return `${comparisonPath(id)}/${image}.png`;
+}
+
 export async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const response = await send(path, options);
   const body: unknown = await response.json().catch(() => null);
@@ -70,16 +107,24 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
   }
 }
 
-function requestInit({ method = "GET", body, signal }: RequestOptions): RequestInit {
+function requestInit({ method = "GET", body, png, signal }: RequestOptions): RequestInit {
   const init: RequestInit = { method };
   if (signal) {
     init.signal = signal;
+  }
+  if (png) {
+    init.body = png;
+    init.headers = { "Content-Type": PNG_TYPE };
   }
   if (body !== undefined) {
     init.body = JSON.stringify(body);
     init.headers = { "Content-Type": "application/json" };
   }
   return init;
+}
+
+function comparisonPath(id: string): string {
+  return `${COMPARISONS_PATH}/${encodeURIComponent(id)}`;
 }
 
 function toApiError(body: unknown, status: number): ApiError {

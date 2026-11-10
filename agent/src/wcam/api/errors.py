@@ -17,6 +17,9 @@ AGENT_ERRORS = {
     "invalid_request": (422, "The request is not valid."),
     "no_session_awaiting_confirmation": (409, "No session is waiting for confirmation."),
     "no_active_session": (404, "No session is active."),
+    "no_live_session": (409, "No session is live."),
+    "comparison_not_found": (404, "The comparison does not exist."),
+    "comparison_not_ready": (409, "The comparison is not ready."),
 }
 
 

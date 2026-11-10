@@ -1,8 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { ApiError, createSession } from "../data/api-client";
 import type { CamEvent } from "../data/cam-state";
 import { confirmationCode, sdpFingerprint } from "../data/confirmation-code";
-import { parseControlMessage } from "../data/control-message";
+import { cameraCapabilitiesData, parseControlMessage, setQualityPresetMessage } from "../data/control-message";
+import { DEFAULT_QUALITY_PRESET, maxBitrate, type QualityPreset } from "../data/quality-preset";
+import { readCameraCapabilities } from "./camera-capabilities";
 
 interface PublisherOptions {
   track: MediaStreamTrack | null;
@@ -10,25 +12,60 @@ interface PublisherOptions {
   keepAlive: boolean;
   takeToken: () => string | null;
   onEvent: (event: CamEvent) => void;
+  videoRef: RefObject<HTMLVideoElement | null>;
+}
+
+export interface Publisher {
+  qualityPreset: QualityPreset | null;
+  snapshotRequest: SnapshotRequest | null;
+  chooseQualityPreset: (preset: QualityPreset) => void;
+  sendPaced: (messages: readonly string[]) => Promise<void>;
+}
+
+export interface SnapshotRequest {
+  id: string;
+  receivedAt: number;
 }
 
 interface PublisherSession {
   replaceTrack: (track: MediaStreamTrack) => void;
+  chooseQualityPreset: (preset: QualityPreset) => void;
+  sendPaced: (messages: readonly string[]) => Promise<void>;
   close: () => void;
+}
+
+interface SessionCallbacks {
+  onEvent: (event: CamEvent) => void;
+  onQualityPreset: (preset: QualityPreset) => void;
+  onSnapshotRequest: (request: SnapshotRequest) => void;
+  readVideo: () => HTMLVideoElement | null;
 }
 
 type SendParameters = RTCRtpSendParameters & { degradationPreference?: string };
 
 const CONTROL_CHANNEL = "control";
 const CONTENT_HINT = "detail";
-const MAX_BITRATE = 10_000_000;
 const DEGRADATION_PREFERENCE = "maintain-resolution";
 const CONNECTION_FAILED_REASON = "connection_failed";
 const UNKNOWN_ERROR_CODE = "unknown";
+const BUFFERED_HIGH_BYTES = 1_000_000;
+const BUFFERED_LOW_BYTES = 256_000;
 const FAILED_CONNECTION_STATES: ReadonlySet<RTCPeerConnectionState> = new Set(["failed", "closed"]);
 
-export function usePublisher({ track, shouldStart, keepAlive, takeToken, onEvent }: PublisherOptions): void {
+export function usePublisher({
+  track,
+  shouldStart,
+  keepAlive,
+  takeToken,
+  onEvent,
+  videoRef,
+}: PublisherOptions): Publisher {
   const sessionRef = useRef<PublisherSession | null>(null);
+  const [qualityPreset, setQualityPreset] = useState<QualityPreset | null>(null);
+  const [snapshotRequest, setSnapshotRequest] = useState<SnapshotRequest | null>(null);
+  const sendPaced = useCallback((messages: readonly string[]) => {
+    return sessionRef.current?.sendPaced(messages) ?? Promise.resolve();
+  }, []);
 
   useEffect(() => {
     if (!shouldStart || !track || sessionRef.current) {
@@ -39,8 +76,13 @@ export function usePublisher({ track, shouldStart, keepAlive, takeToken, onEvent
       return;
     }
     onEvent({ type: "session_started" });
-    sessionRef.current = startSession(track, token, onEvent);
-  }, [shouldStart, track, takeToken, onEvent]);
+    sessionRef.current = startSession(track, token, {
+      onEvent,
+      onQualityPreset: setQualityPreset,
+      onSnapshotRequest: setSnapshotRequest,
+      readVideo: () => videoRef.current,
+    });
+  }, [shouldStart, track, takeToken, onEvent, videoRef]);
 
   useEffect(() => {
     if (track) {
@@ -62,23 +104,55 @@ export function usePublisher({ track, shouldStart, keepAlive, takeToken, onEvent
     },
     [],
   );
+
+  return {
+    qualityPreset,
+    snapshotRequest,
+    chooseQualityPreset: (preset) => {
+      sessionRef.current?.chooseQualityPreset(preset);
+    },
+    sendPaced,
+  };
 }
 
-function startSession(track: MediaStreamTrack, token: string, onEvent: (event: CamEvent) => void): PublisherSession {
+function startSession(
+  track: MediaStreamTrack,
+  token: string,
+  { onEvent, onQualityPreset, onSnapshotRequest, readVideo }: SessionCallbacks,
+): PublisherSession {
   const connection = new RTCPeerConnection({ iceServers: [] });
   const channel = connection.createDataChannel(CONTROL_CHANNEL);
   track.contentHint = CONTENT_HINT;
   const { sender } = connection.addTransceiver(track, {
     direction: "sendonly",
-    sendEncodings: [{ maxBitrate: MAX_BITRATE }],
+    sendEncodings: [{ maxBitrate: maxBitrate(DEFAULT_QUALITY_PRESET) }],
   });
+  let currentTrack = track;
   let closed = false;
   let finished = false;
   let events = Promise.resolve();
+  let parameterChanges = Promise.resolve();
+  const isActive = () => !closed && !finished;
   const emit = (event: CamEvent) => {
-    if (!closed && !finished) {
+    if (isActive()) {
       onEvent(event);
     }
+  };
+  const changeParameters = (change: (parameters: SendParameters) => void) => {
+    parameterChanges = parameterChanges.then(() => applyParameters(sender, change));
+  };
+  const sendControl = (data: string) => {
+    if (channel.readyState === "open") {
+      channel.send(data);
+    }
+  };
+  const sendCapabilities = () => {
+    const track = currentTrack;
+    void readCameraCapabilities(track, readVideo()).then((capabilities) => {
+      if (track === currentTrack) {
+        sendControl(cameraCapabilitiesData(capabilities));
+      }
+    });
   };
   const finish = (event: CamEvent) => {
     emit(event);
@@ -88,8 +162,8 @@ function startSession(track: MediaStreamTrack, token: string, onEvent: (event: C
     finish({ type: "session_ended", reason: CONNECTION_FAILED_REASON });
   };
 
-  const code = negotiate(connection, token).then(async (result) => {
-    await preferResolution(sender);
+  const code = negotiate(connection, token).then((result) => {
+    changeParameters(preferResolution);
     return result;
   });
   code.catch((error: unknown) => {
@@ -99,6 +173,19 @@ function startSession(track: MediaStreamTrack, token: string, onEvent: (event: C
   channel.addEventListener("message", (event: MessageEvent<unknown>) => {
     const message = parseControlMessage(event.data);
     if (!message) {
+      return;
+    }
+    if (message.type === "quality_preset") {
+      changeParameters(limitBitrate(maxBitrate(message.preset)));
+      if (isActive()) {
+        onQualityPreset(message.preset);
+      }
+      return;
+    }
+    if (message.type === "snapshot_request") {
+      if (isActive()) {
+        onSnapshotRequest({ id: message.id, receivedAt: performance.now() });
+      }
       return;
     }
     events = events.then(async () => {
@@ -111,6 +198,8 @@ function startSession(track: MediaStreamTrack, token: string, onEvent: (event: C
       }
     });
   });
+  channel.bufferedAmountLowThreshold = BUFFERED_LOW_BYTES;
+  channel.addEventListener("open", sendCapabilities);
   channel.addEventListener("close", connectionLost);
   connection.addEventListener("connectionstatechange", () => {
     if (FAILED_CONNECTION_STATES.has(connection.connectionState)) {
@@ -122,6 +211,24 @@ function startSession(track: MediaStreamTrack, token: string, onEvent: (event: C
     replaceTrack: (nextTrack) => {
       nextTrack.contentHint = CONTENT_HINT;
       void sender.replaceTrack(nextTrack);
+      if (nextTrack !== currentTrack) {
+        currentTrack = nextTrack;
+        sendCapabilities();
+      }
+    },
+    chooseQualityPreset: (preset) => {
+      sendControl(setQualityPresetMessage(preset));
+    },
+    sendPaced: async (messages) => {
+      for (const message of messages) {
+        if (channel.bufferedAmount > BUFFERED_HIGH_BYTES) {
+          await bufferedAmountLow(channel);
+        }
+        if (!isActive() || channel.readyState !== "open") {
+          return;
+        }
+        channel.send(message);
+      }
     },
     close: () => {
       closed = true;
@@ -129,6 +236,18 @@ function startSession(track: MediaStreamTrack, token: string, onEvent: (event: C
       connection.close();
     },
   };
+}
+
+function bufferedAmountLow(channel: RTCDataChannel): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      channel.removeEventListener("bufferedamountlow", done);
+      channel.removeEventListener("close", done);
+      resolve();
+    };
+    channel.addEventListener("bufferedamountlow", done);
+    channel.addEventListener("close", done);
+  });
 }
 
 async function negotiate(connection: RTCPeerConnection, token: string): Promise<string> {
@@ -160,8 +279,20 @@ function iceGatheringComplete(connection: RTCPeerConnection): Promise<void> {
   });
 }
 
-async function preferResolution(sender: RTCRtpSender): Promise<void> {
+async function applyParameters(sender: RTCRtpSender, change: (parameters: SendParameters) => void): Promise<void> {
   const parameters: SendParameters = sender.getParameters();
-  parameters.degradationPreference = DEGRADATION_PREFERENCE;
+  change(parameters);
   await sender.setParameters(parameters).catch(() => undefined);
+}
+
+function preferResolution(parameters: SendParameters): void {
+  parameters.degradationPreference = DEGRADATION_PREFERENCE;
+}
+
+function limitBitrate(bitrate: number): (parameters: SendParameters) => void {
+  return (parameters) => {
+    parameters.encodings.forEach((encoding) => {
+      encoding.maxBitrate = bitrate;
+    });
+  };
 }

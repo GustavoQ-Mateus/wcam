@@ -8,6 +8,7 @@ services:
       WCAM_EXTRA_ALLOWED_HOSTS: '["agent:8080","agent:8443"]'
       WCAM_VIRTUAL_CAMERA: fake
       WCAM_QUALITY_REFERENCE: /reference/reference.y4m
+      WCAM_DEV_TOOLS: "1"
     command:
       - sh
       - -c

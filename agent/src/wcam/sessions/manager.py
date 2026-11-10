@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import secrets
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
@@ -7,23 +8,44 @@ from enum import StrEnum
 from typing import Any, Protocol
 
 from wcam.clock import Clock, utc_now
+from wcam.media.color_correction import ColorCorrection, DisplayConvention, color_correction, default_correction
 from wcam.media.metrics import VideoStats
+from wcam.media.quality_preset import DEFAULT_QUALITY_PRESET, QualityPreset
 from wcam.media.sdp_filter import is_publishable_offer, sha256_fingerprint
 from wcam.pairing.attempts import AttemptLimiter
 from wcam.pairing.confirmation_code import confirmation_code
 from wcam.pairing.errors import PairingTokenExpiredError, PairingTokenInvalidError, PairingWindowClosedError
 from wcam.pairing.tokens import PairingTicket, PairingWindow
+from wcam.sessions.comparisons import ComparisonNotFoundError, ComparisonStore
 from wcam.sessions.errors import (
     InvalidOfferError,
     NoActiveSessionError,
+    NoLiveSessionError,
     NoSessionAwaitingConfirmationError,
     SessionAlreadyActiveError,
     TooManyAttemptsError,
+)
+from wcam.sessions.phone_messages import (
+    CameraCapabilitiesMessage,
+    ScreenshotBeginMessage,
+    ScreenshotChunkMessage,
+    SetQualityPresetMessage,
+    SnapshotBeginMessage,
+    SnapshotChunkMessage,
+    parse_phone_message,
 )
 
 CONFIRMATION_TIMEOUT_SECONDS = 120.0
 ID_BYTES = 16
 COUNTED_FAILURES = (PairingTokenInvalidError, PairingTokenExpiredError, PairingWindowClosedError)
+IGNORED_PHONE_MESSAGE = "Ignored a phone message outside the contract"
+PRESET_BEFORE_LIVE = "Ignored a quality preset change from a phone that is not live yet"
+PHONE_IMAGE_WITHOUT_DEV_TOOLS = "Ignored a phone image because development tools are off"
+
+type PhoneImageMessage = SnapshotBeginMessage | SnapshotChunkMessage | ScreenshotBeginMessage | ScreenshotChunkMessage
+PHONE_IMAGE_MESSAGES = (SnapshotBeginMessage, SnapshotChunkMessage, ScreenshotBeginMessage, ScreenshotChunkMessage)
+
+logger = logging.getLogger(__name__)
 
 
 class SessionState(StrEnum):
@@ -44,6 +66,7 @@ class EndReason(StrEnum):
 class PeerEvents:
     on_connected: Callable[[], None]
     on_lost: Callable[[EndReason], None]
+    on_message: Callable[[str | bytes], None]
 
 
 class MediaPeer(Protocol):
@@ -54,6 +77,10 @@ class MediaPeer(Protocol):
     def video(self) -> VideoStats | None: ...
 
     def open_gate(self) -> None: ...
+
+    def limit_bitrate(self, max_bitrate_bps: int) -> None: ...
+
+    def set_color_correction(self, correction: ColorCorrection) -> None: ...
 
     def send(self, message: dict[str, str]) -> None: ...
 
@@ -69,6 +96,7 @@ class SessionRequest:
     offer_sdp: str
     remote_ip: str
     device_name: str | None
+    display: DisplayConvention = DisplayConvention.STANDARD
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +115,7 @@ class SessionView:
     started_at: datetime
     confirmation_code: str | None
     video: VideoStats | None
+    camera_capabilities: CameraCapabilitiesMessage | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +129,7 @@ class Status:
     pairing_expires_at: datetime | None
     session: SessionView | None
     last_ended: LastEnded | None
+    quality_preset: QualityPreset
 
 
 @dataclass(slots=True)
@@ -110,6 +140,7 @@ class Session:
     confirmation_code: str
     peer: MediaPeer
     state: SessionState = SessionState.CONNECTING
+    camera_capabilities: CameraCapabilitiesMessage | None = None
 
 
 class SessionManager:
@@ -118,8 +149,10 @@ class SessionManager:
         peer_factory: PeerFactory,
         clock: Clock = utc_now,
         confirmation_timeout: float = CONFIRMATION_TIMEOUT_SECONDS,
+        comparisons: ComparisonStore | None = None,
     ) -> None:
         self._peer_factory = peer_factory
+        self._comparisons = comparisons
         self._clock = clock
         self._confirmation_timeout = confirmation_timeout
         self._pairing = PairingWindow(clock)
@@ -127,6 +160,7 @@ class SessionManager:
         self._session: Session | None = None
         self._creating = False
         self._last_ended: LastEnded | None = None
+        self._quality_preset = DEFAULT_QUALITY_PRESET
         self._confirmation_timer: asyncio.Task[None] | None = None
         self._background: set[asyncio.Task[None]] = set()
 
@@ -138,7 +172,24 @@ class SessionManager:
         self._pairing.close()
 
     def status(self) -> Status:
-        return Status(self._pairing.expires_at, self._view(), self._last_ended)
+        return Status(self._pairing.expires_at, self._view(), self._last_ended, self._quality_preset)
+
+    def set_quality_preset(self, preset: QualityPreset) -> None:
+        self._quality_preset = preset
+        if self._session is not None:
+            self._session.peer.limit_bitrate(preset.max_bitrate_bps)
+            self._session.peer.send(quality_preset_message(preset))
+
+    def start_comparison(self) -> str:
+        session = self._session
+        comparisons = self._comparisons
+        if comparisons is None:
+            raise ComparisonNotFoundError
+        if session is None or session.state is not SessionState.LIVE:
+            raise NoLiveSessionError
+        comparison = comparisons.create()
+        session.peer.send(snapshot_request_message(comparison.id))
+        return comparison.id
 
     async def create_session(self, request: SessionRequest) -> SessionOffer:
         if self._attempts.is_blocked(request.remote_ip):
@@ -193,11 +244,14 @@ class SessionManager:
         events = PeerEvents(
             on_connected=lambda: self._handle_connected(sessions),
             on_lost=lambda reason: self._handle_lost(sessions, reason),
+            on_message=lambda data: self._handle_message(sessions, data),
         )
         try:
             peer = await self._peer_factory(request.offer_sdp, events)
         except ValueError as error:
             raise InvalidOfferError from error
+        peer.limit_bitrate(self._quality_preset.max_bitrate_bps)
+        peer.set_color_correction(default_correction(request.display))
         agent_fingerprint = sha256_fingerprint(peer.answer_sdp) or ""
         code = confirmation_code(nonce, phone_fingerprint, agent_fingerprint)
         session = Session(secrets.token_hex(ID_BYTES), request, self._clock(), code, peer)
@@ -211,12 +265,48 @@ class SessionManager:
             return
         session.state = SessionState.AWAITING_CONFIRMATION
         session.peer.send(state_message(SessionState.AWAITING_CONFIRMATION))
+        session.peer.send(quality_preset_message(self._quality_preset))
         self._confirmation_timer = asyncio.get_running_loop().create_task(self._expire_confirmation(session))
 
     def _handle_lost(self, sessions: list[Session], reason: EndReason) -> None:
         session = self._current(sessions)
         if session is not None:
             self._run_in_background(self._end(session, reason))
+
+    def _handle_message(self, sessions: list[Session], data: str | bytes) -> None:
+        session = self._current(sessions)
+        if session is None:
+            return
+        message = parse_phone_message(data)
+        if isinstance(message, CameraCapabilitiesMessage):
+            session.camera_capabilities = message
+            session.peer.set_color_correction(color_correction(message.camera_color_space(), session.request.display))
+        elif isinstance(message, PHONE_IMAGE_MESSAGES):
+            self._receive_phone_image(message)
+        elif isinstance(message, SetQualityPresetMessage):
+            self._apply_phone_preset(session, message.preset)
+        else:
+            logger.warning(IGNORED_PHONE_MESSAGE)
+
+    def _apply_phone_preset(self, session: Session, preset: QualityPreset) -> None:
+        if session.state is not SessionState.LIVE:
+            logger.warning(PRESET_BEFORE_LIVE)
+            return
+        self.set_quality_preset(preset)
+
+    def _receive_phone_image(self, message: PhoneImageMessage) -> None:
+        comparisons = self._comparisons
+        if comparisons is None:
+            logger.warning(PHONE_IMAGE_WITHOUT_DEV_TOOLS)
+            return
+        if isinstance(message, SnapshotBeginMessage):
+            comparisons.receive_begin(message)
+        elif isinstance(message, SnapshotChunkMessage):
+            comparisons.receive_chunk(message)
+        elif isinstance(message, ScreenshotBeginMessage):
+            comparisons.receive_screenshot_begin(message)
+        else:
+            comparisons.receive_screenshot_chunk(message)
 
     def _current(self, sessions: list[Session]) -> Session | None:
         return next((session for session in sessions if session is self._session), None)
@@ -232,6 +322,8 @@ class SessionManager:
         self._session = None
         self._cancel_confirmation_timer()
         self._last_ended = LastEnded(reason, self._clock())
+        if self._comparisons is not None:
+            self._comparisons.end_session()
         session.peer.send({"type": "session_state", "state": "ended", "reason": reason})
         await session.peer.close()
 
@@ -265,8 +357,17 @@ class SessionManager:
             session.started_at,
             code,
             session.peer.video,
+            session.camera_capabilities,
         )
 
 
 def state_message(state: SessionState) -> dict[str, str]:
     return {"type": "session_state", "state": state}
+
+
+def snapshot_request_message(comparison_id: str) -> dict[str, str]:
+    return {"type": "snapshot_request", "id": comparison_id}
+
+
+def quality_preset_message(preset: QualityPreset) -> dict[str, str]:
+    return {"type": "quality_preset", "preset": preset}

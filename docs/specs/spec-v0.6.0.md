@@ -1,0 +1,222 @@
+# Spec v0.6.0, Fidelidade de imagem
+
+Status: Entregue (2026-11-08)
+Branch de integração: `feature/qualidade`
+Sessões: `agent`, `web`, `vcam`
+Referências: `docs/planejamento.md` §1 (CA-2), §5.4; ADRs 0011 e 0012; changelog da v0.5.0 (diagnóstico da faixa de cor); diagnóstico da reunião de 2026-11-04 (imagem preta por alguns segundos)
+
+## Objetivo
+
+A imagem da câmera "WCam" no PC tem que estar no mesmo nível da prévia no celular. Esta versão corrige o que hoje a deixa pior, sem mudar o formato da câmera (continua 1920x1080 a 30 fps):
+
+1. **Faixa de cor.** O Safari do iPhone envia faixa cheia (0 a 255), e a WCam é lida como faixa limitada (16 a 235). Sombras viram preto e altas luzes viram branco.
+1. **Correção de cor pela câmera.** Mesmo com a faixa certa, a imagem no PC fica mais escura nos meios-tons que a prévia do celular, porque cada sistema exibe o mesmo vídeo com uma curva diferente. O celular informa a configuração de cor da câmera, e o agente aplica a correção que ela determina, sem nenhuma ação do usuário (§1.1).
+2. **Imagem preta por alguns segundos.** Quando o vídeo do celular para de chegar por mais de 1 s, o agente troca para preto. Na reunião de 2026-11-04 isso aconteceu algumas vezes, com a prévia do celular normal.
+3. **Escolha de qualidade.** O usuário escolhe a taxa de dados (Máxima, Equilibrada, Leve) no celular ou no console, e reduz se o Wi-Fi ou o PC não aguentarem.
+
+E prepara a v0.7.0 (resolução e fps à escolha do usuário) medindo o que o navegador do celular entrega e quanto de CPU cada formato custa no PC.
+
+## 1. Faixa de cor e matriz
+
+Quem decide a faixa e a matriz é o celular: cada aparelho as declara no próprio fluxo H.264, e o agente lê essa declaração em cada quadro, sem supor nada pelo modelo do aparelho. Medido em 2026-11-03 no iPhone 16 Pro Max do usuário (Safari): `yuvj420p`, `color_range` 2 (faixa cheia), `colorspace`, primária e transferência não declaradas; de 3,6% a 5,3% dos pixels abaixo de 16. Outros aparelhos ainda não foram medidos.
+
+Decisão: a câmera WCam anuncia sempre **faixa limitada (16 a 235)**, que é o padrão das webcams e o que os apps assumem. Ela só pode anunciar uma faixa, negociada uma vez com o app, então o agente traduz a faixa declarada por cada celular para a anunciada.
+
+Agent:
+- Lê a faixa de cada quadro decodificado (`color_range` do PyAV e o formato `yuvj420p`). Faixa cheia é normalizada por tabela de consulta: Y para `16 + Y × 219 / 255`, U e V para `128 + (C − 128) × 224 / 255`, com arredondamento. Faixa limitada passa sem mudança, como hoje. Faixa não declarada é tratada como limitada; isso é suposição, conferida pelo campo abaixo em cada aparelho testado.
+- Registra o que o celular declarou: `session.video.colorRange` (`full`, `limited` ou `unspecified`) e `session.video.colorMatrix` (`bt709`, `bt601`, outro nome do FFmpeg ou `unspecified`), para conferir qualquer aparelho em vez de supor.
+- Matriz: quando o celular declara uma matriz diferente da anunciada pela WCam, o relatório registra o caso; converter matriz fica fora desta versão até um aparelho real precisar.
+- A normalização roda fora do event loop, junto da conversão para NV12.
+- Isso emenda o CA-2 do produto ("sem converter cor"). Primeira redação: a única transformação permitida é ajustar a faixa ao formato anunciado pela câmera, sem tocar em resolução nem matiz. Substituída pela redação da decisão 5 (calibração, §1.1). O planejamento §1 registra a emenda.
+
+Vcam:
+- O tipo de mídia passa a declarar `MF_MT_VIDEO_NOMINAL_RANGE` (16 a 235) e a matriz de cor, a primária e a função de transferência, hoje omitidas.
+- A matriz anunciada (BT.709 ou BT.601) é escolhida por medição, não suposta: o probe publica barras de cor de valores conhecidos, e o relatório compara o RGB lido no Chrome e no app Câmera com o esperado para cada matriz. Como o iPhone não declara a matriz, a mesma medição é feita com um quadro real dele contra a prévia.
+
+## 1.1 Correção de cor pela câmera
+
+Revisão aprovada pelo usuário em 2026-11-08, que substitui a calibração por imagem aprovada em 2026-11-06 (amostras `color_sample` e ajuste estatístico). O histórico fica no changelog e nos relatórios.
+
+Medições:
+- 2026-11-06 (spikes `spike/color-space` e `spike/color-sample`): o SPS do H.264 do iPhone declara só a faixa; o Safari negocia a extensão RTP `color-space` mas não a envia. O Safari exibe o vídeo BT.709 com a curva de cerca de 1,961 do ColorSync da Apple, mais clara nos meios-tons que a leitura do Windows (sRGB).
+- 2026-11-07 (teste final com a calibração por imagem): `applied` com `deltaE` 1,01, e o usuário viu a WCam bem diferente do celular. A calibração tinha reencontrado a curva da Apple em Y, mas tirou 19% de saturação, porque o canvas do Safari (`drawImage` e `getImageData`) sai menos saturado que a tela.
+- 2026-11-08 (spike `spike/camera-color`): no Safari, `VideoFrame.colorSpace` de cada quadro vem do buffer da câmera. As câmeras frontal e traseira do iPhone declararam `bt709` em primárias, transferência e matriz, faixa cheia, NV12. O quadro cru da câmera (`VideoFrame.copyTo`) contra o decodificado no PC: Y com ganho 0,995 e PSNR de 37 a 38 dB, croma sem viés. O que chega ao PC é o que a câmera produziu, menos a compressão.
+- Correção derivada só do que é declarado: por canal, `E' = sRGB_OETF(E^1,961)`. Aplicada só em Y, com croma inalterado, o ΔE2000 contra o modelo exato cai de cerca de 3 para menos de 1 em média (0,67 a 0,95 nas capturas reais, 0,86 numa grade de cores saturadas), sem custo extra por quadro. Uma tabela 2D Y por croma tiraria mais 0,4 a 0,7, por cerca de 8 ms a mais por quadro; fica fora até uma medição pedir.
+
+Decisão do usuário (2026-11-08): a cor vem da configuração declarada pela câmera do celular, não de amostras da imagem. A única regra fixa é a convenção de exibição da plataforma, aprovada explicitamente: aparelhos Apple (iOS e iPadOS em qualquer navegador, porque todos usam o WebKit e o ColorSync, e o Safari no macOS) exibem vídeo BT.709 com a curva 1,961; os demais, como o Windows, com a curva sRGB. Não é ajuste por modelo de aparelho.
+
+Web:
+- `camera_capabilities` ganha `colorSpace`: `primaries`, `transfer`, `matrix` e `fullRange` de `new VideoFrame(<video do visor>).colorSpace` (com `MediaStreamTrackProcessor` como alternativa se o construtor falhar), lido quando a mensagem é enviada (canal aberto e cada troca de câmera, quando a faixa já entrega quadros). `null` quando o navegador não expõe. `frame.close()` sempre. Leitura em `media/`, montagem da mensagem em `data/` com Vitest.
+- Sai o envio de `color_sample`.
+
+Agent:
+- Convenção de exibição pela plataforma do `User-Agent`, já interpretado para `deviceName`: `apple` para iPhone, iPad e Safari no macOS; `standard` para o resto.
+- Tabela de Y composta com a tabela de faixa: com `transfer` `bt709` ou `smpte170m` declarado e convenção `apple`, a curva `sRGB_OETF(E^1,961)` aplicada ao Y normalizado; U e V só com a tabela de faixa. Com convenção `standard`, `transfer` `srgb` ou `iec61966-2-1`, ou `colorSpace` ausente ou desconhecido, só a faixa (estado `default`). HDR (`pq`, `hlg`) fica em `default`, registrado no log.
+- Faixa: a declarada no `colorSpace` quando existe; senão a do quadro decodificado, como hoje.
+- Calculada uma vez por mensagem e aplicada no mesmo worker por `bytes.translate`, sem RGB e sem mudar resolução. Vale só para a conexão atual; nada em disco nem associado ao aparelho (CA-4).
+- `session.video.colorCorrection` no status (contrato). Saem o anel de quadros, o ajuste por amostras, `color_sample`, `colorCalibration` e `WCAM_COLOR_TRACE_DIR`.
+
+Console:
+- Na área de detalhes, uma linha: `console.color_matched` com o estado `applied`, `console.color_default` nos outros casos. Logo abaixo, `console.camera_color` com a configuração de cor que a câmera informou (`session.cameraCapabilities.colorSpace`: primárias, transferência, matriz e faixa), ou `console.camera_color_unknown` quando o navegador não informa. Decisão do usuário (2026-11-08): a cor é conferida pela configuração da câmera, sem cálculo por foto; a faixa de referência no print foi descartada.
+
+Vcam:
+- Nada novo. A ferramenta `Wcam.ColorVerify` (modelos do Chrome com e sem GPU) fica como está; a verificação de ponta a ponta passa a ser a comparação lado a lado (§6), com o print da tela do celular como referência.
+
+## 2. Imagem preta por alguns segundos
+
+O diagnóstico de 2026-11-04 descartou a câmera nativa e o Frame Server. O preto mais provável é o placeholder do agente por silêncio de mais de 1 s, com duas origens que os dados não separaram: um pacote perdido sem recuperação trava o buffer de recepção do aiortc (medido em laboratório: de 2 a 8 s sem quadro com o buffer de 2048 pacotes, conforme a taxa) ou o vídeo parou de chegar pelo Wi-Fi.
+
+Decisão do usuário (2026-11-06): numa falha curta, **congelar a última imagem** em vez de preto.
+
+Agent:
+- **Congelar.** Sem quadro novo do celular, a câmera repete o último quadro bom por até 3 s. Depois disso, preto, como hoje. Substitui o CA 4 da v0.5.0 ("nunca imagem congelada") só para esses 3 s.
+- **Recuperar.** Se os pacotes RTP continuam chegando mas nenhum quadro sai do buffer de recepção por mais de 500 ms, o agente descarta o trecho travado e pede um quadro-chave ao celular (PLI). O mecanismo exato sai do teste de laboratório abaixo e fica no relatório.
+- **Registrar.** Cada episódio sem quadro novo por mais de 500 ms com sessão `live` vira uma linha JSON em `<WCAM_DATA_DIR>/logs/episodes.log` (rotação em 1 MB, um arquivo antigo guardado): início e fim em UTC, duração, causa (`silence`, `stalled`, `portrait`), ação (`frozen`, `black`), bytes RTP recebidos durante o episódio e PLIs enviados. Nada de token, URL de pareamento ou IP completo no arquivo.
+- **Teste de laboratório**, automatizado no pytest: um cliente aiortc envia vídeo, um pacote e o seu reenvio são descartados, e o teste mede o tempo sem quadro de ponta a ponta.
+
+## 3. Escolha de qualidade
+
+Decisão do usuário (2026-11-06): o seletor fica no celular e no console, e uma mudança feita num aparece no outro em menos de 300 ms (§5.4). Nesta versão só muda a taxa de dados; resolução e fps ficam para a v0.7.0.
+
+| Opção | Chave | Taxa máxima | Uso |
+|---|---|---|---|
+| Máxima | `maximum` | 20 Mbit/s | a imagem mais próxima da prévia; exige Wi-Fi bom |
+| Equilibrada | `balanced` | 10 Mbit/s | padrão, o valor da v0.5.0 |
+| Leve | `light` | 5 Mbit/s | Wi-Fi fraco ou PC sobrecarregado |
+
+- O celular aplica a taxa em `maxBitrate` do envio (`setParameters`, sem renegociar). O agente ajusta o teto da estimativa de banda (REMB) ao mesmo valor.
+- A escolha vale até o agente fechar; guardar entre reinícios é da persistência.
+- Os valores são confirmados no iPhone do usuário antes da entrega: a Máxima sustenta 10 min sem episódio de congelamento no Wi-Fi dele, ou o relatório propõe outro valor.
+- Os textos de interface seguem o glossário (§5.7): os nomes das opções na mensagem principal, a taxa em Mbit/s só em detalhes.
+
+## 4. QR fora de arquivo de log
+
+O terminal imprime o QR e a URL com token só quando a saída é um terminal interativo. Com a saída redirecionada para arquivo (como nas rodadas desta sessão), imprime só a orientação de abrir o console. Hoje a URL de pareamento vai parar no arquivo.
+
+## 5. Medição para a v0.7.0
+
+Nada aqui muda o formato da câmera; é só levantamento, registrado nos relatórios.
+
+- Web: depois que o DataChannel abre, o celular envia as capacidades da câmera em uso (`getCapabilities()`: largura, altura e fps máximos, por câmera frontal e traseira quando disponível) e os codecs de vídeo que o navegador sabe enviar (`RTCRtpSender.getCapabilities("video")`, só os `mimeType`). O agente expõe isso no status.
+- Agent: script de desenvolvimento `python -m wcam.tools.decode_benchmark` que decodifica H.264 sintético em 1280x720, 1920x1080, 2560x1440 e 3840x2160, a 30 e 60 fps, e mede a CPU do processo.
+- Usuário, no iPhone dele: o relatório registra as capacidades reais e o resultado do benchmark nesta máquina.
+
+## 6. Comparação lado a lado (ferramenta de desenvolvimento)
+
+Motivo: no teste final de 2026-11-07, a calibração chegou a `applied` com `deltaE` 1,01 medido pelo agente, e o usuário viu a WCam no app Câmera "bem diferente" do celular. Comparar a olho entre duas telas não separa as causas possíveis (a amostra do canvas não ser o que a tela do iPhone mostra, o app do PC, os monitores). Pedido do usuário (2026-11-07): um botão no console que captura ao mesmo tempo a prévia do celular e a câmera WCam, mostra as duas lado a lado no mesmo monitor, permite baixar as imagens e traz os dados para validar a calibração.
+
+Só existe com `WCAM_DEV_TOOLS=1` (desenvolvimento); sem a variável, as rotas respondem `404`, as mensagens novas são ignoradas com log e o botão não aparece. Nada vai para o disco do agente: as comparações ficam em memória (as últimas 5) e o usuário baixa o que quiser pelo navegador.
+
+Console (web):
+- Com `devTools` no status e a sessão `live`, o painel da sessão mostra `console.dev_compare`. O clique chama `POST /api/dev/comparisons` e, no mesmo instante, captura um quadro da câmera WCam no navegador do PC (`getUserMedia` com o dispositivo "WCam", canvas `srgb` no tamanho do vídeo, PNG), enviado por `PUT /api/dev/comparisons/{id}/pc`.
+- Quando a comparação fica `ready`, mostra as duas imagens lado a lado no mesmo tamanho, com o horário de cada captura, e na área de detalhes os dados do relatório. Botões para baixar a imagem do celular, a do PC e o relatório JSON.
+- Acesso à câmera e canvas em `media/`; formatação dos dados em `data/`, com Vitest.
+
+Celular (web):
+- Ao receber `snapshot_request` em `live`, desenha o quadro atual do visor num canvas no tamanho nativo do vídeo, sem espelho, no `colorSpace` `display-p3` quando aceito, e envia o PNG pelo DataChannel em pedaços (contrato). Sem texto nem elemento novo na tela.
+
+Agent:
+- `POST /api/dev/comparisons` cria a comparação, guarda o horário e manda `snapshot_request` ao celular; remonta os pedaços e confere o tamanho.
+- Com as duas imagens, monta o relatório: horários das duas capturas e a diferença entre eles; estado e `deltaE` da calibração e as tabelas em uso; e a diferença de cor entre as duas imagens, depois de alinhar (redução por média de área para 320x180, casamento por correlação de luminância com e sem espelho, células de detalhe fino excluídas como na calibração): ΔE2000 médio, mediano e p90, ΔL*, razão de croma, desvio de matiz e uma grade 8x4 com o ΔE2000 médio de cada região. A imagem do celular é lida no seu `colorSpace`, a do PC em sRGB.
+- Prazo de 10 s para o celular responder; senão `failed` com o motivo.
+
+Print da tela do celular (opcional): a análise do trace do teste final mostrou que a calibração tirou cerca de 19% de saturação e clareou os meios-tons para igualar o canvas do Safari, o que sugere que o canvas sai diferente do que a tela do iPhone mostra. Só um print da tela mostra os pixels como exibidos. Por isso a comparação aceita, depois de pronta, um print do iPhone enviado pelo console (arquivo PNG com o perfil ICC; JPEG é recusado). O agente alinha o print com as outras duas imagens (busca de escala e posição, como no spike) e acrescenta ao relatório a diferença entre o print e o canvas do celular e entre o print e a imagem do PC. O print aparece como terceira imagem, e baixa junto com as outras.
+
+O Safari do iPhone não permite que uma página capture a própria tela, então o print é tirado pelo usuário com os botões do aparelho. Para não exigir cabo nem e-mail, o `/cam`, com as ferramentas de desenvolvimento ligadas, mostra um botão `cam.dev_send_screenshot` depois de cada `snapshot_request`: o usuário escolhe o print na galeria (seletor de arquivo, só PNG) e o celular o envia pelo DataChannel em pedaços, associado à última comparação. O envio pelo console continua como alternativa.
+
+Uso esperado: o usuário compara as duas imagens no mesmo monitor. Se elas estiverem iguais no PC e a tela do iPhone parecer diferente, a amostra do canvas não representa o que a tela do celular mostra, e a calibração mede a coisa errada. Se forem diferentes no PC, os números dizem onde (tom, saturação, matiz, região).
+
+## Contrato (`docs/contrato.md` vai para 0.6.0)
+
+Console:
+- `PUT /api/quality-preset` com `{"preset": "maximum" | "balanced" | "light"}`: `204`; `422 invalid_request` com valor desconhecido. Vale para a sessão atual e as próximas.
+- `GET /api/status` ganha `qualityPreset` no primeiro nível (sempre presente), `virtualCamera.source` ganha o valor `frozen`, `session.cameraCapabilities` (`null` até o celular enviar), e `session.video` ganha `colorRange` e `colorMatrix`, como declarados pelo celular.
+
+DataChannel `control`:
+- Agente para o celular: `{"type": "quality_preset", "preset": "<chave>"}` quando o canal abre e a cada mudança.
+- Celular para o agente (primeira vez que o celular envia mensagens): `{"type": "set_quality_preset", "preset": "<chave>"}` e `{"type": "camera_capabilities", "width": <max>, "height": <max>, "frameRate": <max>, "facingMode": "user" | "environment" | null, "codecs": ["video/H264", ...]}`. Mensagem desconhecida ou inválida é ignorada e registrada.
+- `camera_capabilities` ganha `"colorSpace": {"primaries", "transfer", "matrix", "fullRange"}` ou `null` (§1.1).
+
+Status: `session.video.colorCorrection` com `state` (`applied`, `default`), `transfer` declarado e `display` (`apple`, `standard`).
+
+WebRTC: `maxBitrate` deixa de ser fixo em 10 000 000 e segue a opção.
+
+## Textos
+
+Chaves novas em `locales/en.json` e `locales/pt-BR.json` no mesmo commit, na branch de integração: nome e descrição curta de cada opção, rótulo do seletor e o aviso do terminal sem QR. A lista exata vai no handoff.
+
+Calibração: `console.color_matched` ("Cor igual à do celular" / "Color matched to the phone") e `console.color_default` ("Cor padrão" / "Standard color"). A palavra "calibração" fica só no código e nos documentos, porque na tela sugere uma tarefa do usuário.
+
+## Fora do escopo
+
+- Resolução e fps à escolha do usuário, e a câmera anunciar outros formatos (v0.7.0).
+- Avaliação de codecs mais eficientes que o H.264 (VP9, AV1, HEVC) (v0.7.0); esta versão só registra quais o celular oferece.
+- Console definitivo, SSE e revisão de linguagem de todas as superfícies (v0.8.0).
+- Guardar a escolha entre reinícios (persistência).
+- Reconexão automática depois de queda longa (robustez).
+- Falha de segurança achada no teste final (2026-11-06), existente desde a v0.3.0: o celular envia vídeo, e as capacidades, assim que conecta, e o agente recebe e decodifica os quadros antes do Confirmar; o portão só impede que cheguem à câmera. Um falso computador receberia o vídeo antes da comparação do código. Por decisão do usuário, a correção (confirmação nos dois lados, nada sai do celular antes) vai para a v0.8.0, registrada no planejamento §6.
+
+## Critérios de aceitação
+
+1. Faixa de cor: teste unitário confirma a tabela de normalização (0 vira 16, 255 vira 235, 128 de croma fica 128) e que quadro de faixa limitada passa sem mudança. Com um quadro real do iPhone em pouca luz, nenhum pixel que era acima de 0 na origem vira 16 ou menos na saída. O status mostra `colorRange` e `colorMatrix` declarados; o relatório registra os valores de cada aparelho testado (o iPhone do usuário, e um Android se houver um disponível).
+2. A WCam declara faixa, matriz, primária e transferência; o relatório da vcam mostra a medição das barras de cor que escolheu a matriz.
+3. O usuário compara lado a lado, no mesmo ambiente com pouca luz, a prévia do celular e a WCam no app Câmera do Windows, e aprova que sombras e cores estão no mesmo nível.
+3.1. Correção pela câmera: em toda conexão do iPhone do usuário, `colorCorrection` chega a `applied` com `transfer` `bt709` e convenção `apple`, sem nenhuma ação dele, na frontal e na traseira. Na comparação lado a lado (§6), o ΔE2000 médio entre o print da tela do iPhone e a imagem da câmera WCam no PC fica abaixo de 2. Testes: a tabela calculada bate com `sRGB_OETF(E^1,961)` nos 256 valores (no máximo 1 código de diferença); `colorSpace` ausente, `srgb`, HDR ou convenção `standard` dão `default` e saída byte a byte igual à de só faixa; a convenção sai do `User-Agent` (iPhone, iPad e Safari no macOS dão `apple`; Android e Windows dão `standard`); a troca de câmera reaplica; nada fica para a conexão seguinte. O e2e com a câmera falsa do Chromium (`smpte170m`, convenção `standard`) fica em `default`, e o SSIM continua acima de 0,98.
+3.2. Nenhum valor ligado a modelo ou aparelho no código. A única regra por plataforma é a convenção de exibição da decisão 10; conferido na revisão do orquestrador.
+3.3. Comparação lado a lado (§6): com `WCAM_DEV_TOOLS=1`, um clique no console traz as duas imagens e o relatório em até 10 s, e as três baixam. Sem a variável, rotas `404`, mensagens ignoradas e nenhum botão. Testes: remontagem dos pedaços (inclusive pedaço faltando e tamanho errado), prazo de 10 s, limite de 5 comparações em memória, relatório com uma diferença conhecida entre duas imagens sintéticas, rota `404` sem a variável; e2e com a câmera falsa do Chromium e uma câmera WCam simulada, se o Chromium do compose não enxergar a WCam (registrar no relatório). Usado pelo usuário no iPhone antes de aprovar o CA 3. O quadro do celular na comparação vem do canvas, que sai menos saturado que a tela (§1.1); a referência da cor é o print.
+4. Congelar: sem quadro novo, a câmera repete o último quadro bom por 3 s (tolerância de 0,2 s) e então mostra preto (Y=16, UV=128). Teste automatizado e verificação no Frame Server.
+5. Recuperação: no teste de laboratório, com um pacote e o seu reenvio perdidos a 5 Mbit/s, o vídeo volta em até 1 s.
+6. Registro: cada episódio gera uma linha em `episodes.log` com todos os campos; teste confirma que token, URL de pareamento e IP completo nunca aparecem no arquivo.
+7. Reunião real de pelo menos 30 min no novo Teams com o iPhone na opção Máxima: nenhum preto visto pelo usuário; o `episodes.log` da reunião vai para o changelog.
+8. Qualidade: mudar a opção no celular aparece no console, e no console aparece no celular, em menos de 300 ms; a taxa medida pelo agente acompanha a opção em até 5 s. Teste e2e com a câmera falsa do Chromium e verificação no iPhone.
+9. Terminal: com a saída redirecionada, nenhuma URL com `#t=` é escrita; teste automatizado.
+10. Medição: capacidades e codecs do iPhone do usuário e o benchmark de decodificação nesta máquina registrados nos relatórios.
+11. O e2e de qualidade continua com SSIM de pelo menos 0,98; CI verde nos cinco jobs; versão 0.6.0 no agente, no web e no projeto .NET.
+12. Contrato 0.6.0 e emenda do CA-2 no planejamento registrados antes do código.
+
+## Decisões registradas
+
+1. Aprovação do usuário em 2026-11-06, com a emenda do CA-2 (ajustar a faixa de cor, sem tocar em resolução nem matiz).
+2. Opção de qualidade padrão: Equilibrada. Pode passar para Máxima se o CA 7 provar a Máxima no Wi-Fi do usuário; a mudança passa pelo usuário.
+3. Congelamento de 3 s antes do preto.
+4. Faixa e matriz são as declaradas pelo celular em cada quadro, nunca supostas pelo modelo do aparelho.
+5. Calibração de cor automática a cada conexão (§1.1), aprovada pelo usuário em 2026-11-06, com nova redação da emenda do CA-2: a única transformação permitida é igualar a cor ao que o próprio celular exibe, medida automaticamente a cada conexão, sem tocar em resolução nem enquadramento.
+6. O teste com aparelho real é só no iPhone do usuário (decisão dele, 2026-11-06). Outro aparelho é coberto pelo e2e com a câmera falsa do Chromium e pela ausência de valores por modelo no código (CA 3.2).
+7. Nome: "calibração de cor" no código e nos documentos (`color_calibration`); na tela, só o resultado ("Cor igual à do celular").
+8. O SSIM mede perda de detalhe na transmissão, não a correção de cor, que é intencional (emenda do CA-2). Com a calibração aplicada, a referência do SSIM passa pela mesma tabela de Y aplicada ao vídeo. No e2e com a referência y4m (BT.601, C420jpeg), antes desta decisão o SSIM era 0,985 em `measuring` e 0,973 contra a referência original depois do `applied`; o ΔE de cerca de 4,4 que sobra nesse arquivo é de matriz, fora do escopo, e o e2e não exige ΔE abaixo de 2 com ele, só com a câmera falsa padrão do Chromium.
+9. Ferramenta de comparação lado a lado (§6) entra na v0.6.0, aprovada pelo usuário em 2026-11-07, porque é o instrumento de verificação do CA 3.
+10. Correção de cor pela câmera (§1.1), aprovada pelo usuário em 2026-11-08, substitui a calibração por imagem da decisão 5. Inclui a regra por plataforma da convenção de exibição (Apple com a curva 1,961 do ColorSync; os demais com sRGB), aprovada explicitamente pelo usuário como exceção ao CA 3.2. App nativo no celular descartado pelo usuário em 2026-11-08.
+11. CA 7 aceito com a reunião de 2026-11-06 no Google Meet (navegador), não no Teams, por decisão do usuário em 2026-11-08: sessão `live` das 15:40:19 às 16:28:20 UTC (48 min) na opção Máxima, mediana de 18,5 Mbit/s, nenhum episódio `silence` ou `stalled` e dois pretos de 1,4 s por celular em retrato (`portrait`), o comportamento definido. O Teams desktop foi usado pelo usuário em outras reuniões, com bom funcionamento relatado, sem registro de duração.
+12. CA 3.1 aceito pelo usuário em 2026-11-08 com ΔE2000 médio de 2,69 entre o print do iPhone e a câmera WCam (mediana 2,10, saturação 0,98), acima do limite de 2, pelas condições da medição (print 24 s depois da captura, LED colorido do microfone mudando a luz da cena, pequeno movimento) e pela aprovação visual dele (CA 3). As regiões sem LED nem rosto ficaram entre 1,2 e 2,3.
+
+## Changelog
+
+### 0.6.0, 2026-11-08
+
+Entregue pelas sessões `agent` (`feature/qualidade-agent`), `web` (`feature/qualidade-web`) e `vcam` (`feature/qualidade-vcam`), integradas em `feature/qualidade`. Relatórios em `docs/relatorio-v0.6.0-agent.md`, `docs/relatorio-v0.6.0-web.md` e `docs/relatorio-v0.6.0-vcam.md`. A §1.1 passou por duas versões: calibração por amostras da imagem (2026-11-06) e correção pela configuração de cor declarada pela câmera (2026-11-08, decisão 10), depois que a primeira tirou 19% de saturação da WCam.
+
+| CA | Resultado | Evidência |
+|---|---|---|
+| 1 | Verificado | Tabela de faixa testada. iPhone do usuário: SPS com `video_full_range_flag` 1 e matriz, primária e transferência não especificadas; status `colorRange` `full`, `colorMatrix` `unspecified`; `VideoFrame.colorSpace` `bt709` em faixa cheia nas câmeras frontal e traseira; nenhum Y acima de 0 vira 16. Nenhum Android testado. |
+| 2 | Verificado | WCam declara faixa 16 a 235, matriz, primárias e transferência BT.709, escolhidos pela medição de barras de cor no app Câmera (exato) e no Chrome (com GPU exato; sem GPU, U para B limitado a 2,0 pelo libyuv). |
+| 3 | Verificado | Aprovação visual do usuário em 2026-11-08, com a comparação lado a lado. |
+| 3.1 | Aceito com ressalva | Correção `applied` com `bt709` e convenção `apple` em toda conexão. Câmera WCam contra o quadro do celular: ΔE2000 1,80 (capturas a 10 ms). Print da tela contra a WCam: 2,69 (mediana 2,10, saturação 0,98), contra 4,43 e saturação 0,78 com a calibração por imagem. Decisão 12. |
+| 3.2 | Verificado | Revisão do orquestrador: a única regra por plataforma é a convenção de exibição (iPhone, iPad, Safari no macOS), decisão 10. |
+| 3.3 | Verificado | Comparação lado a lado testada (agent e e2e, inclusive permissão de câmera negada) e usada pelo usuário duas vezes no iPhone. |
+| 4 | Verificado | Frame Server lido no Chrome: último quadro repetido por 3,00, 3,03 e 3,03 s e então preto (RGB 0,0,0, Y=16, UV=128); `source` `phone`, `frozen` e `placeholder` nos tempos do contrato. |
+| 5 | Verificado | Laboratório com pacote e reenvio perdidos: de 3,9 s para 0,55 a 0,60 s sem quadro a 4,9 Mbit/s. |
+| 6 | Verificado | `episodes.log` com todos os campos; teste sem token, URL de pareamento ou IP. |
+| 7 | Verificado, com ressalva | Reunião de 48 min no Google Meet (2026-11-06) na Máxima, sem `silence` nem `stalled`; dois pretos de 1,4 s por celular em retrato. Decisão 11 (Meet no lugar do Teams). |
+| 8 | Verificado | e2e: mudança da opção nos dois sentidos em menos de 300 ms; taxa em `light` abaixo de 5 500 kbps em até 5 s. Usado pelo usuário no iPhone. |
+| 9 | Verificado | Teste com saída redirecionada: nenhuma URL com `#t=`. |
+| 10 | Verificado | iPhone (frontal): 4032x3024, 60 fps, H264, H265, VP8, VP9 e AV1. Benchmark de decodificação nesta máquina (i5-8500): 1,8% em 720p30 a 12,4% em 4K60. |
+| 11 | Verificado | Estado final da branch (depois de `git merge origin/main`): ruff, format e pyright limpos, pytest 251 passados e 1 pulado (DLL real); web build, lint e Vitest 76; vcam build sem avisos, 96 testes e publish Native AOT sem avisos; e2e no compose 16 de 16, SSIM 0,9837 (mínimo 0,9830). Versão 0.6.0 nos três projetos. CI no PR. |
+| 12 | Verificado | Contrato 0.6.0 e emenda do CA-2 no planejamento registrados antes do código, e revistos antes de cada mudança. |
+
+Achados registrados:
+- Seletor de qualidade: só a taxa de dados muda nesta versão, e o usuário não viu diferença na imagem; o pedido real é escolher resolução e fps até o que a câmera captura. Vai para a v0.7.0. O painel de qualidade do console foi achado "feio" pelo usuário; será refeito na v0.7.0.
+- Celular em retrato mostra preto até voltar à paisagem; a v0.7.0 avalia mostrar a imagem com faixas laterais.
+- Falha de segurança (vídeo decodificado antes do Confirmar) planejada para a v0.8.0.
+- Textos de interface com "agente" (`console.status_running`, `errors.network_error`) ficam para a revisão de linguagem da v0.8.0.
+- O rótulo de versão do console mostra 0.5.0 quando o venv usa metadados antigos da instalação editável; o código é 0.6.0.
+- App nativo no celular descartado pelo usuário (2026-11-08).

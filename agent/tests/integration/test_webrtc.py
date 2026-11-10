@@ -5,6 +5,7 @@ import socket
 import ssl
 import sys
 import time
+from collections import defaultdict
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from fractions import Fraction
@@ -28,7 +29,6 @@ from wcam.media import peer as peer_module
 from wcam.media.peer import (
     ICE_RECEIVE_BUFFER_BYTES,
     ICE_SOCKETS_UNREACHABLE,
-    PHONE_MAX_BITRATE_BPS,
     VIDEO_JITTER_BUFFER_PACKETS,
     AiortcPeer,
     aiortc_peer_factory,
@@ -37,6 +37,7 @@ from wcam.media.peer import (
     video_jitter_buffer,
 )
 from wcam.media.pipeline import FramePipeline, FrameSource
+from wcam.media.quality_preset import QualityPreset
 from wcam.media.sdp_filter import candidate_addresses, sha256_fingerprint
 from wcam.network.certificates import load_or_create_certificate
 from wcam.network.lan import LanInterface, detect_lan_interface, is_in_network
@@ -64,6 +65,15 @@ VP8 = RTCRtpCodecParameters(mimeType="video/VP8", clockRate=90000, payloadType=V
 VIDEO_TIME_BASE = Fraction(1, 90000)
 NEXT_FRAME_TIMESTAMP_STEP = 3000
 UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
+PHONE_CAPABILITIES: dict[str, object] = {
+    "type": "camera_capabilities",
+    "width": 3840,
+    "height": 2160,
+    "frameRate": 60.0,
+    "facingMode": "environment",
+    "codecs": ["video/H264", "video/VP8"],
+    "colorSpace": {"primaries": "smpte170m", "transfer": "smpte170m", "matrix": "smpte170m", "fullRange": False},
+}
 
 
 class SyntheticVideo(VideoStreamTrack):
@@ -104,14 +114,21 @@ class RecordingPeerFactory:
 @dataclass(slots=True)
 class PhoneClient:
     connection: RTCPeerConnection
-    messages: asyncio.Queue[dict[str, str]]
+    channel: RTCDataChannel
+    messages: defaultdict[str, asyncio.Queue[dict[str, str]]]
 
     async def offer(self) -> str:
         await self.connection.setLocalDescription(await self.connection.createOffer())
         return self.connection.localDescription.sdp
 
     async def next_state(self) -> dict[str, str]:
-        return await asyncio.wait_for(self.messages.get(), WAIT_SECONDS)
+        return await self.next_message("session_state")
+
+    async def next_message(self, kind: str) -> dict[str, str]:
+        return await asyncio.wait_for(self.messages[kind].get(), WAIT_SECONDS)
+
+    def send(self, message: dict[str, object]) -> None:
+        self.channel.send(json.dumps(message))
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,17 +165,22 @@ async def pipeline(sink: FakeSink) -> AsyncIterator[FramePipeline]:
     await asyncio.gather(task, return_exceptions=True)
 
 
+def silent_events() -> PeerEvents:
+    return PeerEvents(lambda: None, lambda _: None, lambda _: None)
+
+
 def phone_client_peer(track: VideoStreamTrack | None = None) -> PhoneClient:
     connection = RTCPeerConnection(RTCConfiguration(iceServers=[]))
-    messages: asyncio.Queue[dict[str, str]] = asyncio.Queue()
+    messages: defaultdict[str, asyncio.Queue[dict[str, str]]] = defaultdict(asyncio.Queue)
     channel: RTCDataChannel = connection.createDataChannel("control")
 
     def receive(data: str) -> None:
-        messages.put_nowait(json.loads(data))
+        message = json.loads(data)
+        messages[message["type"]].put_nowait(message)
 
     channel.on("message", receive)
     connection.addTrack(track or SyntheticVideo())
-    return PhoneClient(connection, messages)
+    return PhoneClient(connection, channel, messages)
 
 
 async def wait_until(condition: Callable[[], bool]) -> None:
@@ -254,10 +276,56 @@ async def test_aiortc_phone_goes_live_only_after_confirmation(
     assert result.video_before_confirmation is None
     assert result.states == ["awaiting_confirmation", "live", "ended"]
     assert (result.video_after_confirmation["width"], result.video_after_confirmation["height"]) == (WIDTH, HEIGHT)
+    assert result.video_after_confirmation["colorRange"] in {"limited", "unspecified"}
+    assert result.video_after_confirmation["colorMatrix"] == "unspecified"
+    assert result.video_after_confirmation["colorCorrection"] == {
+        "state": "default",
+        "transfer": None,
+        "display": "standard",
+    }
     assert factory.peers[0].gate.released > 0
     assert result.source_before_confirmation is FrameSource.PLACEHOLDER
     assert result.live_frame_shape == I420_SHAPE
     assert result.seconds_to_placeholder < PLACEHOLDER_DEADLINE_SECONDS
+
+
+async def test_phone_messages_reach_status_and_presets_echo_on_the_channel(
+    settings: Settings,
+    lan: LanInterface,
+    pipeline: FramePipeline,
+) -> None:
+    manager = SessionManager(RecordingPeerFactory(lan, pipeline))
+    client = phone_client_peer()
+
+    async with (
+        console_client(console_app(settings, manager, pipeline)) as console,
+        phone_client(phone_app(settings, manager)) as phone,
+    ):
+        token = (await console.post("/api/pairing")).json()["url"].split("#t=")[1]
+        created = (await phone.post("/api/sessions", json={"token": token, "sdp": await client.offer()})).json()
+        await client.connection.setRemoteDescription(RTCSessionDescription(created["sdp"], "answer"))
+        await client.next_state()
+        first_preset = await client.next_message("quality_preset")
+        client.send(PHONE_CAPABILITIES)
+        await console.post("/api/sessions/current/confirm")
+        await client.next_state()
+        client.send({"type": "set_quality_preset", "preset": "light"})
+        phone_change = await client.next_message("quality_preset")
+        await console.put("/api/quality-preset", json={"preset": "maximum"})
+        console_change = await client.next_message("quality_preset")
+        status = await current_status(console)
+        await console.delete("/api/sessions/current")
+    await client.connection.close()
+
+    assert [first_preset["preset"], phone_change["preset"], console_change["preset"]] == [
+        "balanced",
+        "light",
+        "maximum",
+    ]
+    assert status["qualityPreset"] == "maximum"
+    assert status["session"]["cameraCapabilities"] == {
+        key: value for key, value in PHONE_CAPABILITIES.items() if key != "type"
+    }
 
 
 async def test_answer_has_only_lan_candidates(
@@ -292,7 +360,7 @@ async def test_peer_connection_has_no_ice_servers(lan: LanInterface, monkeypatch
     monkeypatch.setattr(peer_module, "RTCPeerConnection", RecordingConnection)
     client = phone_client_peer()
     create = aiortc_peer_factory(lan.network, opened_pipeline())
-    peer = await create(await client.offer(), PeerEvents(lambda: None, lambda _: None))
+    peer = await create(await client.offer(), silent_events())
     await peer.close()
     await client.connection.close()
 
@@ -304,7 +372,7 @@ async def test_peer_connection_has_no_ice_servers(lan: LanInterface, monkeypatch
 async def test_video_receiver_jitter_buffer_holds_large_frames(lan: LanInterface, pipeline: FramePipeline) -> None:
     client = phone_client_peer()
     factory = RecordingPeerFactory(lan, pipeline)
-    await factory(await client.offer(), PeerEvents(lambda: None, lambda _: None))
+    await factory(await client.offer(), silent_events())
     peer = factory.peers[0]
 
     capacities = [
@@ -319,28 +387,36 @@ async def test_video_receiver_jitter_buffer_holds_large_frames(lan: LanInterface
     assert VIDEO_JITTER_BUFFER_PACKETS > AIORTC_DEFAULT_VIDEO_JITTER_PACKETS
 
 
-async def test_first_remb_already_announces_the_maximum_bitrate(lan: LanInterface, pipeline: FramePipeline) -> None:
+@pytest.mark.parametrize("preset", list(QualityPreset))
+async def test_remb_starts_at_the_preset_bitrate_and_never_exceeds_it(
+    lan: LanInterface,
+    pipeline: FramePipeline,
+    preset: QualityPreset,
+) -> None:
     client = phone_client_peer()
     factory = RecordingPeerFactory(lan, pipeline)
-    await factory(await client.offer(), PeerEvents(lambda: None, lambda _: None))
+    await factory(await client.offer(), silent_events())
     peer = factory.peers[0]
     receiver = next(t.receiver for t in peer.connection.getTransceivers() if t.kind == "video")
 
-    first_remb = first_remb_for_steady_stream(video_bitrate_estimator(receiver))
+    peer.limit_bitrate(preset.max_bitrate_bps)
+    rembs = rembs_for_steady_stream(video_bitrate_estimator(receiver))
     await peer.close()
     await client.connection.close()
 
-    assert first_remb is not None
-    assert first_remb >= FIRST_REMB_MINIMUM_SHARE * PHONE_MAX_BITRATE_BPS
+    assert rembs
+    assert rembs[0] >= FIRST_REMB_MINIMUM_SHARE * preset.max_bitrate_bps
+    assert max(rembs) <= preset.max_bitrate_bps
 
 
-def first_remb_for_steady_stream(estimator: RemoteBitrateEstimator) -> int | None:
+def rembs_for_steady_stream(estimator: RemoteBitrateEstimator) -> list[int]:
+    rembs: list[int] = []
     for arrival_ms in range(0, SIMULATED_DURATION_MS, SIMULATED_PACKET_INTERVAL_MS):
         abs_send_time = (arrival_ms << ABS_SEND_TIME_FRACTION_BITS) // 1000 & ABS_SEND_TIME_MASK
         remb = estimator.add(arrival_ms, abs_send_time, SIMULATED_PACKET_BYTES, SIMULATED_SSRC)
         if remb is not None:
-            return remb[0]
-    return None
+            rembs.append(remb[0])
+    return rembs
 
 
 async def test_keyframe_larger_than_aiortc_default_buffer_is_assembled_and_decoded(
@@ -349,7 +425,7 @@ async def test_keyframe_larger_than_aiortc_default_buffer_is_assembled_and_decod
 ) -> None:
     client = phone_client_peer()
     factory = RecordingPeerFactory(lan, pipeline)
-    await factory(await client.offer(), PeerEvents(lambda: None, lambda _: None))
+    await factory(await client.offer(), silent_events())
     peer = factory.peers[0]
     receiver = next(t.receiver for t in peer.connection.getTransceivers() if t.kind == "video")
     buffer = video_jitter_buffer(receiver)
@@ -398,7 +474,7 @@ def rtp_packet(sequence_number: int, timestamp: int, payload: bytes, *, marker: 
 async def test_ice_sockets_get_a_larger_receive_buffer(lan: LanInterface, pipeline: FramePipeline) -> None:
     client = phone_client_peer()
     factory = RecordingPeerFactory(lan, pipeline)
-    await factory(await client.offer(), PeerEvents(lambda: None, lambda _: None))
+    await factory(await client.offer(), silent_events())
     peer = factory.peers[0]
 
     buffers = [
@@ -430,7 +506,7 @@ async def test_unreachable_ice_sockets_are_logged_and_the_session_continues(
     factory = RecordingPeerFactory(lan, pipeline)
 
     with caplog.at_level(logging.WARNING):
-        await factory(await client.offer(), PeerEvents(lambda: None, lambda _: None))
+        await factory(await client.offer(), silent_events())
     peer = factory.peers[0]
     await peer.close()
     await client.connection.close()

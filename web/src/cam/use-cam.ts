@@ -1,9 +1,13 @@
 import { useEffect, useReducer, useRef, type RefObject } from "react";
 import { camReducer, initialCamState, isFinal, isSession, type CamState, type Facing } from "../data/cam-state";
 import { consumePairingToken } from "../data/pairing";
+import { screenshotMessages } from "../data/snapshot";
+import type { QualityPreset } from "../data/quality-preset";
 import { useCameraStream } from "../media/use-camera-stream";
+import { readPngFile } from "../media/screenshot-file";
 import { useOrientation } from "../media/use-orientation";
 import { usePublisher } from "../media/use-publisher";
+import { useSnapshotResponder } from "../media/use-snapshot-responder";
 import { useWakeLock } from "../media/use-wake-lock";
 
 export interface Cam {
@@ -12,9 +16,13 @@ export interface Cam {
   facing: Facing;
   switching: boolean;
   wakeLockUnavailable: boolean;
+  qualityPreset: QualityPreset | null;
   start: () => void;
   switchCamera: () => void;
   togglePreview: () => void;
+  chooseQualityPreset: (preset: QualityPreset) => void;
+  screenshotRequested: boolean;
+  sendScreenshot: (file: File) => Promise<boolean>;
 }
 
 export function useCam(hasPairing: boolean): Cam {
@@ -25,13 +33,15 @@ export function useCam(hasPairing: boolean): Cam {
   const final = isFinal(state);
   const wakeLock = useWakeLock(capturing || isSession(state));
   useOrientation(videoRef, dispatch);
-  usePublisher({
+  const publisher = usePublisher({
     track: camera.track,
     shouldStart: capturing,
     keepAlive: isSession(state),
     takeToken: consumePairingToken,
     onEvent: dispatch,
+    videoRef,
   });
+  useSnapshotResponder(videoRef, publisher.snapshotRequest, state.kind === "live", publisher.sendPaced);
 
   const { stop } = camera;
   useEffect(() => {
@@ -46,6 +56,7 @@ export function useCam(hasPairing: boolean): Cam {
     facing: camera.facing,
     switching: camera.opening,
     wakeLockUnavailable: wakeLock.unavailable,
+    qualityPreset: publisher.qualityPreset,
     start: () => {
       dispatch({ type: "start" });
       camera.open();
@@ -53,6 +64,17 @@ export function useCam(hasPairing: boolean): Cam {
     switchCamera: camera.switchCamera,
     togglePreview: () => {
       dispatch({ type: "preview_toggled" });
+    },
+    chooseQualityPreset: publisher.chooseQualityPreset,
+    screenshotRequested: state.kind === "live" && publisher.snapshotRequest !== null,
+    sendScreenshot: async (file) => {
+      const request = publisher.snapshotRequest;
+      const png = await readPngFile(file);
+      if (!request || !png) {
+        return false;
+      }
+      await publisher.sendPaced(screenshotMessages(request.id, png));
+      return true;
     },
   };
 }

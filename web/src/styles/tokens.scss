@@ -22,6 +22,7 @@
   --negative-tint: #261012;
   --warning-tint: #2e2310;
   --scrim: rgba(0, 0, 0, 0.6);
+  --control-ring: rgba(255, 255, 255, 0.16);
   --focus: #ffffff;
 
   --focus-width: 2px;
@@ -63,6 +64,8 @@
   --radius-box: 0.5rem;
   --qr-size: 15rem;
   --tally-height: 2rem;
+  --picker-width: 18rem;
+  --comparison-image-min: 24rem;
   --icon-size: 24px;
   --icon-stroke: 2px;
   --illustration-size: 48px;
@@ -76,5 +79,6 @@
   --delay-explain: 300ms;
   --duration-pulse: 1.2s;
   --scale-press: 0.97;
+  --scale-enter: 0.96;
   --opacity-dimmed: 0.4;
 }

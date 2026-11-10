@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { PHONE_LANDSCAPE } from "./cam-helpers";
 import { requiredUrl } from "./environment";
-import { endSession, goLive, status } from "./session-helpers";
+import { endSession, goLive, status, waitForColorCorrection } from "./session-helpers";
 
 const MINIMUM_SSIM = 0.98;
 const MINIMUM_FRAMES = 30;
@@ -21,6 +21,7 @@ test("frames delivered to the virtual camera keep an ssim of at least 0.98 again
   requiredUrl("E2E_QUALITY_REFERENCE");
 
   await goLive(page, request);
+  await waitForColorCorrection(request, QUALITY_TIMEOUT_MS);
 
   await expect
     .poll(async () => (await status(request)).quality?.frames ?? 0, { timeout: QUALITY_TIMEOUT_MS })

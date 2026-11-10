@@ -1,6 +1,6 @@
 # Contrato entre web e agent
 
-Versão: 0.5.0
+Versão: 0.6.0
 
 Fonte da verdade da comunicação entre `web` e `agent`. Mudou aqui, muda na spec da versão antes do código.
 
@@ -71,6 +71,7 @@ Nos dois servidores.
 | `POST /api/pairing` | nenhum | `201 {"url","qrSvg","expiresAt"}` | `409 session_already_active` |
 | `DELETE /api/pairing` | nenhum | `204` | nenhum |
 | `GET /api/status` | nenhum | `200` (abaixo) | nenhum |
+| `PUT /api/quality-preset` | `{"preset"}` | `204` | `422 invalid_request` |
 | `POST /api/sessions/current/confirm` | nenhum | `204` | `409 no_session_awaiting_confirmation` |
 | `POST /api/sessions/current/reject` | nenhum | `204` | `409 no_session_awaiting_confirmation` |
 | `DELETE /api/sessions/current` | nenhum | `204` | `404 no_active_session` |
@@ -104,6 +105,44 @@ Nos dois servidores.
 - `video` só aparece depois do Confirmar: o agente mede depois do portão. Em `connecting` e `awaiting_confirmation` é `null`.
 - `connecting` vira `awaiting_confirmation` quando o DataChannel `control` abre do lado do agente.
 
+### Comparação lado a lado (desenvolvimento, spec v0.6.0 §6)
+
+Só com `WCAM_DEV_TOOLS=1`; sem a variável, todas as rotas abaixo respondem `404 not_found` e `GET /api/status` traz `devTools: false`. Com ela, `devTools: true` no primeiro nível do status.
+
+| Rota | Corpo | Resposta | Erros |
+|---|---|---|---|
+| `POST /api/dev/comparisons` | nenhum | `201 {"id"}` | `409 no_live_session` |
+| `PUT /api/dev/comparisons/{id}/pc?capturedAt=<ms>` | PNG (`image/png`), até 20 MB; `capturedAt` é o instante da captura no relógio do PC, em ms desde a época | `204` | `404 comparison_not_found`, `422 invalid_request` |
+| `GET /api/dev/comparisons/{id}` | nenhum | `200` (abaixo) | `404 comparison_not_found` |
+| `GET /api/dev/comparisons/{id}/phone.png` | nenhum | `200 image/png` | `404 comparison_not_found` |
+| `PUT /api/dev/comparisons/{id}/screen` | PNG (`image/png`) do print da tela do celular, até 20 MB | `204` | `404 comparison_not_found`, `409 comparison_not_ready`, `422 invalid_request` (não é PNG) |
+| `GET /api/dev/comparisons/{id}/screen.png` | nenhum | `200 image/png` | `404 comparison_not_found` |
+
+`GET /api/dev/comparisons/{id}`:
+
+```json
+{
+  "id": "c1",
+  "state": "ready",
+  "reason": null,
+  "requestedAt": "2026-11-07T21:50:00.120Z",
+  "phone": {"capturedAt": "2026-11-07T21:50:00.240Z", "colorSpace": "display-p3", "width": 1920, "height": 1080},
+  "pc": {"receivedAt": "2026-11-07T21:50:00.180Z", "capturedAt": "2026-11-07T21:50:00.110Z", "width": 1920, "height": 1080},
+  "correction": {"state": "applied", "transfer": "bt709", "display": "apple", "tables": {"y": [0], "u": [0], "v": [0]}},
+  "difference": {
+    "captureGapMs": 60, "correlation": 0.97, "mirrored": false,
+    "deltaE2000": {"mean": 3.2, "median": 2.9, "p90": 6.1},
+    "deltaL": -4.1, "chromaRatio": 0.92, "hueShiftDegrees": 2.3,
+    "grid": {"columns": 8, "rows": 4, "deltaE2000": [3.1]}
+  }
+}
+```
+
+- `state`: `pending` (esperando uma das imagens), `ready` ou `failed`. `reason` (só em `failed`): `phone_timeout` (celular sem resposta em 10 s), `phone_invalid` (pedaços faltando ou tamanho errado), `pc_missing` (imagem do PC não chegou em 10 s), `session_ended`.
+- `phone` e `pc` são `null` até cada imagem chegar; `difference` é `null` até as duas. `correction.tables` são as tabelas Y, U e V em uso (256 inteiros cada); `grid.deltaE2000` tem `columns × rows` valores, linha a linha.
+- Em `screenDifference`, `mirrored` e `correlation` são os do alinhamento do print (o print da câmera frontal vem espelhado, como o visor). `screen` é `null` até o print chegar; com ele, `{"receivedAt", "width", "height", "colorSpace"}` (do perfil ICC; sem perfil, `srgb`), e `screenDifference` traz `{"phone": <mesmo formato de difference>, "pc": <mesmo formato>}`: print contra o canvas do celular e print contra a imagem do PC. O print só é aceito com a comparação `ready`.
+- O agente guarda só as últimas 5 comparações, em memória.
+
 ## Celular (`<ip-da-lan>:8443`)
 
 `POST /api/sessions` com `{"token": "...", "sdp": "<oferta completa, sem trickle>"}`:
@@ -119,15 +158,40 @@ Do agente para o celular, JSON:
 
 - `{"type": "session_state", "state": "awaiting_confirmation"}` quando a conexão sobe;
 - `{"type": "session_state", "state": "live"}` depois do Confirmar;
-- `{"type": "session_state", "state": "ended", "reason": "<motivo de lastEnded>"}` antes de fechar.
+- `{"type": "session_state", "state": "ended", "reason": "<motivo de lastEnded>"}` antes de fechar;
+- `{"type": "quality_preset", "preset": "<chave>"}` quando o canal abre e a cada mudança de opção, venha ela do console ou do próprio celular.
 
-O celular não envia mensagens nesta versão.
+Do celular para o agente, JSON:
+
+- `{"type": "set_quality_preset", "preset": "<chave>"}` quando o usuário escolhe uma opção no celular. O agente aplica e responde com `quality_preset` (inclusive ao próprio celular), que é a fonte da verdade do que está em uso. Só vale com a sessão em `live`: antes do Confirmar o aparelho ainda não foi aceito, e a mensagem é ignorada com registro no log, sem resposta. O seletor do celular só aparece depois de `session_state` `live`;
+- `{"type": "camera_capabilities", "width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"], "colorSpace": {"primaries": "bt709", "transfer": "bt709", "matrix": "bt709", "fullRange": true}}` quando o canal abre e a cada troca de câmera. `width`, `height` e `frameRate` são os máximos de `getCapabilities()` da faixa em uso (`null` quando o navegador não informa); `facingMode` é `user`, `environment` ou `null`; `codecs` são os `mimeType` de vídeo de `RTCRtpSender.getCapabilities("video")`, sem repetição e sem `video/rtx`, `video/red` e `video/ulpfec`; `colorSpace` é o `VideoFrame.colorSpace` de um quadro da câmera em uso (`primaries`, `transfer`, `matrix` com os nomes do WebCodecs, `fullRange` booleano; campo `null` quando o navegador não informa) ou `null` quando o navegador não expõe `VideoFrame` (spec v0.6.0 §1.1).
+
+
+Comparação lado a lado (só com `WCAM_DEV_TOOLS=1`; sem a variável, o agente não envia `snapshot_request` e ignora as respostas com log):
+
+- agente para o celular: `{"type": "snapshot_request", "id": "c1"}`, só em `live`;
+- celular para o agente: `{"type": "snapshot_begin", "id": "c1", "capturedAt": <ms>, "captureDelayMs": <ms entre receber o snapshot_request e capturar, no relógio do celular>, "colorSpace": "display-p3" | "srgb", "width": 1920, "height": 1080, "size": <bytes do PNG>, "chunks": <n>}` e depois `n` mensagens `{"type": "snapshot_chunk", "id": "c1", "index": <0 a n−1>, "data": "<base64 de até 45 000 bytes do PNG>"}`. O quadro é o do visor, sem espelho, no tamanho nativo do vídeo. Cada mensagem cabe no `max-message-size` de 65 536. `capturedAt` do celular é só informativo, porque o relógio do celular pode estar defasado do PC; `captureGapMs` no relatório é |(envio do `snapshot_request` + `captureDelayMs`) − `capturedAt` do PC|, tudo no relógio do PC.
+- celular para o agente, print da tela escolhido pelo usuário: `{"type": "screenshot_begin", "id": "c1", "size": <bytes do PNG>, "chunks": <n>}` e `n` mensagens `{"type": "screenshot_chunk", "id": "c1", "index": <0 a n−1>, "data": "<base64 de até 45 000 bytes>"}`. `id` é o do último `snapshot_request`. Tem o mesmo efeito de `PUT /api/dev/comparisons/{id}/screen` (só com a comparação `ready`, só PNG); se a comparação ainda não estiver `ready`, o agente guarda o print e o aplica quando ela ficar. O botão do celular só aparece depois de um `snapshot_request`, que só existe com `WCAM_DEV_TOOLS=1`.
+
+Mensagem com `type` desconhecido, JSON inválido ou campo fora do formato é ignorada pelo agente e registrada no log, sem encerrar a sessão.
+
+## Opção de qualidade
+
+| Chave | Nome | Taxa máxima |
+|---|---|---|
+| `maximum` | Máxima | 20 000 000 bit/s |
+| `balanced` | Equilibrada (padrão) | 10 000 000 bit/s |
+| `light` | Leve | 5 000 000 bit/s |
+
+- `PUT /api/quality-preset` com `{"preset": "<chave>"}` muda a opção; vale para a sessão atual e as próximas, até o agente fechar. Chave desconhecida: `422 invalid_request`. Com sessão aberta, o agente envia `quality_preset` ao celular.
+- O celular aplica a taxa em `maxBitrate` do envio com `setParameters`, sem renegociar; o agente ajusta o teto da estimativa de banda (REMB) ao mesmo valor.
+- `qualityPreset` no primeiro nível de `GET /api/status`, sempre presente.
 
 ## WebRTC
 
 - Os dois lados sem STUN e sem TURN: `iceServers: []` no navegador e `RTCConfiguration(iceServers=[])` no aiortc (o aiortc usa um STUN público quando a configuração é omitida; omitir é proibido).
 - O agente descarta, antes de `setRemoteDescription`, toda linha `a=candidate` da oferta cujo endereço não esteja na sub-rede da LAN (inclui nomes `.local`), e remove da resposta os candidatos das suas outras interfaces (WSL, Hyper-V, Docker).
-- Celular: uma faixa de vídeo, `contentHint = "detail"`, `maxBitrate` de 10 000 000 e `degradationPreference` `maintain-resolution` quando o navegador aceitar (o que não for aceito é registrado no relatório, não é erro).
+- Celular: uma faixa de vídeo, `contentHint = "detail"`, `maxBitrate` da opção de qualidade em uso (ver "Opção de qualidade"; padrão 10 000 000) e `degradationPreference` `maintain-resolution` quando o navegador aceitar (o que não for aceito é registrado no relatório, não é erro).
 - Codecs: os que o navegador e o aiortc têm em comum (H.264 ou VP8); o relatório registra qual foi negociado no aparelho real.
 
 ## Código de confirmação
@@ -162,8 +226,10 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
     "output": {"width": 1920, "height": 1080, "fps": 30},
     "source": "phone"
   },
+  "qualityPreset": "balanced",
   "session": {
-    "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800, "codec": "H264", "framesScaled": 0}
+    "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800, "codec": "H264", "framesScaled": 0, "colorRange": "full", "colorMatrix": "unspecified", "colorCorrection": {"state": "applied", "transfer": "bt709", "display": "apple"}},
+    "cameraCapabilities": {"width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"]}
   },
   "process": {"cpuPercent": 12.5},
   "quality": null
@@ -173,7 +239,10 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
 - `virtualCamera.state`: `active` ou `unavailable`. `reason` (só com `unavailable`): `driver_missing`, `device_in_use` ou `error`.
 - `backend`: `media_foundation` (câmera nativa "WCam", ADR 0011), `obs` (fallback) ou `fake`.
 - `fallbackReason`: por que a câmera nativa não está em uso; `null` quando `backend` é `media_foundation`. Valores: `native_not_registered` (DLL não registrada), `windows_too_old` (build anterior a 22000), `native_error` (a DLL falhou ao iniciar) e `not_windows`. Só é preenchido quando `WCAM_VIRTUAL_CAMERA` é `auto` e a escolha caiu da câmera nativa para outro backend; com backend explícito é sempre `null`. Com `WCAM_VIRTUAL_CAMERA=media_foundation` explícito e falha, não há fallback: `state` `unavailable` com `reason` `driver_missing` (DLL ausente) ou `error` (`WcamCameraStart` falhou).
-- `source`: `phone` quando os quadros vêm do celular; `placeholder` em qualquer outro momento.
+- `source`: `phone` quando os quadros vêm do celular; `frozen` quando a câmera repete o último quadro do celular porque nenhum quadro novo chegou há mais de 0,5 s (até completar 3 s sem quadro; antes de 0,5 s continua `phone`, que é o intervalo normal entre quadros); `placeholder` em qualquer outro momento.
+- `session.video.colorRange`: faixa declarada pelo celular no quadro mais recente, `full`, `limited` ou `unspecified`. `colorMatrix`: matriz declarada, `bt709`, `bt601`, outro nome do FFmpeg ou `unspecified`. A câmera sempre entrega faixa limitada; quadro em faixa cheia é ajustado pelo agente (CA-2, emenda da v0.6.0).
+- `session.video.colorCorrection`: correção de cor da conexão atual, derivada do `colorSpace` declarado pela câmera em `camera_capabilities` (spec v0.6.0 §1.1). `state`: `applied` (curva de exibição aplicada ao Y) ou `default` (só a faixa: sem `colorSpace`, transferência `srgb`, HDR ou convenção `standard`). `transfer`: o declarado, ou `null`. `display`: convenção de exibição do celular pela plataforma do `User-Agent`, `apple` (iPhone, iPad, Safari no macOS) ou `standard`. Recalculada a cada `camera_capabilities`; nada é guardado entre conexões.
+- `session.cameraCapabilities`: a última mensagem `camera_capabilities` do celular, sem o `type`; `null` até chegar a primeira.
 - `session.video.codec`: o codec negociado (`H264` ou `VP8`). `framesScaled`: quantos quadros precisaram ser redimensionados na sessão (o esperado é 0; ver "Formato de saída").
 - `process.cpuPercent`: uso de CPU do processo do agente, média da última janela de 1 s, via psutil.
 - `quality`: só existe com `WCAM_QUALITY_REFERENCE` definido (desenvolvimento e e2e); fora disso é sempre `null`. Ver "Qualidade".
@@ -185,6 +254,7 @@ Variáveis de ambiente (somam-se à tabela abaixo):
 | `WCAM_VIRTUAL_CAMERA` | `auto` | `auto` (Windows 22000 ou maior com a DLL registrada usa `media_foundation`; senão `obs`; fora do Windows, `fake`), `media_foundation`, `obs` ou `fake` |
 | `WCAM_VCAM_DLL` | `%ProgramFiles%\WCam\Wcam.VirtualCamera.dll` | caminho da DLL da câmera nativa |
 | `WCAM_QUALITY_REFERENCE` | vazio | caminho de um arquivo `.y4m` de referência; liga a medição de SSIM |
+| `WCAM_DEV_TOOLS` | vazio | `1` liga a comparação lado a lado no console (spec v0.6.0 §6); qualquer outro valor deixa desligada |
 
 ## Qualidade (`quality`)
 

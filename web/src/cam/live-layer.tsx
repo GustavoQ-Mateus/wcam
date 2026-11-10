@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { isSession, type LiveCamState } from "../data/cam-state";
 import { t } from "../data/language";
+import type { QualityPreset } from "../data/quality-preset";
 import { CaptureControls } from "./capture-controls";
 import { CaptureReadout } from "./capture-readout";
 import { ConfirmationPrompt } from "./confirmation-prompt";
@@ -8,15 +9,19 @@ import { ConnectingPrompt } from "./connecting-prompt";
 import { PreviewCover } from "./preview-cover";
 import { RotatePrompt } from "./rotate-prompt";
 import { ScreenNotice } from "./screen-notice";
+import { ScreenshotButton } from "./screenshot-button";
 import { ScrimLayer } from "./scrim-layer";
 import { Tally } from "./tally";
 
 interface LiveLayerProps {
   state: LiveCamState;
   showNotice: boolean;
+  qualityPreset: QualityPreset | null;
   onDismissNotice: () => void;
   onSwitchCamera: () => void;
   onTogglePreview: () => void;
+  onChooseQuality: (preset: QualityPreset) => void;
+  onSendScreenshot?: ((file: File) => Promise<boolean>) | undefined;
 }
 
 interface Prompt {
@@ -24,7 +29,16 @@ interface Prompt {
   content: ReactNode;
 }
 
-export function LiveLayer({ state, showNotice, onDismissNotice, onSwitchCamera, onTogglePreview }: LiveLayerProps) {
+export function LiveLayer({
+  state,
+  showNotice,
+  qualityPreset,
+  onDismissNotice,
+  onSwitchCamera,
+  onTogglePreview,
+  onChooseQuality,
+  onSendScreenshot,
+}: LiveLayerProps) {
   const prompt = promptFor(state);
   const previewOff = state.kind === "preview_off" || (state.kind === "live" && state.previewOff);
   return (
@@ -38,8 +52,15 @@ export function LiveLayer({ state, showNotice, onDismissNotice, onSwitchCamera, 
           <PreviewCover visible={previewOff} onShow={onTogglePreview} />
           <CaptureReadout capture={state.capture} dimmed={previewOff} />
           {state.kind === "live" && <Tally />}
-          <CaptureControls dimmed={previewOff} onPreviewOff={onTogglePreview} onSwitchCamera={onSwitchCamera} />
+          <CaptureControls
+            dimmed={previewOff}
+            qualityPreset={state.kind === "live" ? qualityPreset : null}
+            onPreviewOff={onTogglePreview}
+            onSwitchCamera={onSwitchCamera}
+            onChooseQuality={onChooseQuality}
+          />
           {showNotice && !previewOff && <ScreenNotice onDismiss={onDismissNotice} />}
+          {onSendScreenshot && <ScreenshotButton onSend={onSendScreenshot} />}
         </>
       )}
     </>

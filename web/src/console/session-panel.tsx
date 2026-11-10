@@ -1,5 +1,6 @@
+import type { CameraColorSpace } from "../data/camera-capabilities";
 import type { Session } from "../data/contract";
-import { videoFormatValues } from "../data/console-format";
+import { cameraColorLine, colorCorrectionKey, videoFormatValues } from "../data/console-format";
 import type { MessageKey } from "../data/i18n";
 import { t } from "../data/language";
 import { ConsoleButton } from "./console-button";
@@ -10,6 +11,7 @@ interface SessionPanelProps {
   onConfirm: () => void;
   onReject: () => void;
   onDisconnect: () => void;
+  onCompare?: (() => void) | undefined;
 }
 
 const CODE_SEPARATOR = "-";
@@ -19,7 +21,7 @@ const TITLE_KEYS: Readonly<Record<Session["state"], MessageKey>> = {
   live: "console.state_live",
 };
 
-export function SessionPanel({ session, onConfirm, onReject, onDisconnect }: SessionPanelProps) {
+export function SessionPanel({ session, onConfirm, onReject, onDisconnect, onCompare }: SessionPanelProps) {
   const awaiting = session.state === "awaiting_confirmation";
   return (
     <section className={styles.panel} data-state={session.state}>
@@ -47,6 +49,8 @@ export function SessionPanel({ session, onConfirm, onReject, onDisconnect }: Ses
           <span>{session.video.codec}</span>
         </p>
       )}
+      {session.video && <p className={styles.color}>{t(colorCorrectionKey(session.video.colorCorrection))}</p>}
+      {session.video && <p className={styles.color}>{cameraColorText(session.cameraCapabilities?.colorSpace)}</p>}
       {session.video && session.video.framesScaled > 0 && (
         <p className={styles.warning}>
           <span className={styles.warningMark} aria-hidden="true" />
@@ -64,11 +68,27 @@ export function SessionPanel({ session, onConfirm, onReject, onDisconnect }: Ses
             </ConsoleButton>
           </>
         ) : (
-          <ConsoleButton variant="secondary" onClick={onDisconnect}>
-            {t("console.disconnect")}
-          </ConsoleButton>
+          <>
+            <ConsoleButton variant="secondary" onClick={onDisconnect}>
+              {t("console.disconnect")}
+            </ConsoleButton>
+            {onCompare && (
+              <ConsoleButton variant="secondary" onClick={onCompare}>
+                {t("console.dev_compare")}
+              </ConsoleButton>
+            )}
+          </>
         )}
       </div>
     </section>
   );
+}
+
+function cameraColorText(colorSpace: CameraColorSpace | null | undefined): string {
+  const line = cameraColorLine(colorSpace);
+  if (line.kind === "unknown") {
+    return t("console.camera_color_unknown");
+  }
+  const { primaries, transfer, matrix, rangeKey } = line;
+  return t("console.camera_color", { primaries, transfer, matrix, range: t(rangeKey) });
 }

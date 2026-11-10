@@ -40,3 +40,4 @@ class Settings(BaseSettings):
     virtual_camera: Literal["auto", "media_foundation", "obs", "fake"] = "auto"
     vcam_dll: Path = Field(default_factory=default_vcam_dll)
     quality_reference: Path | None = None
+    dev_tools: bool = False

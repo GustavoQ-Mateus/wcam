@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+from wcam.media.color_correction import ColorCorrection
 from wcam.media.metrics import VideoStats
 from wcam.sessions.manager import MediaPeer, PeerEvents
 
@@ -38,6 +39,8 @@ class FakePeer:
         self.gate_open = False
         self.closed = False
         self.video: VideoStats | None = None
+        self.max_bitrate_bps: int | None = None
+        self.color_corrections: list[ColorCorrection] = []
 
     @property
     def answer_sdp(self) -> str:
@@ -45,6 +48,12 @@ class FakePeer:
 
     def open_gate(self) -> None:
         self.gate_open = True
+
+    def limit_bitrate(self, max_bitrate_bps: int) -> None:
+        self.max_bitrate_bps = max_bitrate_bps
+
+    def set_color_correction(self, correction: ColorCorrection) -> None:
+        self.color_corrections.append(correction)
 
     def send(self, message: dict[str, str]) -> None:
         self.sent.append(message)

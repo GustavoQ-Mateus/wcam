@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from wcam.media.color_correction import ColorCorrection
+
 WINDOW_SECONDS = 1.0
 BITS_PER_BYTE = 8
 BITS_PER_KILOBIT = 1000
@@ -13,6 +15,9 @@ class VideoStats:
     bitrate_kbps: int
     codec: str | None = None
     frames_scaled: int = 0
+    color_range: str = "unspecified"
+    color_matrix: str = "unspecified"
+    color_correction: ColorCorrection | None = None
 
 
 class VideoMeter:

@@ -1,0 +1,248 @@
+# Relatório v0.6.0, sessão agent
+
+De: sessão `agent`
+Para: orquestrador (`wcam-ae`)
+Spec: `docs/specs/spec-v0.6.0.md` (Aprovada)
+Contrato: `docs/contrato.md` (0.6.0, com `ca1bc24` e `66a142b`, já mesclados)
+Branch: `feature/qualidade-agent`
+
+## 1. O que foi feito
+
+### Opção de qualidade e mensagens do celular (handoff 5 e 6)
+- `media/quality_preset.py`: `QualityPreset` (`maximum`, `balanced`, `light`) com a taxa máxima de cada uma (20, 10 e 5 Mbit/s). Padrão `balanced`.
+- `SessionManager` guarda a opção só em memória. `set_quality_preset` limita a taxa do peer e envia `quality_preset` ao celular. Quando o canal abre, o agente envia `session_state` e logo depois `quality_preset`. Toda sessão nova começa com a taxa da opção em uso.
+- `PUT /api/quality-preset` responde `204`, ou `422 invalid_request` com uma chave desconhecida. `qualityPreset` aparece no primeiro nível do status. `session.cameraCapabilities` é `null` até a primeira mensagem do celular.
+- O agente passou a ler o DataChannel (`sessions/phone_messages.py`, Pydantic em modo estrito com união discriminada por `type`):
+  - `set_quality_preset` só vale com a sessão `live`; antes disso, é ignorado com log e sem eco;
+  - `camera_capabilities` vale em qualquer estado e fica em `session.cameraCapabilities`;
+  - qualquer outra mensagem é ignorada com um aviso no log, que não reproduz o conteúdo, e a sessão continua.
+- Teto do REMB: `CappedRateControl`, subclasse do `AimdRateControl` do aiortc, entra no lugar do `rate_control` do estimador. Ele começa no teto, volta ao teto a cada mudança de opção e nunca anuncia mais que o teto. Substitui o `PHONE_MAX_BITRATE_BPS` fixo. Antes, o REMB começava em 10 Mbit/s e podia crescer sem limite.
+
+### Faixa de cor (handoff 1)
+- `media/color_range.py` lê a declaração de cada quadro: faixa cheia é `yuvj420p` ou `color_range` JPEG; faixa limitada é `color_range` MPEG; o resto é não declarada. A matriz vem de `colorspace`: `bt709`; `bt601` para `bt470bg` e `smpte170m`; outro nome do FFmpeg; ou `unspecified`.
+- Faixa cheia passa por tabela: Y vira `16 + Y × 219 / 255` e U, V viram `128 + (C − 128) × 224 / 255`, arredondados ao inteiro mais próximo (nenhum valor cai exatamente em ,5, então o modo de arredondamento não muda nada). Faixa limitada e não declarada passam byte a byte.
+- A extração dos planos não deixa o swscale mexer na faixa: no caminho com letterbox, o `reformat` recebe `src_color_range` igual a `dst_color_range`. Antes, um `yuvj420p` reformatado era convertido de faixa implicitamente pelo swscale.
+- `session.video.colorRange` e `colorMatrix` aparecem no status.
+- Desempenho, a pedido do orquestrador. O tempo do worker por quadro 1080p `yuvj420p` real (extração, tabela e NV12; mínimo de 5 × 40) caiu de 11,6 a 12,0 ms para 6,4 ms. A tabela, que custava 11,1 ms com indexação do numpy, agora usa `bytes.translate` direto no array do quadro: cerca de 4,5 ms, sem dependência nova. Variantes descartadas: `np.take` com `out=` (21,6 ms) e aritmética em `uint16` (13,3 ms só no plano Y).
+
+### Congelar (handoff 2)
+- Sem quadro novo, o último quadro bom é publicado a cada tick, a 30 fps, por até 3 s. Depois disso, vem o preto (Y=16, UV=128). Antes, o preto vinha em 1 s.
+- `virtualCamera.source` passa a `frozen` depois de 0,5 s sem quadro novo. Antes disso é o intervalo normal entre quadros, e o source continua `phone`. Quadro em retrato vai direto para o preto, como antes.
+
+### Recuperação e teste de laboratório (handoff 3)
+- Teste de laboratório (`tests/integration/test_stall_recovery.py`):
+  - um cliente aiortc envia H.264 1080p30 pré-codificado pelo PyAV, porque o codificador do aiortc trava em 3 Mbit/s;
+  - o clipe é codificado a 4,1 Mbit/s, o que dá cerca de 4,9 Mbit/s de carga útil no fio, e o teste confere 5 Mbit/s ± 10%;
+  - o cliente responde ao PLI voltando ao IDR;
+  - um filtro no `_send_rtp` do cliente descarta um pacote e o reenvio RTX dele;
+  - o teste mede o maior intervalo entre quadros que chegam ao pipeline.
+- A trava: o `_remove_frame` do aiortc para no primeiro slot vazio, então nenhum quadro sai até o buffer de 2048 pacotes encher e o próprio aiortc descartar o trecho.
+- Mecanismo (`media/recovering_jitter_buffer.py`): subclasse do `JitterBuffer` do aiortc, instalada no lugar do buffer de 2048 pacotes.
+  - Com pacotes chegando e nenhum quadro saindo por mais de 500 ms, ela pula até o início do primeiro quadro inteiro depois do buraco e devolve `pli_flag`. Com isso, o próprio aiortc envia o PLI.
+  - Depois disso, os quadros decodificados só voltam à câmera a partir do primeiro `key_frame`, para não mostrar imagem corrompida. Enquanto o quadro-chave não chega, o PLI se repete a cada 500 ms.
+  - O buffer também conta os bytes de carga útil, os PLIs e as travas, que o registro de episódios usa.
+
+| Laboratório, 5 rodadas cada | Maior intervalo sem quadro | Taxa no fio | Travas detectadas | PLI |
+|---|---|---|---|---|
+| Antes (buffer de 2048, sem recuperação) | 3,86 a 3,92 s | 4,87 a 4,92 Mbit/s | 0 | 1 (do aiortc, ao encher o buffer) |
+| Depois | 0,57 a 0,60 s | 4,87 a 4,91 Mbit/s | 1 | 1 |
+
+### Registro de episódios (handoff 4)
+- `media/episodes.py`: `EpisodeTracker` puro. O peer o alimenta a cada 100 ms numa tarefa própria, criada no Confirmar e cancelada no `close`, que também fecha um episódio que ainda esteja aberto. Cada amostra traz:
+  - a idade do último quadro bom (paisagem);
+  - se o último quadro veio em retrato;
+  - se a saída está em preto;
+  - os contadores do buffer.
+- Uma linha JSON por episódio de mais de 500 ms, em `<WCAM_DATA_DIR>/logs/episodes.log`, com `RotatingFileHandler` (1 MB, um arquivo antigo). O logger `wcam.episodes` não propaga para o resto do log.
+- Campos:
+  - `startedAt` e `endedAt`, em UTC com milissegundos;
+  - `durationMs`;
+  - `cause`: `portrait` se houve retrato, `stalled` se o buffer detectou trava durante o episódio, senão `silence`;
+  - `action`: `black` se a saída chegou ao preto, senão `frozen`;
+  - `rtpBytes`;
+  - `pliSent`.
+- Exemplo do laboratório: `{"startedAt": "...Z", "endedAt": "...Z", "durationMs": 590, "cause": "stalled", "action": "frozen", "rtpBytes": ..., "pliSent": 1}`.
+
+### QR fora de arquivo (handoff 7)
+- `cli.announce_pairing`: com a saída num terminal interativo (`isatty`), abre a janela de pareamento e mostra o QR. Senão, nem gera token: escreve `terminal.scan_in_console` com a URL do console e a dica de parar. Antes, o QR (e o token dentro dele) ia para o arquivo quando a saída era redirecionada.
+
+### Benchmark (handoff 8)
+`python -m wcam.tools.decode_benchmark` usa `tools/synthetic_h264.py`, que também serve aos testes. Ele decodifica 2 s de H.264 sintético a 20 Mbit/s (a taxa da Máxima), com `libx264` `ultrafast` e `zerolatency`, sem B-frames, como no WebRTC. O decodificador é um `CodecContext("h264")` com os padrões, igual ao do aiortc. A CPU é medida por `cpu_times` do processo, relativa à duração do vídeo.
+
+Esta máquina: Intel Core i5-8500 a 3,0 GHz, 6 núcleos.
+
+| Formato | fps | Decodificação (ms/quadro, tempo de parede) | CPU de um núcleo | CPU da máquina |
+|---|---|---|---|---|
+| 1280x720 | 30 | 1,5 | 11% | 1,8% |
+| 1280x720 | 60 | 1,0 | 12% | 2,1% |
+| 1920x1080 | 30 | 1,5 | 16% | 2,6% |
+| 1920x1080 | 60 | 1,6 | 23% | 3,9% |
+| 2560x1440 | 30 | 2,2 | 18% | 3,0% |
+| 2560x1440 | 60 | 2,2 | 34% | 5,6% |
+| 3840x2160 | 30 | 6,3 | 34% | 5,7% |
+| 3840x2160 | 60 | 5,4 | 74% | 12,4% |
+
+O tempo de parede por quadro fica abaixo do tempo de CPU por quadro porque o FFmpeg decodifica em várias threads. Para a v0.7.0, o custo que cresce com o formato é o do worker: extração, tabela de faixa e NV12, cerca de 6,4 ms em 1080p. Em 4K a área é 4 vezes maior, o que daria cerca de 26 ms por quadro, perto do orçamento de 16,7 ms a 60 fps num worker só. Isso é estimativa, não medição.
+
+### Correção de cor pela câmera (adendo de 2026-11-08, substitui a calibração por imagem)
+- Spike `spike/camera-color-agent` (só local; `spike/camera-color` já estava no worktree da web):
+  - o quadro cru da câmera do iPhone (`VideoFrame.copyTo`, NV12, `bt709` em primárias, transferência e matriz, faixa cheia, frontal e traseira) foi comparado com o quadro decodificado no PC;
+  - Y com ganho de 0,995 e PSNR de 36,6 a 38,6 dB; croma sem viés (diferença média de cerca de 0);
+  - os ganhos de croma de 0,94 a 0,99 são suavização do codec sobre um croma fraco (desvio de 5 a 12 códigos): um desfoque de 2x2 do próprio quadro cru já dá de 0,97 a 0,99, e o plano afetado troca entre capturas;
+  - a captura da traseira logo depois da troca era um quadro cru preto (Y de 0 a 7), com a câmera ainda ligando;
+  - no laboratório, o detector reconheceu a conversão de faixa (ganho de 0,858 e offset de 16, exatamente 219/255 e +16).
+- Conclusão: o que chega ao PC é o que a câmera produziu, menos a compressão. A redução de saturação de 19% da calibração por imagem vinha do canvas do Safari, não do codificador nem da exibição.
+- Correção determinística:
+  - convenção de exibição pelo `User-Agent` (`apple` para iPhone e iPad em qualquer navegador e Safari no macOS; `standard` para o resto);
+  - com `transfer` `bt709` ou `smpte170m` e convenção `apple`, a tabela de Y aplica `sRGB_OETF(E^1,961)` ao Y normalizado, composta com a faixa; U e V só com a tabela de faixa. O resto fica em `default`, só com a faixa, e HDR (`pq`, `hlg`) vai para o log;
+  - a faixa declarada no `colorSpace` tem prioridade sobre a do quadro;
+  - recalculada a cada `camera_capabilities`; a conexão começa em `default` com a convenção dela, e nada passa para a seguinte.
+- Erro do modelo só em Y (croma inalterado) contra o modelo exato por canal: ΔE2000 médio de 0,67 a 0,95 nas capturas reais (sem correção, de 2,7 a 3,0) e 0,86 numa grade de 480 cores saturadas. Uma tabela 2D Y×croma tiraria mais 0,4 a 0,7 nas cenas reais, por cerca de 8 ms a mais por quadro (medido: 10,6 ms); fica fora até uma medição pedir.
+- Custo por quadro no worker, com um quadro cru real do iPhone: 4,97 ms só com a faixa e 4,72 ms com a correção aplicada (mediana). É o mesmo `translate`.
+- A tabela de Y não tem pontos fixos arredondados (cada um anda 1 código em direção ao valor exato), para o custo não depender do conteúdo.
+- Saíram: o anel de quadros, o ajuste por amostras, `color_sample`, `colorCalibration`, o trace e `WCAM_COLOR_TRACE_DIR`, com os seus testes. As funções de redução que a comparação usa foram para `media/image_reduction.py`.
+- Comparação lado a lado: `correction` no lugar de `calibration` (estado, `transfer`, `display` e as tabelas em uso). QualityMeter: a referência passa pela tabela de Y quando a correção está `applied` (decisão 8).
+- Testes (30):
+  - a tabela bate com `sRGB_OETF(E^1,961)` nos 256 valores, em faixa cheia e limitada, com no máximo 1 código de diferença;
+  - preto e branco preservados e croma só com a faixa;
+  - `colorSpace` ausente ou vazio, `srgb`, `iec61966-2-1`, `pq`, `hlg` e convenção `standard` dão `default`, com saída byte a byte igual à de só faixa; HDR registrado no log;
+  - a faixa declarada vence a do quadro, nos dois sentidos;
+  - a convenção sai do `User-Agent` (iPhone com Safari e com Chrome, iPad e Safari no macOS dão `apple`; Chrome no macOS, Android e Windows dão `standard`);
+  - cada `camera_capabilities` reaplica; a conexão seguinte começa só com `default`; parar o celular descarta a correção;
+  - status com `colorCorrection` e `cameraCapabilities.colorSpace`.
+  No fluxo WebRTC real (cliente aiortc, `smpte170m`, `standard`), `colorCorrection` fica `default`.
+
+### Resultado no iPhone do usuário (comparação de 2026-11-08, 21:53)
+- Comparação `wcam-65bdcb172a11f251`: `correction` `applied`, `transfer` `bt709`, convenção `apple`.
+- Imagem da câmera WCam no PC contra o quadro do visor do celular: ΔE2000 médio de 1,80 (mediana 1,68, p90 2,93), ΔL* de −0,67, croma 0,88, matiz −0,35°, correlação de 0,999, `captureGapMs` de 10 ms (medido no relógio do PC).
+- Print da tela do iPhone contra a imagem do PC: ΔE2000 médio de 2,69 (mediana 2,10, p90 4,55), ΔL* de +1,59, croma 0,98, matiz −0,44°. Alinhamento espelhado (câmera frontal), correlação de 0,951.
+- Print contra o quadro do celular: ΔE2000 médio de 3,04 (mediana 2,59), ΔL* de +2,30, croma 1,04.
+- O print foi tirado 24 s depois da captura, com o LED colorido do microfone mudando a luz do quarto. No fundo da cena, o ΔE variou de 1,2 a 2,3 só por isso. A média de 2,69 fica acima do limite de 2 do CA 3.1, mas a mediana fica perto e a saturação bate (0,98).
+- Antes, com a calibração por imagem, o mesmo tipo de comparação (print contra PC) deu ΔE de 4,43 e croma de 0,78.
+
+### Calibração de cor (adendo de 2026-11-06, substituída em 2026-11-08; histórico)
+- `color_sample` é validado pelo contrato: `colorSpace` `display-p3` ou `srgb`, `width` e `height` positivos, e `rgb` em base64 com exatamente `width × height × 3` bytes. Fora disso, a mensagem é ignorada com o log de mensagem fora do contrato. Antes do `live`, é ignorada com log próprio. `camera_capabilities` (enviada a cada troca de câmera) recomeça a medição.
+- Anel dos últimos 60 quadros (2 s), reduzidos a 320x180 e normalizados pela faixa declarada. Fica ativo só enquanto faltam amostras: até 5 amostras da medição atual ou 30 s sem amostra.
+- Cada amostra é comparada 0,7 s depois de chegar, porque a mensagem chega antes do quadro correspondente. O quadro escolhido é o de maior correlação de luminância, com e sem espelho; abaixo de 0,8, a amostra é descartada.
+- Ajuste, com pelo menos 3 amostras válidas e repetido a cada amostra nova até a quinta: curva de tom monotônica de 9 pontos no Y e um ganho de saturação no U e V.
+  - O ponto de partida vem da mediana por faixa de luminância e de mínimos quadrados no croma. Depois vem uma busca por coordenadas que minimiza o ΔE2000 médio.
+  - O ΔE é medido entre a amostra (no espaço de cor dela) e a saída corrigida lida como BT.709 limitada e exibida em sRGB, que é como o Windows mostra a câmera.
+  - Só aplica se o ΔE cair; senão, fica `default` com o ΔE medido. Com menos de 3 amostras válidas em 5, também fica `default`, com `deltaE` nulo.
+  - O ajuste roda num executor próprio (`wcam-color`), fora do event loop e do worker de quadros.
+- Aplicação: uma tabela de 256 entradas para o Y e outra para o U e V, já compostas com a tabela de faixa, no mesmo `translate` de antes. Sem calibração, a tabela é a de faixa da v0.6.0, byte a byte (teste), e faixa limitada continua sem tradução.
+- `session.video.colorCalibration` no status. Tudo recomeça em `measuring` ao iniciar e ao encerrar a conexão e a cada troca de câmera; nada vai para o disco.
+- `WCAM_COLOR_TRACE_DIR` (só desenvolvimento), no formato combinado com a vcam:
+  - um `color-sample-<n>.json` por amostra aceita em `live`: campos da mensagem, `receivedAt`, `calibrationState`, `correlation`, `mirrored`, `colorRange` e `matchedFrame` com Y, U e V no tamanho da amostra, em códigos decodificados antes de qualquer tabela;
+  - `color-calibration.json` ao fechar, com `rangeTables` e `appliedTables`.
+- Números:
+  - Laboratório de ponta a ponta (pareamento real, vídeo codificado pelo aiortc, 5 `color_sample` com curva e saturação conhecidas, duas conexões seguidas): ΔE2000 de 4,08 sem correção e 0,17 depois, contra 0,16 da correção verdadeira, nas duas conexões. Correlação de 0,988. Cada conexão começa em `measuring`.
+  - Amostras do iPhone medidas no spike (10 amostras, 18:56): com 3 amostras, o ajuste leva o ΔE2000 de 2,49 a 1,21, o limite do modelo de curva e saturação, em cerca de 1 s no executor.
+  - Custo por quadro no worker, num quadro real do iPhone: 4,69 ms só com a faixa, 4,75 ms com a calibração aplicada. Com a imagem de referência do e2e: em faixa limitada, 1,0 ms só com a faixa (sem tabela) e 5,0 ms com a calibração; em faixa cheia, 5,0 ms nos dois casos. Durante a medição, o anel (com o mapa de detalhe) custa cerca de 9 ms por quadro, por cerca de 6 s por conexão.
+- Detalhe fino: o anel guarda, por célula, a diferença entre pixels vizinhos na resolução cheia, e o ajuste ignora as células com detalhe fino (mais de 4% da escala de luma). Nesses pontos, a média por área do agente e a amostragem do `drawImage` do navegador não concordam (aliasing), e os erros têm sinais opostos que nenhuma curva corrige. Com menos de 500 células lisas, o estado fica `default`. Num quadro real do iPhone, a máscara descarta de 0 a 3% das células. Teste com aliasing simulado: erro da curva de 0,006 com a máscara e 0,118 sem.
+- Tabelas da calibração sem ponto fixo arredondado: cada entrada que cairia nela mesma anda 1 código em direção ao valor exato (ficam o croma 128 e os extremos cortados, que são exatos). Assim, o `bytes.translate` custa o mesmo com qualquer conteúdo: em ruído, 1,5 ms por plano, contra até 8,8 ms antes. A tabela só de faixa continua a da v0.6.0, byte a byte.
+- Imagem de referência do e2e (y4m `C420jpeg`): ΔE2000 de 4,74 antes da máscara de detalhe. Restrito às células lisas, vai de 3,99 sem correção a 2,94 depois. O restante é diferença de matriz: a prévia do Chromium mostra essa referência como BT.601, e a câmera é lida como BT.709. Lendo como BT.601, o mesmo ajuste daria 0,48, com o desvio de matiz caindo de 6,2 para 1,0 grau. Converter matriz está fora do escopo da v0.6.0 (§1.1). Por decisão do orquestrador, com essa referência o e2e exige só `applied` ou `default` e o SSIM de pelo menos 0,98; ΔE abaixo de 2 é exigido com a câmera falsa padrão do Chromium.
+- Reinício do SSIM: com `WCAM_QUALITY_REFERENCE`, a medição recomeça quando `colorCalibration` muda de estado, para o SSIM refletir a saída com a calibração.
+- SSIM com a calibração (decisão 8 da spec): o SSIM mede perda de detalhe, não a correção de cor, que é intencional. Em `applied`, a referência passa pela mesma tabela de Y aplicada ao vídeo; em `measuring` e `default`, continua a referência original. Teste: uma tabela conhecida aplicada ao vídeo e à referência dá SSIM 1,0, e o pipeline reinicia a medição com a tabela de Y da calibração em `applied` e sem tabela em `default`.
+- e2e da web na integração `5eabd76` (14 de 14): SSIM de 0,9865 depois do `applied`, contra a referência corrigida, a 29 fps; ΔE2000 de 0,16 e 0,22 com a câmera falsa padrão do Chromium. Antes da decisão 8, o SSIM contra a referência original era 0,985 em `measuring` e 0,973 depois do `applied`. A queda para cerca de 6 fps vista numa rodada anterior não se repetiu.
+
+### Teste final no iPhone (trace de 2026-11-07)
+- 15 amostras em três medições, todas com `colorRange` full, `display-p3` e sem espelho.
+  - 00:44:52 a 00:44:56: correlação de 0,992 a 0,993, `applied`.
+  - 00:45:40 a 00:45:44, provavelmente a troca de câmera: correlação de 0,43 a 0,86 em quatro amostras de cena quase lisa; com só 2 válidas, a medição não fechou.
+  - 00:46:08 a 00:46:12: correlação de 0,92 a 0,99, `applied` com `deltaE` 1,01.
+- Por amostra, nas células lisas, com a saída lida como o Windows lê (709 limitada em sRGB): ΔE2000 de 1,2 a 1,9 só com a faixa e de 0,8 a 1,6 com a tabela aplicada. Lido como BT.601, quase igual, então a matriz não explica a diferença.
+- A tabela aplicada clareia os meios-tons em 9 a 11 códigos e reduz a saturação em cerca de 19% (ganho de croma 0,81). Mesmo assim, o usuário viu a WCam "bem diferente" do celular. Como a saída bate com o canvas em ΔE de cerca de 1, a diferença está depois do agente ou fora do canvas. A redução de saturação sugere que o canvas do Safari sai menos saturado que a tela do iPhone. Isso motivou a comparação lado a lado.
+
+### Comparação lado a lado (adendo de 2026-11-07)
+- `WCAM_DEV_TOOLS` na configuração. Sem a variável, as rotas de `/api/dev` respondem `404 not_found`, `devTools` vem `false` no status e as mensagens de imagem do celular são ignoradas com log. Com ela, `devTools` vem `true`.
+- `POST /api/dev/comparisons` exige sessão `live` (`409 no_live_session`), cria a comparação e manda `snapshot_request` ao celular.
+  - `snapshot_begin` e `snapshot_chunk` são remontados por índice, em qualquer ordem. Tamanho declarado maior que os pedaços permitem, índice fora da faixa ou tamanho final diferente dão `failed` com `phone_invalid`.
+  - Os prazos são de 10 s a partir do pedido: `phone_timeout` sem nada do celular, `phone_invalid` com pedaço faltando e `pc_missing` sem a imagem do PC. O fim da sessão dá `session_ended`.
+  - Ficam só as últimas 5 comparações, em memória; nada vai para o disco.
+- `PUT .../pc` aceita PNG de até 20 MB; o que não é PNG dá `422 invalid_request`. Com as duas imagens, o relatório é calculado fora do event loop.
+  - Mesma redução da calibração para 320x180 por média de área e casamento por correlação de luminância, com e sem espelho.
+  - Células de detalhe fino excluídas das duas imagens, como na calibração.
+  - Resultado: ΔE2000 médio, mediano e p90, ΔL*, razão de croma, desvio de matiz e grade 8x4.
+  - A imagem do celular é lida no seu `colorSpace` e a do PC em sRGB.
+  - `calibration` traz o estado, o `deltaE` e as tabelas em uso (as de faixa quando não há calibração, identidade em faixa limitada).
+- Print da tela do celular, por `PUT .../screen` (só com a comparação `ready`; antes, `409 comparison_not_ready`) ou pelo DataChannel (`screenshot_begin` e `screenshot_chunk`, guardado se a comparação ainda estiver `pending` e aplicado quando ela fica `ready`).
+  - O espaço de cor vem do perfil ICC do PNG (`iCCP` com "Display P3" vira `display-p3`; `sRGB`, outro perfil ou nenhum vira `srgb`).
+  - O vídeo é localizado no print por correlação normalizada (FFT), com busca de escala e posição em duas etapas e com e sem espelho, e recortado.
+  - `screenDifference.phone` compara o print com o canvas e `screenDifference.pc`, o print com a imagem do PC, no formato de `difference` (o print é a referência).
+  - Downloads: `phone.png` e `screen.png`.
+  - Ajuste de 2026-11-08, depois do primeiro uso no iPhone: `screenDifference.*.mirrored` e `correlation` passaram a vir do alinhamento do print (antes, `mirrored` saía sempre `false`, porque a comparação era feita sobre o recorte já desespelhado; o espelho escolhido estava certo). `captureGapMs` passou a ser medido só no relógio do PC: envio do `snapshot_request` mais o `captureDelayMs` do celular, contra o `capturedAt` do PC em `PUT .../pc?capturedAt=`. Antes, ele comparava o relógio do iPhone com o do PC e deu 18,5 s de defasagem. Sem um dos dois valores, fica `null`. Testes: gap conhecido, gap nulo sem um dos lados, espelho e correlação do alinhamento, `pc.capturedAt` pela rota.
+- PNG decodificado pelo PyAV, que já estava no projeto; nenhuma dependência nova.
+- Testes (19):
+  - remontagem fora de ordem com relatório `ready`; pedaço faltando; tamanho errado;
+  - `phone_timeout`, `pc_missing`, limite de 5 e `session_ended`;
+  - PNG inválido recusado;
+  - escurecimento conhecido de 20 códigos medido (ΔL negativo, ΔE acima de 3); espelho encontrado;
+  - espaço de cor pelo ICC; print alinhado sob a interface do `/cam` e espelhado (ΔE abaixo de 1);
+  - print antes do `ready` recusado; print enviado relatado contra canvas e PC; print pelo DataChannel esperando a comparação `pending`;
+  - comparação só em `live`, com o `snapshot_request` enviado; imagens ignoradas sem a variável;
+  - rotas `404` sem a variável e relatório completo com ela.
+
+### Versão
+0.6.0 no `pyproject.toml` e no `uv.lock`; `wcam --version` confirma 0.6.0.
+
+Commits:
+- `63d92b3`: opção de qualidade e mensagens do celular;
+- `cec1f29`: faixa de cor;
+- `795488f`: congelar;
+- `f910247`: recuperação e laboratório;
+- `8ff80db`: teste do congelado a cada tick;
+- `350b6b7`: episódios;
+- `fd425d5`: QR;
+- `735a5e8`: desempenho da tabela;
+- `c4dc0f3`: versão;
+- `3716148`: benchmark;
+- `3e09bca`: merge de `origin/feature/qualidade`.
+
+## 2. Critérios de aceitação
+
+| CA | Estado | Evidência |
+|---|---|---|
+| 1 | Verificado (agent) | Testes de unidade: a tabela leva 0 a 16 e 255 a 235, e o croma 128 fica 128 (0 vira 16, 255 vira 240). Todo Y acima de 0 sai acima de 16. Faixa limitada e não declarada saem byte a byte iguais. Faixa cheia com letterbox é convertida uma vez só. Valores do iPhone do usuário: o SPS do H.264 declara `video_full_range_flag` 1, com matriz, primária e transferência não especificadas (código 2); o status mostrou `colorRange` `full` e `colorMatrix` `unspecified`; o `VideoFrame.colorSpace` das câmeras frontal e traseira declara `bt709` em primárias, transferência e matriz, faixa cheia. Os quadros crus do iPhone no spike chegam a Y 0, e a tabela os leva a 16 sem que nenhum Y acima de 0 chegue a 16. Nenhum Android testado. |
+| 3.1 | Parcial | Os 30 testes da correção pela câmera, mais o fluxo WebRTC real em `default` com a convenção `standard`. Custo por quadro igual ao de só faixa. No iPhone do usuário (2026-11-08): `applied` com `bt709` e `apple`; PC contra o quadro do celular com ΔE2000 de 1,80; print da tela contra o PC com ΔE2000 médio de 2,69 (mediana 2,10, croma 0,98), acima do limite de 2, com o print 24 s depois e a luz do quarto mudando (detalhes acima). A decisão sobre o limite fica com o orquestrador e o usuário. |
+| 3.2 | Para revisão | Nenhum valor por modelo ou aparelho no código do agente. A única regra por plataforma é a convenção de exibição da decisão 10 (`apple` ou `standard` pelo `User-Agent`). |
+| 3.3 | Verificado (agent) | Lado do agente coberto pelos testes da comparação (23 ao todo): remontagem (inclusive pedaço faltando e tamanho errado), prazo de 10 s, limite de 5 comparações, relatório com diferença conhecida entre imagens sintéticas, rota `404` sem a variável, print com espelho e correlação do alinhamento, `captureGapMs` no relógio do PC. Usado pelo usuário no iPhone em 2026-11-08 (comparações `wcam-fc65c330cc5298f8` e `wcam-65bdcb172a11f251`). |
+| 4 | Parcial (agent) | Teste com relógio controlado: congelado em 2,8 s, preto (Y=16, UV=128) em 3,2 s, e o mesmo quadro enviado ao sink em cada tick a 30 fps durante todo o intervalo. Falta a verificação no Frame Server, que depende da DLL nova da vcam. |
+| 5 | Verificado | Laboratório a 4,9 Mbit/s com um pacote e o reenvio perdidos: o vídeo volta em 0,57 a 0,60 s (antes, 3,86 a 3,92 s). O teste falha acima de 1 s. |
+| 6 | Verificado (agent) | No laboratório, a trava gera uma linha `stalled`/`frozen` com `pliSent` de pelo menos 1 e `rtpBytes` maior que 0. O teste confere que o arquivo não contém o IP do emissor, `#t=` nem `https://`. Testes de unidade cobrem os campos, as causas, as ações, o fim da sessão e uma linha por episódio no arquivo. |
+| 8 | Parcial (agent) | O lado do agente está coberto. Teste com DataChannel real: `set_quality_preset` do celular gera eco, e o `PUT` do console chega ao celular como `quality_preset`. O teto do REMB por opção foi verificado nas três opções (o primeiro REMB fica em pelo menos 90% do teto, e nenhum passa dele). O e2e de menos de 300 ms e da taxa em até 5 s é da web. |
+| 9 | Verificado | Com a saída redirecionada, sai só a orientação do console e nenhum `#t=`, e a janela de pareamento nem é aberta (teste). |
+| 10 | Verificado (agent) | Benchmark de decodificação desta máquina acima. Capacidades do iPhone do usuário (frontal, pela coleta de status de 2026-11-06): 4032x3024, 60 fps, codecs `video/H264`, `video/H265`, `video/VP8`, `video/VP9` e `video/AV1`; negociado H.264 (constrained baseline, nível 4.0, pelo SPS). |
+| 11 (agent) | Parcial | Em `agent/`, no estado final com o merge: `ruff check` e `ruff format --check` limpos, `pyright` com 0 erros, `pytest` com 251 passed e 1 skipped no estado do commit do ajuste da comparação (o teste da DLL real, opcional). Versão 0.6.0. CI não verificado. |
+
+## 3. Decisões e pontos para registrar
+
+1. Já confirmados por você e registrados no contrato: o `set_quality_preset` do celular só vale em `live` (`ca1bc24`), e o `frozen` só aparece depois de 0,5 s (`66a142b`).
+2. `rtpBytes` é a carga útil RTP que chega ao buffer de recepção (inclui reenvios, sem cabeçalhos RTP nem SRTP). É o que o agente vê sem chamar `getStats` a cada amostra.
+3. Causa do episódio: `stalled` quando o buffer detectou trava durante o episódio. Uma falta de sinal no Wi-Fi seguida de uma rajada com buraco sai como `stalled`, porque a trava é o que segurou a imagem no fim.
+4. Se o primeiro quadro depois do Confirmar demorar mais de 0,5 s, isso conta como episódio `silence`. No uso real o vídeo já está chegando antes do Confirmar, então o primeiro quadro vem em menos de um tick.
+5. Mexidas em partes internas do aiortc 1.15:
+   - continua o atributo privado do buffer de recepção, já usado desde a v0.4.0;
+   - o buffer novo usa os membros protegidos `_origin`, `_packets` e `_remove_frame` do `JitterBuffer`;
+   - o teto do REMB troca o atributo público `rate_control` do estimador.
+   Testes que quebram se o aiortc mudar: `test_aiortc_buffer_alone_still_stalls_on_a_lost_packet` (laboratório) e `test_plain_aiortc_buffer_stays_stalled_on_the_same_packets` (unidade). Os testes de unidade do buffer novo e do REMB por opção também quebram se esses membros mudarem.
+6. `tools/synthetic_h264.py` tipa o PyAV com `Protocol`, porque os stubs do PyAV 17 deixam `Packet` sem parâmetro e o pyright estrito rejeita qualquer chamada a `encode` e `decode`.
+7. Matriz: ainda nenhum aparelho real declarou uma matriz diferente da anunciada pela WCam. Isso fica para o teste com o iPhone.
+8. Calibração:
+   - O laboratório só passa com folga se as amostras começarem depois que o codificador do aiortc estabiliza, cerca de 3 s depois do `live`. Com amostras logo no `live`, o ajuste continua igual à correção verdadeira, mas o ΔE fica entre 1,5 e 2,0, por causa da perda de compressão do começo e não do ajuste. No iPhone, com as amostras desde o `live`, a medição do spike deu 1,21. Se o iPhone mostrar o mesmo efeito, a web pode esperar cerca de 2 s depois do `live` antes da primeira amostra; isso é decisão sua.
+   - Se a primeira amostra chegar com o anel vazio (por exemplo, quando o celular passa de retrato para paisagem depois de 30 s), ela é registrada e não conta; as quatro seguintes bastam.
+   - Custo do `bytes.translate`: o CPython desvia conforme cada byte mudou ou não, então uma tabela com muitos pontos fixos ficava até 4 vezes mais lenta com conteúdo irregular. Resolvido tirando os pontos fixos arredondados das tabelas da calibração (acima).
+   - Instabilidade do teste (1 falha em 4 rodadas da suíte): o `default` dependia do tamanho do conjunto de tarefas, e uma tarefa concluída só sai dele no turno seguinte do loop. Duas comparações terminando juntas deixavam a medição sem decisão. Agora a contagem de amostras pendentes é explícita, e o ajuste ou o `default` só é decidido quando não sobra nenhuma em voo. O laboratório espera condições (90 quadros liberados e o fim da coleta), não tempos fixos. Com a CPU saturada por 4 processos: 15 de 15 rodadas dos testes de unidade e 5 de 5 do laboratório.
+   - Queda para cerca de 6 fps vista no e2e da web: não se reproduziu aqui. No laboratório em processo com a referência e a calibração aplicada: 29 a 31 fps, REMB fixo em 10 Mbit/s e atraso do loop até 32 ms. No e2e em compose nesta máquina: 26 a 30 fps depois do `applied`. Em investigação com a web.
+
+## 4. Dependências
+
+Nenhuma nova. Pydantic, numpy, PyAV, psutil e aiortc já estavam no projeto, e o `bytes.translate` é da biblioteca padrão.
+
+## 5. Pendências
+
+1. Com o usuário e o orquestrador:
+   - CA 3.1: decidir sobre o print contra o PC (ΔE médio de 2,69 com a luz do quarto mudando), ou repetir com a luz estável;
+   - CA 4: verificação do congelar no Frame Server, com a DLL nova (sessão vcam);
+   - CA 7: reunião de 30 min no novo Teams, com o `episodes.log` guardado, e 10 min na Máxima sem episódio no Wi-Fi do usuário (spec §3);
+   - Android, se houver um aparelho disponível (CA 1).
+2. CI na integração.
