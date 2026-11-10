@@ -53,6 +53,13 @@ Skills de design obrigatórias e registradas em `docs/design-v0.7.0.md`, decisã
 4. Verificação no Frame Server, em cada formato que ficar na tabela: tamanho e fps no Chrome e no app Câmera, fps de pelo menos 95% do nominal por 2 min.
 5. `dotnet publish -r win-x64 -c Release` sem avisos. Versão 0.7.0 no projeto.
 
+## Adendo, 2026-11-10: resultado do spike `h264-levels`
+
+- Tabela final no contrato ("Formato de vídeo"): `720p30`, `720p60`, `1080p30` (padrão), `1440p30` e `2160p30`. Saem `1080p60`, `1440p60` e `2160p60`, porque o Safari entrega 30 fps acima de 720p nas duas câmeras. Taxas mantidas, inclusive 35 Mbit/s em `2160p30`: o teto só limita quando o codificador o alcança, e na v0.6.0 o 1080p30 encheu os 20 Mbit/s da Máxima.
+- Agent: a resposta SDP declara nível 5.1 (`42e033` e `420033`), isolado num módulo, com teste que quebra se a lista de codecs do aiortc mudar.
+- Web: com a tabela final, a fluidez só tem escolha em 720p. A regra de esconder o grupo de uma opção só (aprovada no desenho) cobre isso.
+- Achado aberto, agent e vcam: na rodada B, 720p60 chegou ao agente a cerca de 60 fps, mas o pipeline entregou à câmera nativa de 6 a 10 quadros/s depois de cerca de 20 s, com a câmera anunciada a 30 fps (DLL do spike no formato padrão). A vcam confere na sua janela se `WcamFramePublish` bloqueia quando o consumidor lê a 30 fps. O agent mede de novo com o pipeline no tamanho do formato e a câmera anunciada a 60 fps. O CA 2 (fps de pelo menos 95% do nominal por 2 min) vale também para 720p60.
+
 ## Fechamento
 
 Relatórios em `docs/relatorio-v0.7.0-agent.md`, `docs/relatorio-v0.7.0-web.md` e `docs/relatorio-v0.7.0-vcam.md`, com cada CA da spec que a sessão toca, os números dos spikes e o que não foi verificado. PR de cada branch de sessão para `feature/formato`.
