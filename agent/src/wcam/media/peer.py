@@ -17,6 +17,7 @@ from av import VideoFrame
 from wcam.media.color_correction import ColorCorrection
 from wcam.media.episodes import EpisodeTracker, LinkSample, write_episode
 from wcam.media.frame_gate import FrameGate
+from wcam.media.h264_level import declare_h264_level_5_1
 from wcam.media.metrics import VideoMeter, VideoStats
 from wcam.media.pipeline import FramePipeline
 from wcam.media.pipeline import FrameSource as OutputSource
@@ -304,6 +305,8 @@ async def bytes_received(receiver: RTCRtpReceiver) -> int:
 
 
 def aiortc_peer_factory(network: IPv4Network, pipeline: FramePipeline) -> PeerFactory:
+    declare_h264_level_5_1()
+
     async def create(offer_sdp: str, events: PeerEvents) -> MediaPeer:
         peer = AiortcPeer(RTCPeerConnection(configuration=peer_configuration()), network, pipeline, events)
         try:
