@@ -1,58 +1,69 @@
 import { useCallback, useId, useRef, useState } from "react";
+import { formatName } from "../data/format-name";
+import { formatView } from "../data/format-view";
 import { t } from "../data/language";
-import { QUALITY_PRESETS, qualityLevel, qualityNameKey, type QualityPreset } from "../data/quality-preset";
-import { useQualityChoice } from "../data/use-quality-choice";
+import { useFormatChoice } from "../data/use-format-choice";
+import type { VideoFormat } from "../data/video-format";
 import { ControlButton } from "./control-button";
-import { QualityIcon } from "./quality-icon";
-import { QualityOption } from "./quality-option";
-import styles from "./quality-picker.module.scss";
+import { FormatIcon } from "./format-icon";
+import styles from "./format-picker.module.scss";
+import { FrameRateOption } from "./frame-rate-option";
+import { ResolutionOption } from "./resolution-option";
 import { useDismiss } from "./use-dismiss";
 
-interface QualityPickerProps {
-  preset: QualityPreset;
+interface FormatPickerProps {
+  format: VideoFormat;
+  available: readonly VideoFormat[];
   dimmed: boolean;
-  onChoose: (preset: QualityPreset) => void;
+  onChoose: (format: VideoFormat) => void;
 }
 
-export function QualityPicker({ preset, dimmed, onChoose }: QualityPickerProps) {
+export function FormatPicker({ format, available, dimmed, onChoose }: FormatPickerProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
-  const titleId = useId();
   const currentId = useId();
+  const resolutionId = useId();
+  const frameRateId = useId();
   const close = useCallback(() => {
     setOpen(false);
   }, []);
-  const choice = useQualityChoice(preset, onChoose, close);
+  const choice = useFormatChoice(format, onChoose, close);
+  const view = formatView(format, available, choice.pending);
   const expanded = open && !dimmed;
   useDismiss(rootRef, expanded, close);
 
   return (
     <div ref={rootRef} className={styles.picker}>
-      <div
-        id={panelId}
-        className={styles.panel}
-        data-open={expanded}
-        inert={!expanded}
-        role="radiogroup"
-        aria-labelledby={titleId}
-      >
-        <p id={titleId} className={styles.title}>
-          {t("quality.label")}
-        </p>
-        {QUALITY_PRESETS.map((option) => (
-          <QualityOption
-            key={option}
-            group={panelId}
-            preset={option}
-            checked={option === preset}
-            pending={option === choice.pending}
-            onChoose={choice.choose}
-          />
-        ))}
+      <div id={panelId} className={styles.panel} data-open={expanded} inert={!expanded}>
+        <p className={styles.current}>{formatName(format)}</p>
+        {view.resolutions.length > 0 && (
+          <div className={styles.group}>
+            <p id={resolutionId} className={styles.label}>
+              {t("format.resolution_label")}
+            </p>
+            <div className={styles.pills} role="radiogroup" aria-labelledby={resolutionId}>
+              {view.resolutions.map((option) => (
+                <ResolutionOption key={option.value} group={resolutionId} option={option} onChoose={choice.choose} />
+              ))}
+            </div>
+          </div>
+        )}
+        {view.frameRates.length > 0 && (
+          <div className={styles.group}>
+            <p id={frameRateId} className={styles.label}>
+              {t("format.frame_rate_label")}
+            </p>
+            <div role="radiogroup" aria-labelledby={frameRateId}>
+              {view.frameRates.map((option) => (
+                <FrameRateOption key={option.value} group={frameRateId} option={option} onChoose={choice.choose} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       <ControlButton
-        label={t("quality.label")}
+        label={t("format.label")}
         describedBy={currentId}
         expanded={expanded}
         controls={panelId}
@@ -60,10 +71,10 @@ export function QualityPicker({ preset, dimmed, onChoose }: QualityPickerProps) 
           setOpen(!open);
         }}
       >
-        <QualityIcon level={qualityLevel(preset)} />
+        <FormatIcon />
       </ControlButton>
       <span id={currentId} className="visually-hidden">
-        {t(qualityNameKey(preset))}
+        {formatName(format)}
       </span>
     </div>
   );

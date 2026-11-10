@@ -22,13 +22,13 @@ export default function CamPage() {
         <LiveLayer
           state={state}
           showNotice={cam.wakeLockUnavailable && !noticeDismissed}
-          qualityPreset={cam.qualityPreset}
+          videoFormat={cam.videoFormat}
           onDismissNotice={() => {
             setNoticeDismissed(true);
           }}
           onSwitchCamera={cam.switchCamera}
           onTogglePreview={cam.togglePreview}
-          onChooseQuality={cam.chooseQualityPreset}
+          onChooseFormat={cam.chooseVideoFormat}
           onSendScreenshot={cam.screenshotRequested ? cam.sendScreenshot : undefined}
         />
       ) : (

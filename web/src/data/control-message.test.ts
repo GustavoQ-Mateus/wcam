@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CameraCapabilitiesMessage } from "./camera-capabilities";
-import { cameraCapabilitiesData, parseControlMessage, setQualityPresetMessage } from "./control-message";
+import { cameraCapabilitiesData, parseControlMessage, setVideoFormatMessage } from "./control-message";
 
 describe("control message", () => {
   it("session state messages from the contract are parsed", () => {
@@ -23,15 +23,33 @@ describe("control message", () => {
     expect(messages.map(parseControlMessage)).toEqual([null, null, null, null]);
   });
 
-  it("quality preset message from the agent is parsed", () => {
-    expect(parseControlMessage('{"type":"quality_preset","preset":"light"}')).toEqual({
-      type: "quality_preset",
-      preset: "light",
+  it("video format message from the agent is parsed with the size, rate and available formats", () => {
+    const data = JSON.stringify({
+      type: "video_format",
+      format: "720p60",
+      width: 1280,
+      height: 720,
+      fps: 60,
+      maxBitrate: 8000000,
+      available: ["720p30", "720p60", "1080p30", "1080p60"],
+    });
+
+    expect(parseControlMessage(data)).toEqual({
+      type: "video_format",
+      format: "720p60",
+      width: 1280,
+      height: 720,
+      fps: 60,
+      maxBitrate: 8000000,
+      available: ["720p30", "720p60", "1080p30"],
     });
   });
 
-  it("quality preset message with unknown or missing preset is ignored", () => {
-    const messages = ['{"type":"quality_preset","preset":"high"}', '{"type":"quality_preset"}'];
+  it("video format message with an unknown format or missing fields is ignored", () => {
+    const messages = [
+      '{"type":"video_format","format":"1080p60","width":1920,"height":1080,"fps":60,"maxBitrate":1,"available":[]}',
+      '{"type":"video_format","format":"1080p30","available":[]}',
+    ];
 
     expect(messages.map(parseControlMessage)).toEqual([null, null]);
   });
@@ -53,8 +71,8 @@ describe("control message", () => {
     expect(messages.map(parseControlMessage)).toEqual([null, null, null]);
   });
 
-  it("chosen preset is sent as set_quality_preset", () => {
-    expect(JSON.parse(setQualityPresetMessage("maximum"))).toEqual({ type: "set_quality_preset", preset: "maximum" });
+  it("chosen format is sent as set_video_format", () => {
+    expect(JSON.parse(setVideoFormatMessage("2160p30"))).toEqual({ type: "set_video_format", format: "2160p30" });
   });
 
   it("camera capabilities are sent with the contract fields", () => {
@@ -66,6 +84,7 @@ describe("control message", () => {
       facingMode: null,
       codecs: ["video/H264"],
       colorSpace: { primaries: "bt709", transfer: "bt709", matrix: "bt709", fullRange: true },
+      modes: { exposureMode: "continuous", whiteBalanceMode: "continuous", focusMode: "continuous" },
     };
 
     expect(JSON.parse(cameraCapabilitiesData(message))).toEqual(message);

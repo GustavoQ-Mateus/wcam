@@ -1,35 +1,34 @@
+import type { FormatOption } from "../data/format-view";
 import { t } from "../data/language";
-import { qualityHintKey, qualityNameKey, type QualityPreset } from "../data/quality-preset";
-import styles from "./quality-option.module.scss";
+import { frameRateHintKey, frameRateKey, type FrameRate, type VideoFormat } from "../data/video-format";
+import styles from "./frame-rate-option.module.scss";
 
-interface QualityOptionProps {
+interface FrameRateOptionProps {
   group: string;
-  preset: QualityPreset;
-  checked: boolean;
-  pending: boolean;
-  onChoose: (preset: QualityPreset) => void;
+  option: FormatOption<FrameRate>;
+  onChoose: (format: VideoFormat) => void;
 }
 
-export function QualityOption({ group, preset, checked, pending, onChoose }: QualityOptionProps) {
+export function FrameRateOption({ group, option, onChoose }: FrameRateOptionProps) {
   return (
-    <label className={styles.option} data-checked={checked}>
+    <label className={styles.option} data-checked={option.checked}>
       <input
         type="radio"
         className="visually-hidden"
         name={group}
-        checked={checked}
+        checked={option.checked}
         onChange={() => {
-          onChoose(preset);
+          onChoose(option.format);
         }}
       />
-      <span className={styles.mark} data-mark={markOf(checked, pending)} aria-hidden="true" />
-      <span className={styles.name}>{t(qualityNameKey(preset))}</span>
-      <span className={styles.hint}>{t(qualityHintKey(preset))}</span>
+      <span className={styles.mark} data-mark={markOf(option)} aria-hidden="true" />
+      <span className={styles.name}>{t(frameRateKey(option.value))}</span>
+      <span className={styles.hint}>{t(frameRateHintKey(option.value))}</span>
     </label>
   );
 }
 
-function markOf(checked: boolean, pending: boolean): string {
+function markOf({ checked, pending }: FormatOption<FrameRate>): string {
   if (pending) {
     return "pending";
   }

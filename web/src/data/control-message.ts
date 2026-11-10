@@ -1,10 +1,10 @@
 import type { CameraCapabilitiesMessage } from "./camera-capabilities";
 import type { ControlMessage } from "./contract";
-import { isQualityPreset, type QualityPreset } from "./quality-preset";
+import { availableFormats, isVideoFormat, type VideoFormat } from "./video-format";
 
 const SESSION_STATE_TYPE = "session_state";
-const QUALITY_PRESET_TYPE = "quality_preset";
-const SET_QUALITY_PRESET_TYPE = "set_quality_preset";
+const VIDEO_FORMAT_TYPE = "video_format";
+const SET_VIDEO_FORMAT_TYPE = "set_video_format";
 const SNAPSHOT_REQUEST_TYPE = "snapshot_request";
 
 export function parseControlMessage(data: unknown): ControlMessage | null {
@@ -15,8 +15,8 @@ export function parseControlMessage(data: unknown): ControlMessage | null {
   if (typeof message !== "object" || message === null || !("type" in message)) {
     return null;
   }
-  if (message.type === QUALITY_PRESET_TYPE) {
-    return parseQualityPreset(message);
+  if (message.type === VIDEO_FORMAT_TYPE) {
+    return parseVideoFormat(message as Record<string, unknown>);
   }
   if (message.type === SESSION_STATE_TYPE) {
     return parseSessionState(message);
@@ -27,19 +27,32 @@ export function parseControlMessage(data: unknown): ControlMessage | null {
   return null;
 }
 
-export function setQualityPresetMessage(preset: QualityPreset): string {
-  return JSON.stringify({ type: SET_QUALITY_PRESET_TYPE, preset });
+export function setVideoFormatMessage(format: VideoFormat): string {
+  return JSON.stringify({ type: SET_VIDEO_FORMAT_TYPE, format });
 }
 
 export function cameraCapabilitiesData(message: CameraCapabilitiesMessage): string {
   return JSON.stringify(message);
 }
 
-function parseQualityPreset(message: object): ControlMessage | null {
-  if (!("preset" in message) || !isQualityPreset(message.preset)) {
+function parseVideoFormat(message: Record<string, unknown>): ControlMessage | null {
+  const { format, width, height, fps, maxBitrate, available } = message;
+  if (!isVideoFormat(format) || !Array.isArray(available) || !isNumber(width, height, fps, maxBitrate)) {
     return null;
   }
-  return { type: QUALITY_PRESET_TYPE, preset: message.preset };
+  return {
+    type: VIDEO_FORMAT_TYPE,
+    format,
+    width: Number(width),
+    height: Number(height),
+    fps: Number(fps),
+    maxBitrate: Number(maxBitrate),
+    available: availableFormats(available),
+  };
+}
+
+function isNumber(...values: unknown[]): boolean {
+  return values.every((value) => typeof value === "number" && Number.isFinite(value));
 }
 
 function parseSnapshotRequest(message: object): ControlMessage | null {

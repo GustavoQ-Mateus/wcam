@@ -1,12 +1,13 @@
 import { useEffect, useReducer, useRef, type RefObject } from "react";
-import { camReducer, initialCamState, isFinal, isSession, type CamState, type Facing } from "../data/cam-state";
+import { camReducer, initialCamState, isFinal, isLive, isSession, type CamState, type Facing } from "../data/cam-state";
 import { consumePairingToken } from "../data/pairing";
 import { screenshotMessages } from "../data/snapshot";
-import type { QualityPreset } from "../data/quality-preset";
+import type { VideoFormat } from "../data/video-format";
+import { useVideoFormat } from "../media/use-video-format";
 import { useCameraStream } from "../media/use-camera-stream";
 import { readPngFile } from "../media/screenshot-file";
 import { useOrientation } from "../media/use-orientation";
-import { usePublisher } from "../media/use-publisher";
+import { usePublisher, type VideoFormatMessage } from "../media/use-publisher";
 import { useSnapshotResponder } from "../media/use-snapshot-responder";
 import { useWakeLock } from "../media/use-wake-lock";
 
@@ -16,11 +17,11 @@ export interface Cam {
   facing: Facing;
   switching: boolean;
   wakeLockUnavailable: boolean;
-  qualityPreset: QualityPreset | null;
+  videoFormat: VideoFormatMessage | null;
   start: () => void;
   switchCamera: () => void;
   togglePreview: () => void;
-  chooseQualityPreset: (preset: QualityPreset) => void;
+  chooseVideoFormat: (format: VideoFormat) => void;
   screenshotRequested: boolean;
   sendScreenshot: (file: File) => Promise<boolean>;
 }
@@ -41,6 +42,7 @@ export function useCam(hasPairing: boolean): Cam {
     onEvent: dispatch,
     videoRef,
   });
+  useVideoFormat(camera.track, publisher.videoFormat?.format ?? null, isLive(state) && state.portrait);
   useSnapshotResponder(videoRef, publisher.snapshotRequest, state.kind === "live", publisher.sendPaced);
 
   const { stop } = camera;
@@ -56,7 +58,7 @@ export function useCam(hasPairing: boolean): Cam {
     facing: camera.facing,
     switching: camera.opening,
     wakeLockUnavailable: wakeLock.unavailable,
-    qualityPreset: publisher.qualityPreset,
+    videoFormat: publisher.videoFormat,
     start: () => {
       dispatch({ type: "start" });
       camera.open();
@@ -65,7 +67,7 @@ export function useCam(hasPairing: boolean): Cam {
     togglePreview: () => {
       dispatch({ type: "preview_toggled" });
     },
-    chooseQualityPreset: publisher.chooseQualityPreset,
+    chooseVideoFormat: publisher.chooseVideoFormat,
     screenshotRequested: state.kind === "live" && publisher.snapshotRequest !== null,
     sendScreenshot: async (file) => {
       const request = publisher.snapshotRequest;
