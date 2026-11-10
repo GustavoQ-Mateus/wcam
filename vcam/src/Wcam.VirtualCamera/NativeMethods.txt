@@ -80,3 +80,9 @@ MFNominalRange
 MFVideoTransferMatrix
 MFVideoPrimaries
 MFVideoTransferFunction
+MFCreateSensorActivityMonitor
+IMFSensorActivityMonitor
+IMFSensorActivitiesReportCallback
+IMFSensorActivitiesReport
+IMFSensorActivityReport
+IMFSensorProcessActivity

@@ -42,7 +42,7 @@ internal sealed class TestPattern
 
     public static int CounterLeft => (VideoFormat.Width - CounterDigits * DigitAdvance + DigitSpacing) / 2;
 
-    private static ReadOnlySpan<byte> DigitGlyphs =>
+    public static ReadOnlySpan<byte> DigitGlyphs =>
     [
         0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110,
         0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110,

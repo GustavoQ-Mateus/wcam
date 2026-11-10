@@ -37,23 +37,39 @@ public unsafe class CaptureMediaTypeTests
         Assert.Equal(PInvoke.MFVideoFormat_NV12, ReadGuid(PInvoke.MF_MT_SUBTYPE));
     }
 
+    [Fact]
+    public void Create_For720p60_DeclaresThatSizeRateAndSampleSize()
+    {
+        var format = new FrameFormat(1280, 720, 60);
+        IMFMediaType mediaType = CaptureMediaType.Create(format);
+        Guid frameSize = PInvoke.MF_MT_FRAME_SIZE;
+        Guid frameRate = PInvoke.MF_MT_FRAME_RATE;
+        Guid sampleSize = PInvoke.MF_MT_SAMPLE_SIZE;
+        mediaType.GetUINT64(&frameSize, out ulong size);
+        mediaType.GetUINT64(&frameRate, out ulong rate);
+        mediaType.GetUINT32(&sampleSize, out uint bytes);
+        Assert.Equal(1280UL << 32 | 720, size);
+        Assert.Equal(60UL << 32 | 1, rate);
+        Assert.Equal((uint)format.FrameSize, bytes);
+    }
+
     private static uint ReadUInt32(Guid key)
     {
-        IMFMediaType mediaType = CaptureMediaType.Create();
+        IMFMediaType mediaType = CaptureMediaType.Create(FrameFormat.Default);
         mediaType.GetUINT32(&key, out uint value);
         return value;
     }
 
     private static ulong ReadUInt64(Guid key)
     {
-        IMFMediaType mediaType = CaptureMediaType.Create();
+        IMFMediaType mediaType = CaptureMediaType.Create(FrameFormat.Default);
         mediaType.GetUINT64(&key, out ulong value);
         return value;
     }
 
     private static Guid ReadGuid(Guid key)
     {
-        IMFMediaType mediaType = CaptureMediaType.Create();
+        IMFMediaType mediaType = CaptureMediaType.Create(FrameFormat.Default);
         Guid value;
         mediaType.GetGUID(&key, &value);
         return value;
