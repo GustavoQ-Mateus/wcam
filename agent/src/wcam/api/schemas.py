@@ -9,7 +9,7 @@ from wcam.media.pipeline import FramePipeline
 from wcam.media.quality import QualityReport
 from wcam.media.quality_preset import QualityPreset
 from wcam.sessions.manager import LastEnded, SessionOffer, SessionView, Status
-from wcam.sessions.phone_messages import CameraCapabilitiesMessage
+from wcam.sessions.phone_messages import CameraCapabilitiesMessage, CameraColorSpaceMessage, CameraModesMessage
 from wcam.virtualcam.sink import OUTPUT_FPS, OUTPUT_HEIGHT, OUTPUT_WIDTH
 
 
@@ -52,6 +52,12 @@ class CameraColorSpaceBody(CamelModel):
     full_range: bool | None
 
 
+class CameraModesBody(CamelModel):
+    exposure_mode: str | None
+    white_balance_mode: str | None
+    focus_mode: str | None
+
+
 class CameraCapabilitiesBody(CamelModel):
     width: int | None
     height: int | None
@@ -59,6 +65,7 @@ class CameraCapabilitiesBody(CamelModel):
     facing_mode: str | None
     codecs: list[str]
     color_space: CameraColorSpaceBody | None
+    modes: CameraModesBody | None
 
 
 class SessionBody(CamelModel):
@@ -185,14 +192,25 @@ def camera_capabilities_body(capabilities: CameraCapabilitiesMessage | None) -> 
         frame_rate=capabilities.frame_rate,
         facing_mode=capabilities.facing_mode,
         codecs=list(capabilities.codecs),
-        color_space=None
-        if capabilities.color_space is None
-        else CameraColorSpaceBody(
-            primaries=capabilities.color_space.primaries,
-            transfer=capabilities.color_space.transfer,
-            matrix=capabilities.color_space.matrix,
-            full_range=capabilities.color_space.full_range,
-        ),
+        color_space=None if capabilities.color_space is None else color_space_body(capabilities.color_space),
+        modes=None if capabilities.modes is None else modes_body(capabilities.modes),
+    )
+
+
+def color_space_body(color_space: CameraColorSpaceMessage) -> CameraColorSpaceBody:
+    return CameraColorSpaceBody(
+        primaries=color_space.primaries,
+        transfer=color_space.transfer,
+        matrix=color_space.matrix,
+        full_range=color_space.full_range,
+    )
+
+
+def modes_body(modes: CameraModesMessage) -> CameraModesBody:
+    return CameraModesBody(
+        exposure_mode=modes.exposure_mode,
+        white_balance_mode=modes.white_balance_mode,
+        focus_mode=modes.focus_mode,
     )
 
 

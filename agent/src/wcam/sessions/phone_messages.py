@@ -42,6 +42,12 @@ class CameraColorSpaceMessage(PhoneMessage):
         return CameraColorSpace(self.primaries, self.transfer, self.matrix, self.full_range)
 
 
+class CameraModesMessage(PhoneMessage):
+    exposure_mode: str | None = None
+    white_balance_mode: str | None = None
+    focus_mode: str | None = None
+
+
 class CameraCapabilitiesMessage(PhoneMessage):
     type: Literal["camera_capabilities"]
     width: PositiveInt | None
@@ -50,6 +56,7 @@ class CameraCapabilitiesMessage(PhoneMessage):
     facing_mode: Literal["user", "environment"] | None
     codecs: tuple[str, ...]
     color_space: CameraColorSpaceMessage | None = None
+    modes: CameraModesMessage | None = None
 
     def camera_color_space(self) -> CameraColorSpace | None:
         return None if self.color_space is None else self.color_space.to_color_space()
