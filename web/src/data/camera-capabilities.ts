@@ -8,6 +8,19 @@ export interface CameraCapabilitiesMessage {
   facingMode: Facing | null;
   codecs: string[];
   colorSpace: CameraColorSpace | null;
+  modes: CameraModes;
+}
+
+export interface CameraModes {
+  exposureMode: string | null;
+  whiteBalanceMode: string | null;
+  focusMode: string | null;
+}
+
+export interface ModeSettings {
+  exposureMode?: unknown;
+  whiteBalanceMode?: unknown;
+  focusMode?: unknown;
 }
 
 export interface CameraColorSpace {
@@ -42,6 +55,7 @@ export function cameraCapabilitiesMessage(
   facingMode: string | undefined,
   codecMimeTypes: readonly string[],
   colorSpace: DeclaredColorSpace | null,
+  settings: ModeSettings,
 ): CameraCapabilitiesMessage {
   return {
     type: "camera_capabilities",
@@ -51,6 +65,11 @@ export function cameraCapabilitiesMessage(
     facingMode: FACINGS.find((facing) => facing === facingMode) ?? null,
     codecs: mediaCodecs(codecMimeTypes),
     colorSpace: colorSpace && cameraColorSpace(colorSpace),
+    modes: {
+      exposureMode: modeOrNull(settings.exposureMode),
+      whiteBalanceMode: modeOrNull(settings.whiteBalanceMode),
+      focusMode: modeOrNull(settings.focusMode),
+    },
   };
 }
 
@@ -61,6 +80,10 @@ function cameraColorSpace({ primaries, transfer, matrix, fullRange }: DeclaredCo
     matrix: matrix ?? null,
     fullRange: fullRange ?? null,
   };
+}
+
+function modeOrNull(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
 }
 
 function mediaCodecs(mimeTypes: readonly string[]): string[] {
