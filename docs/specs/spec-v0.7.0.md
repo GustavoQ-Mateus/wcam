@@ -1,6 +1,6 @@
 # Spec v0.7.0, Resolução e fps
 
-Status: Draft
+Status: Aprovada (2026-11-10)
 Branch de integração: `feature/formato`
 Sessões: `agent`, `web`, `vcam`
 Referências: `docs/planejamento.md` §1 (CA-2), §6 (roteiro da 0.7.0); ADRs 0011 e 0012; spec v0.6.0 §5 e changelog (capacidades do iPhone, benchmark de decodificação, achados)
