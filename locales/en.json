@@ -66,7 +66,6 @@
   "console.dev_compare_screen_hint": "Original PNG screenshot from the phone, sent as a file",
   "console.dev_compare_screen_label": "Phone screen",
   "console.dev_compare_download_screen": "Download phone screenshot",
-  "console.frames_scaled": "{count} frames had to be resized. Check the Wi-Fi.",
   "console.cpu": "Agent CPU {percent}%",
   "console.virtual_camera_fallback": "Using the OBS Virtual Camera because the WCam camera is not available.",
   "format.label": "Image",

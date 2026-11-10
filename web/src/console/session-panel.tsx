@@ -51,12 +51,6 @@ export function SessionPanel({ session, onConfirm, onReject, onDisconnect, onCom
       )}
       {session.video && <p className={styles.color}>{t(colorCorrectionKey(session.video.colorCorrection))}</p>}
       {session.video && <p className={styles.color}>{cameraColorText(session.cameraCapabilities?.colorSpace)}</p>}
-      {session.video && session.video.framesScaled > 0 && (
-        <p className={styles.warning}>
-          <span className={styles.warningMark} aria-hidden="true" />
-          {t("console.frames_scaled", { count: String(session.video.framesScaled) })}
-        </p>
-      )}
       <div className={styles.actions}>
         {awaiting ? (
           <>
