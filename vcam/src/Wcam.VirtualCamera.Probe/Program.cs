@@ -63,7 +63,7 @@ internal static class Program
         int handled = 0;
         while (true)
         {
-            string[] lines = File.Exists(path) ? File.ReadAllLines(path) : [];
+            string[] lines = ReadControlLines(path);
             for (; handled < lines.Length; handled++)
             {
                 if (!Apply(lines[handled].Trim(), library, publisher))
@@ -72,6 +72,18 @@ internal static class Program
                 }
             }
             Thread.Sleep(ControlPollMilliseconds);
+        }
+    }
+
+    private static string[] ReadControlLines(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? File.ReadAllLines(path) : [];
+        }
+        catch (IOException)
+        {
+            return [];
         }
     }
 
