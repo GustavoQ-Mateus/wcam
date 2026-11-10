@@ -42,6 +42,7 @@ export type CamEvent =
   | { type: "granted"; capture: CaptureFormat; frame: FrameSize }
   | { type: "failed"; failure: CameraFailure }
   | { type: "frame_changed"; frame: FrameSize }
+  | { type: "capture_changed"; capture: CaptureFormat }
   | { type: "preview_toggled" }
   | { type: "session_started" }
   | { type: "session_awaiting_confirmation"; code: string }
@@ -116,6 +117,8 @@ export function camReducer(state: CamState, event: CamEvent): CamState {
       return failedState(event.failure);
     case "frame_changed":
       return isLive(state) ? framedState(state.capture, event.frame, state.kind === "preview_off") : state;
+    case "capture_changed":
+      return isLive(state) ? { ...state, capture: event.capture } : state;
     case "preview_toggled":
       return togglePreview(state);
     case "session_started":
@@ -140,6 +143,8 @@ function sessionReducer(state: SessionCamState, event: CamEvent): CamState {
       return { ...state, capture: event.capture, portrait: isPortrait(event.frame) };
     case "frame_changed":
       return { ...state, portrait: isPortrait(event.frame) };
+    case "capture_changed":
+      return { ...state, capture: event.capture };
     case "failed":
       return failedState(event.failure);
     case "preview_toggled":

@@ -42,7 +42,7 @@ export function useCam(hasPairing: boolean): Cam {
     onEvent: dispatch,
     videoRef,
   });
-  useVideoFormat(camera.track, publisher.videoFormat?.format ?? null, isLive(state) && state.portrait);
+  useVideoFormat(camera.track, publisher.videoFormat?.format ?? null, isLive(state) && state.portrait, dispatch);
   useSnapshotResponder(videoRef, publisher.snapshotRequest, state.kind === "live", publisher.sendPaced);
 
   const { stop } = camera;
