@@ -32,6 +32,19 @@ class SinkStatus:
 UNAVAILABLE_UNTIL_OPENED = SinkStatus(CameraState.UNAVAILABLE, UnavailableReason.ERROR)
 
 
+@dataclass(frozen=True, slots=True)
+class AnnouncedFormat:
+    width: int
+    height: int
+    fps: int
+    pending: bool
+    running: bool
+
+
+def frame_size(frame: I420Frame) -> tuple[int, int]:
+    return int(frame.shape[1]), int(frame.shape[0]) * 2 // 3
+
+
 class VirtualCameraSink(Protocol):
     @property
     def backend(self) -> str: ...
@@ -42,9 +55,14 @@ class VirtualCameraSink(Protocol):
     @property
     def status(self) -> SinkStatus: ...
 
+    @property
+    def reports_format_changes(self) -> bool: ...
+
     def open(self, width: int, height: int, fps: int) -> None: ...
 
-    def set_format(self, width: int, height: int, fps: int) -> bool: ...
+    def request_format(self, width: int, height: int, fps: int) -> bool: ...
+
+    def announced_format(self) -> AnnouncedFormat | None: ...
 
     def send(self, frame: I420Frame) -> None: ...
 
