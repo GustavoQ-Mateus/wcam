@@ -130,3 +130,14 @@ Painel novo no lugar do de qualidade. **[shape] [orq]**
 4. Grupo com uma opção só não aparece, tanto Fluidez quanto Resolução.
 5. Em retrato, o trilho, o painel e `cam.portrait_hint` funcionam na zona do polegar, sem cobrir a imagem além do painel aberto (§3.3).
 6. A regra das duas escolhas (§2) é registrada aqui.
+
+## 7. Audit e polish (2026-11-10)
+
+Só pela leitura do código e pelo e2e, sem captura de tela; a validação visual é do usuário, no navegador e no iPhone. **[orq]**
+
+- **Detector** (`impeccable detect`) nos arquivos do seletor, do retrato e do console: nenhum achado. **[shape]**
+- **Linhas de fluidez no celular** (`frame-rate-option`): ganharam `touch-action: manipulation`, sem seleção de texto no toque longo e `cursor: pointer`, como as pílulas de resolução. São `<label>`, que a base não cobre. **[mobile]**
+- **Leitor do formato no celular:** mostrava o tamanho da abertura da câmera e não acompanhava a troca de formato. Agora se atualiza com o `getSettings` depois de cada formato aplicado. **[shape]**
+- **Formato e modos em duas chamadas:** o Chromium mantém o tamanho antigo quando os modos da câmera (`advanced`) vêm na mesma chamada do `applyConstraints`. O formato é aplicado sozinho e depois repetido com os modos. **[spec]**
+- Sem mudança de cor, espaço ou movimento. O painel e a dica em retrato seguem a §3.3. **[emil]**
+

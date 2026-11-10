@@ -1,10 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { translate } from "../src/data/i18n";
 import { camUrl, PHONE_LANDSCAPE, PHONE_PORTRAIT, turnOnCamera } from "./cam-helpers";
+import { consoleUrl, endSession, goLive } from "./session-helpers";
 
 const CONSOLE_CHUNK_NAME = "console-page";
-const PORTRAIT_FRAME = { width: 720, height: 1280 };
+const PORTRAIT_FRAME = { width: 1080, height: 1920 };
 const UNUSED_FRAGMENT = "#t=never-sent";
+const DEFAULT_FORMAT = "1080p30";
 
 test.use({ hasTouch: true, viewport: PHONE_LANDSCAPE });
 
@@ -28,7 +30,12 @@ test("cam page does not load the console chunk", async ({ page }) => {
 test.describe("in portrait", () => {
   test.use({ viewport: PHONE_PORTRAIT });
 
-  test("a portrait frame keeps the camera usable and shows the portrait hint", async ({ page }) => {
+  test.afterEach(async ({ request }) => {
+    await endSession(request);
+    await request.put(consoleUrl("/api/video-format"), { data: { format: DEFAULT_FORMAT } });
+  });
+
+  test("an upright phone goes live with the portrait hint and its controls", async ({ page, request }) => {
     await page.addInitScript((frame) => {
       navigator.mediaDevices.getUserMedia = () => {
         const canvas = document.createElement("canvas");
@@ -44,7 +51,7 @@ test.describe("in portrait", () => {
       };
     }, PORTRAIT_FRAME);
 
-    await turnOnCamera(page, UNUSED_FRAGMENT);
+    await goLive(page, request);
 
     await expect(page.getByText(translate("en", "cam.portrait_hint"))).toBeVisible();
     await expect(page.getByRole("button", { name: translate("en", "cam.switch_camera") })).toBeVisible();

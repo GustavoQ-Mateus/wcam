@@ -165,4 +165,14 @@ describe("cam state", () => {
 
     expect(state).toBe(ended);
   });
+
+  it("a new capture format after the video format changes replaces the one shown", () => {
+    const capture = { width: 1280, height: 720, frameRate: 60 };
+
+    expect([
+      camReducer(LIVE, { type: "capture_changed", capture }),
+      camReducer({ kind: "ready", capture: CAPTURE, portrait: false }, { type: "capture_changed", capture }),
+      camReducer({ kind: "intro" }, { type: "capture_changed", capture }),
+    ]).toEqual([{ ...LIVE, capture }, { kind: "ready", capture, portrait: false }, { kind: "intro" }]);
+  });
 });
