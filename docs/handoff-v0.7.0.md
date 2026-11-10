@@ -60,6 +60,13 @@ Skills de design obrigatórias e registradas em `docs/design-v0.7.0.md`, decisã
 - Web: com a tabela final, a fluidez só tem escolha em 720p. A regra de esconder o grupo de uma opção só (aprovada no desenho) cobre isso.
 - Achado aberto, agent e vcam: na rodada B, 720p60 chegou ao agente a cerca de 60 fps, mas o pipeline entregou à câmera nativa de 6 a 10 quadros/s depois de cerca de 20 s, com a câmera anunciada a 30 fps (DLL do spike no formato padrão). A vcam confere na sua janela se `WcamFramePublish` bloqueia quando o consumidor lê a 30 fps. O agent mede de novo com o pipeline no tamanho do formato e a câmera anunciada a 60 fps. O CA 2 (fps de pelo menos 95% do nominal por 2 min) vale também para 720p60.
 
+## Adendo, 2026-11-10: resultado do spike `vcam-format`
+
+- ADR 0013 aceita: o formato novo vale na próxima abertura. O Frame Server fixa o formato quando a câmera virtual inicia; `WcamFormatSet` faz a DLL reiniciar a câmera virtual (cerca de 5 s) quando nenhum app está recebendo vídeo da WCam. Com algum app recebendo, a troca fica pendente até o último parar. `MEStreamFormatChanged` descartado.
+- Agent: `videoFormat.pending` existe de verdade. Enquanto a troca estiver pendente, o celular continua no formato que a câmera anuncia (`videoFormat.camera`), e o agente só envia o `video_format` novo ao celular quando a câmera reiniciar. Formato do celular e formato da câmera são estados separados.
+- Vcam: propõe ao orquestrador a API C de estado (formato anunciado, troca pendente, consulta ou retorno do `WcamFormatSet`) antes de implementar; o monitor de atividade de sensores roda dentro da DLL.
+- Ainda a verificar: modo 0 no app Câmera, 2 min por formato e, com o usuário, Teams e OBS (inclusive app que segura a câmera sem receber vídeo durante o reinício).
+
 ## Fechamento
 
 Relatórios em `docs/relatorio-v0.7.0-agent.md`, `docs/relatorio-v0.7.0-web.md` e `docs/relatorio-v0.7.0-vcam.md`, com cada CA da spec que a sessão toca, os números dos spikes e o que não foi verificado. PR de cada branch de sessão para `feature/formato`.
