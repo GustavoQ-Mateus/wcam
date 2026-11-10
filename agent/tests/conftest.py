@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from tests.fakes import FakePeerFactory
 from wcam.app import create_console_app, create_phone_app, phone_page_url
 from wcam.config import Settings
+from wcam.media.camera_format import CameraFormatControl
 from wcam.media.pipeline import FramePipeline
 from wcam.network.lan import LanInterface
 from wcam.process_monitor import CpuMonitor
@@ -56,7 +57,8 @@ def phone_app(settings: Settings, manager: SessionManager | None = None) -> Fast
 
 
 def services(manager: SessionManager | None = None, pipeline: FramePipeline | None = None) -> AgentServices:
-    return AgentServices(manager or fake_manager(), pipeline or opened_pipeline(), CpuMonitor())
+    frames = pipeline or opened_pipeline()
+    return AgentServices(manager or fake_manager(), frames, CpuMonitor(), CameraFormatControl(frames))
 
 
 def fake_manager() -> SessionManager:

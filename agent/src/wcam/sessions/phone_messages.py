@@ -18,7 +18,7 @@ from pydantic.alias_generators import to_camel
 
 from wcam.media.color_correction import CameraColorSpace
 from wcam.media.color_difference import RgbSpace
-from wcam.media.quality_preset import QualityPreset
+from wcam.media.video_format import VideoFormat
 
 SNAPSHOT_CHUNK_BYTES = 45_000
 
@@ -27,9 +27,9 @@ class PhoneMessage(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, strict=True, frozen=True)
 
 
-class SetQualityPresetMessage(PhoneMessage):
-    type: Literal["set_quality_preset"]
-    preset: QualityPreset
+class SetVideoFormatMessage(PhoneMessage):
+    type: Literal["set_video_format"]
+    format: VideoFormat
 
 
 class CameraColorSpaceMessage(PhoneMessage):
@@ -108,7 +108,7 @@ class ScreenshotChunkMessage(ChunkMessage):
 
 
 type AnyPhoneMessage = (
-    SetQualityPresetMessage
+    SetVideoFormatMessage
     | CameraCapabilitiesMessage
     | SnapshotBeginMessage
     | SnapshotChunkMessage
@@ -118,7 +118,7 @@ type AnyPhoneMessage = (
 
 PHONE_MESSAGE = TypeAdapter[AnyPhoneMessage](
     Annotated[
-        SetQualityPresetMessage
+        SetVideoFormatMessage
         | CameraCapabilitiesMessage
         | SnapshotBeginMessage
         | SnapshotChunkMessage

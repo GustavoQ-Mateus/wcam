@@ -23,3 +23,7 @@ class NoActiveSessionError(AgentError):
 
 class NoLiveSessionError(AgentError):
     code = "no_live_session"
+
+
+class UnavailableVideoFormatError(AgentError):
+    code = "invalid_request"

@@ -96,12 +96,14 @@ def create_servers(
 
 async def run(servers: Sequence[uvicorn.Server], services: AgentServices) -> None:
     background = [asyncio.create_task(services.pipeline.run()), asyncio.create_task(services.cpu.run())]
+    services.camera.start()
     try:
         await serve(servers)
     finally:
         await services.manager.shutdown()
         if services.comparisons is not None:
             await services.comparisons.close()
+        await services.camera.close()
         for task in background:
             task.cancel()
         await asyncio.gather(*background, return_exceptions=True)

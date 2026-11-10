@@ -19,6 +19,7 @@ class FakeSink:
         self.requests: list[tuple[int, int, int]] = []
         self.accepts_formats = True
         self.holds_formats = False
+        self.reports_changes = False
 
     @property
     def backend(self) -> str:
@@ -34,7 +35,7 @@ class FakeSink:
 
     @property
     def reports_format_changes(self) -> bool:
-        return False
+        return self.reports_changes
 
     def open(self, width: int, height: int, fps: int) -> None:
         if self._failure is not None:
@@ -47,12 +48,12 @@ class FakeSink:
         self.requests.append((width, height, fps))
         if not self.accepts_formats or self._announced is None:
             return False
-        if self.holds_formats:
+        current = self._announced
+        if self.holds_formats and (width, height, fps) != (current.width, current.height, current.fps):
             self._requested = (width, height, fps)
-            self._announced = AnnouncedFormat(
-                self._announced.width, self._announced.height, self._announced.fps, pending=True, running=True
-            )
+            self._announced = AnnouncedFormat(current.width, current.height, current.fps, pending=True, running=True)
             return True
+        self._requested = None
         self._announced = AnnouncedFormat(width, height, fps, pending=False, running=True)
         return True
 

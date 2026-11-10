@@ -1,4 +1,5 @@
 import httpx
+import pytest
 
 from tests.conftest import console_app, console_client, phone_app, phone_client
 from tests.fakes import OFFER_SDP, FakePeerFactory
@@ -135,26 +136,44 @@ async def test_session_body_without_sdp_is_invalid_request(settings: Settings) -
     assert response.json()["error"]["code"] == "invalid_request"
 
 
-async def test_quality_preset_is_balanced_in_status_by_default(settings: Settings) -> None:
+async def test_status_shows_the_default_video_format(settings: Settings) -> None:
     async with console_client(console_app(settings)) as console:
         body = (await console.get("/api/status")).json()
 
-    assert body["qualityPreset"] == "balanced"
+    assert body["videoFormat"] == {
+        "selected": "1080p30",
+        "available": ["1080p30"],
+        "camera": "1080p30",
+        "pending": False,
+    }
+    assert body["virtualCamera"]["output"] == {"width": 1920, "height": 1080, "fps": 30}
+    assert "qualityPreset" not in body
 
 
-async def test_quality_preset_change_is_shown_in_status(settings: Settings) -> None:
+async def test_video_format_change_is_shown_in_status(settings: Settings) -> None:
     manager = SessionManager(FakePeerFactory())
     async with console_client(console_app(settings, manager)) as console:
-        response = await console.put("/api/quality-preset", json={"preset": "maximum"})
+        response = await console.put("/api/video-format", json={"format": "1080p30"})
         body = (await console.get("/api/status")).json()
 
     assert response.status_code == 204
-    assert body["qualityPreset"] == "maximum"
+    assert body["videoFormat"]["selected"] == "1080p30"
 
 
-async def test_unknown_quality_preset_is_an_invalid_request(settings: Settings) -> None:
+@pytest.mark.parametrize("video_format", ["ultra", "2160p30", 1080])
+async def test_unknown_or_unavailable_video_format_is_an_invalid_request(
+    settings: Settings,
+    video_format: object,
+) -> None:
     async with console_client(console_app(settings)) as console:
-        response = await console.put("/api/quality-preset", json={"preset": "ultra"})
+        response = await console.put("/api/video-format", json={"format": video_format})
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "invalid_request"
+
+
+async def test_quality_preset_route_is_gone(settings: Settings) -> None:
+    async with console_client(console_app(settings)) as console:
+        response = await console.put("/api/quality-preset", json={"preset": "maximum"})
+
+    assert response.status_code in {404, 405}

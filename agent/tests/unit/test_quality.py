@@ -177,3 +177,12 @@ def test_applied_correction_restarts_quality_with_its_luma_table_and_default_wit
     applied_table = correction_tables(APPLE_CORRECTION, pipeline.color_range)
     assert applied_table is not None
     assert meter.luma_tables == [None, applied_table[0], None]
+
+
+def test_frame_of_another_size_than_the_reference_is_not_measured() -> None:
+    meter = QualityMeter(np.zeros((1080, 1920), dtype=np.uint8))
+    meter.restart(0.0)
+
+    meter.observe(WARMUP_SECONDS + 1, np.zeros((720, 1280), dtype=np.uint8))
+
+    assert meter.report.frames == 0

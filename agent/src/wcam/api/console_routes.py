@@ -4,7 +4,7 @@ import segno
 from fastapi import APIRouter, Response, status
 
 from wcam.api.health import create_health_router
-from wcam.api.schemas import PairingResponse, QualityPresetRequest, StatusResponse, iso_utc, status_response
+from wcam.api.schemas import PairingResponse, StatusResponse, VideoFormatRequest, iso_utc, status_response
 from wcam.services import AgentServices
 
 QR_ERROR_LEVEL = "m"
@@ -62,7 +62,7 @@ def create_console_router(services: AgentServices, phone_page_url: str) -> APIRo
         "/api/status",
         summary="Agent status",
         description="Pairing window, current session with its confirmation code and measured video, why the last "
-        "session ended, the virtual camera, the quality preset, the agent CPU and, with a reference file, the "
+        "session ended, the virtual camera, the video format, the agent CPU and, with a reference file, the "
         "measured quality.",
     )
     async def get_status() -> StatusResponse:
@@ -71,14 +71,15 @@ def create_console_router(services: AgentServices, phone_page_url: str) -> APIRo
         )
 
     @router.put(
-        "/api/quality-preset",
+        "/api/video-format",
         status_code=status.HTTP_204_NO_CONTENT,
-        summary="Choose the quality preset",
-        description="Sets the maximum bitrate for the current session and the next ones until the agent "
-        "closes, and tells the connected phone.",
+        summary="Choose the video format",
+        description="Sets the resolution and frame rate for the current session and the next ones until the agent "
+        "closes. The format must be one the phone camera offers. The virtual camera announces it when no app is "
+        "receiving its video, and the phone follows what the camera announces.",
     )
-    async def set_quality_preset(body: QualityPresetRequest) -> Response:
-        manager.set_quality_preset(body.preset)
+    async def set_video_format(body: VideoFormatRequest) -> Response:
+        manager.set_video_format(body.format)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @router.post(

@@ -7,10 +7,9 @@ from wcam.media.color_correction import ColorCorrection, CorrectionState, Displa
 from wcam.media.metrics import VideoStats
 from wcam.media.pipeline import FramePipeline
 from wcam.media.quality import QualityReport
-from wcam.media.quality_preset import QualityPreset
-from wcam.sessions.manager import LastEnded, SessionOffer, SessionView, Status
+from wcam.media.video_format import VideoFormat
+from wcam.sessions.manager import LastEnded, SessionOffer, SessionView, Status, VideoFormatState
 from wcam.sessions.phone_messages import CameraCapabilitiesMessage, CameraColorSpaceMessage, CameraModesMessage
-from wcam.virtualcam.sink import OUTPUT_FPS, OUTPUT_HEIGHT, OUTPUT_WIDTH
 
 
 class CamelModel(BaseModel):
@@ -40,6 +39,7 @@ class VideoBody(CamelModel):
     bitrate_kbps: int
     codec: str | None
     frames_scaled: int
+    orientation: str
     color_range: str
     color_matrix: str
     color_correction: ColorCorrectionBody
@@ -99,6 +99,13 @@ class VirtualCameraBody(CamelModel):
     source: str
 
 
+class VideoFormatBody(CamelModel):
+    selected: VideoFormat
+    available: list[VideoFormat]
+    camera: VideoFormat
+    pending: bool
+
+
 class ProcessBody(CamelModel):
     cpu_percent: float
 
@@ -114,14 +121,14 @@ class StatusResponse(CamelModel):
     session: SessionBody | None
     last_ended: LastEndedBody | None
     virtual_camera: VirtualCameraBody
-    quality_preset: QualityPreset
+    video_format: VideoFormatBody
     process: ProcessBody
     quality: QualityBody | None
     dev_tools: bool
 
 
-class QualityPresetRequest(CamelModel):
-    preset: QualityPreset
+class VideoFormatRequest(CamelModel):
+    format: VideoFormat
 
 
 class CreateSessionRequest(CamelModel):
@@ -146,22 +153,32 @@ def status_response(status: Status, pipeline: FramePipeline, cpu_percent: float,
         pairing=None if expires_at is None else PairingBody(expires_at=iso_utc(expires_at)),
         session=None if status.session is None else session_body(status.session),
         last_ended=None if status.last_ended is None else last_ended_body(status.last_ended),
-        virtual_camera=virtual_camera_body(pipeline),
-        quality_preset=status.quality_preset,
+        virtual_camera=virtual_camera_body(pipeline, status.video_format.camera),
+        video_format=video_format_body(status.video_format),
         process=ProcessBody(cpu_percent=cpu_percent),
         quality=None if quality is None else quality_body(quality),
         dev_tools=dev_tools,
     )
 
 
-def virtual_camera_body(pipeline: FramePipeline) -> VirtualCameraBody:
+def video_format_body(state: VideoFormatState) -> VideoFormatBody:
+    return VideoFormatBody(
+        selected=state.selected,
+        available=list(state.available),
+        camera=state.camera,
+        pending=state.pending,
+    )
+
+
+def virtual_camera_body(pipeline: FramePipeline, camera_format: VideoFormat) -> VirtualCameraBody:
     sink_status = pipeline.sink.status
+    size = camera_format.size
     return VirtualCameraBody(
         state=sink_status.state,
         backend=pipeline.sink.backend,
         reason=sink_status.reason,
         fallback_reason=pipeline.fallback_reason,
-        output=OutputBody(width=OUTPUT_WIDTH, height=OUTPUT_HEIGHT, fps=OUTPUT_FPS),
+        output=OutputBody(width=size.width, height=size.height, fps=size.fps),
         source=pipeline.source,
     )
 
@@ -222,6 +239,7 @@ def video_body(video: VideoStats) -> VideoBody:
         bitrate_kbps=video.bitrate_kbps,
         codec=video.codec,
         frames_scaled=video.frames_scaled,
+        orientation=video.orientation,
         color_range=video.color_range,
         color_matrix=video.color_matrix,
         color_correction=color_correction_body(video.color_correction),

@@ -12,6 +12,7 @@ from wcam.api.console_routes import pairing_url
 from wcam.app import create_servers, phone_page_url, run, stop_signals_handled
 from wcam.config import Settings
 from wcam.i18n import Messages, load_messages, resolve_language, system_language_tag
+from wcam.media.camera_format import CameraFormatControl
 from wcam.media.color_correction import IDENTITY_TABLE, CorrectionState, DisplayConvention
 from wcam.media.episodes import open_episode_log
 from wcam.media.peer import aiortc_peer_factory
@@ -65,8 +66,9 @@ def start(settings: Settings, messages: Messages) -> None:
     )
     pipeline.open()
     comparisons = ComparisonStore(lambda: correction_snapshot(pipeline)) if settings.dev_tools else None
-    manager = SessionManager(aiortc_peer_factory(lan.network, pipeline), comparisons=comparisons)
-    services = AgentServices(manager, pipeline, CpuMonitor(), comparisons)
+    camera = CameraFormatControl(pipeline)
+    manager = SessionManager(aiortc_peer_factory(lan.network, pipeline), comparisons=comparisons, camera=camera)
+    services = AgentServices(manager, pipeline, CpuMonitor(), camera, comparisons)
     print_banner(messages, console_url, phone_url, certificate)
     print_virtual_camera(messages, selection)
     announce_pairing(messages, manager, phone_url, console_url, sys.stdout)

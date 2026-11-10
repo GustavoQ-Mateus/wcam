@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import socket
+from collections.abc import Mapping
 from dataclasses import replace
 from ipaddress import IPv4Network
 from typing import Protocol, cast
@@ -18,12 +19,12 @@ from wcam.media.color_correction import ColorCorrection
 from wcam.media.episodes import EpisodeTracker, LinkSample, write_episode
 from wcam.media.frame_gate import FrameGate
 from wcam.media.h264_level import declare_h264_level_5_1
-from wcam.media.metrics import VideoMeter, VideoStats
+from wcam.media.metrics import Orientation, VideoMeter, VideoStats
 from wcam.media.pipeline import FramePipeline
 from wcam.media.pipeline import FrameSource as OutputSource
-from wcam.media.quality_preset import DEFAULT_QUALITY_PRESET
 from wcam.media.recovering_jitter_buffer import STALLED_SECONDS, RecoveringJitterBuffer
 from wcam.media.sdp_filter import keep_candidates_in_network, video_codec
+from wcam.media.video_format import DEFAULT_VIDEO_FORMAT
 from wcam.sessions.manager import EndReason, MediaPeer, PeerEvents, PeerFactory
 
 CONTROL_CHANNEL = "control"
@@ -124,6 +125,7 @@ class AiortcPeer:
             stats,
             codec=video_codec(self._answer_sdp),
             frames_scaled=self._pipeline.frames_scaled,
+            orientation=Orientation.PORTRAIT if self._pipeline.portrait else Orientation.LANDSCAPE,
             color_range=self._pipeline.color_range,
             color_matrix=self._pipeline.color_matrix,
             color_correction=self._pipeline.color_correction,
@@ -136,7 +138,7 @@ class AiortcPeer:
         offer = RTCSessionDescription(keep_candidates_in_network(offer_sdp, self._network), "offer")
         await self._connection.setRemoteDescription(offer)
         self._jitter_buffers = install_recovering_jitter_buffers(self._connection)
-        cap_video_estimate(self._connection, DEFAULT_QUALITY_PRESET.max_bitrate_bps)
+        cap_video_estimate(self._connection, DEFAULT_VIDEO_FORMAT.size.max_bitrate_bps)
         await self._connection.setLocalDescription(await self._connection.createAnswer())
         enlarge_ice_receive_buffers(self._connection)
         self._answer_sdp = keep_candidates_in_network(self._connection.localDescription.sdp, self._network)
@@ -152,7 +154,7 @@ class AiortcPeer:
     def set_color_correction(self, correction: ColorCorrection) -> None:
         self._pipeline.color_correction = correction
 
-    def send(self, message: dict[str, str]) -> None:
+    def send(self, message: Mapping[str, object]) -> None:
         if self._channel is not None and self._channel.readyState == "open":
             self._channel.send(json.dumps(message))
 
@@ -190,7 +192,6 @@ class AiortcPeer:
         return LinkSample(
             at=asyncio.get_running_loop().time(),
             frame_age=frame_age,
-            portrait=self._pipeline.portrait,
             black=self._pipeline.source is OutputSource.PLACEHOLDER,
             rtp_bytes=sum(buffer.received_bytes for buffer in self._jitter_buffers),
             keyframe_requests=sum(buffer.keyframe_requests for buffer in self._jitter_buffers),

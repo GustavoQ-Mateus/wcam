@@ -18,14 +18,22 @@ from wcam.media.color_range import (
 )
 from wcam.media.placeholder import black_i420
 from wcam.media.quality import QualityMeter, QualityReport
-from wcam.virtualcam.sink import OUTPUT_FPS, OUTPUT_HEIGHT, OUTPUT_WIDTH, CameraState, I420Frame, VirtualCameraSink
+from wcam.media.video_format import DEFAULT_VIDEO_FORMAT
+from wcam.virtualcam.sink import AnnouncedFormat, CameraState, I420Frame, VirtualCameraSink, frame_size
 
-FRAME_INTERVAL_SECONDS = 1 / OUTPUT_FPS
 STALE_FRAME_SECONDS = 0.5
 FREEZE_SECONDS = 3.0
 I420_FORMAT = "yuv420p"
 RAW_I420_FORMATS = (I420_FORMAT, "yuvj420p")
 WORKER_NAME = "wcam-frames"
+REDUCTION_INTERPOLATION = "AREA"
+DEFAULT_OUTPUT = AnnouncedFormat(
+    DEFAULT_VIDEO_FORMAT.size.width,
+    DEFAULT_VIDEO_FORMAT.size.height,
+    DEFAULT_VIDEO_FORMAT.size.fps,
+    pending=False,
+    running=False,
+)
 QUALITY_WORKER_NAME = "wcam-quality"
 
 
@@ -48,7 +56,8 @@ class FramePipeline:
         self.quality = quality
         self.color_correction: ColorCorrection | None = None
         self._clock = clock
-        self._placeholder = black_i420(OUTPUT_WIDTH, OUTPUT_HEIGHT)
+        self.output = DEFAULT_OUTPUT
+        self._placeholder = black_i420(DEFAULT_OUTPUT.width, DEFAULT_OUTPUT.height)
         self._pending: asyncio.Queue[VideoFrame] = asyncio.Queue(maxsize=1)
         self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=WORKER_NAME)
         self._quality_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=QUALITY_WORKER_NAME)
@@ -68,7 +77,19 @@ class FramePipeline:
         return None if self.quality is None else self.quality.report
 
     def open(self) -> None:
-        self.sink.open(OUTPUT_WIDTH, OUTPUT_HEIGHT, OUTPUT_FPS)
+        self.sink.open(DEFAULT_OUTPUT.width, DEFAULT_OUTPUT.height, DEFAULT_OUTPUT.fps)
+        self.follow(self.sink.announced_format())
+
+    def follow(self, announced: AnnouncedFormat | None) -> None:
+        if announced is None:
+            return
+        if frame_size(self._placeholder) != (announced.width, announced.height):
+            self._placeholder = black_i420(announced.width, announced.height)
+        self.output = announced
+
+    async def request_format(self, width: int, height: int, fps: int) -> bool:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._worker, self._change_format, width, height, fps)
 
     def start_phone(self) -> None:
         self.frames_scaled = 0
@@ -113,16 +134,22 @@ class FramePipeline:
 
     def deliver(self, frame: VideoFrame | None) -> None:
         now = self._clock()
+        placeholder = self._placeholder
         if frame is not None:
-            self._accept_phone_frame(frame, now)
+            self._accept_phone_frame(frame, now, placeholder)
         elif self._last_phone_at is None or now - self._last_phone_at > FREEZE_SECONDS:
             self._last_phone = None
-        output = self._last_phone if self._phone_active else None
+        output = self._last_phone if self._phone_active and fits(self._last_phone, placeholder) else None
         self.source = self._source_of(output, now)
         if self.sink.status.state is CameraState.ACTIVE:
-            self.sink.send(self._placeholder if output is None else output)
+            self.sink.send(placeholder if output is None else output)
         if output is not None and frame is not None:
             self._measure(now, output)
+
+    def _change_format(self, width: int, height: int, fps: int) -> bool:
+        accepted = self.sink.request_format(width, height, fps)
+        self.follow(self.sink.announced_format())
+        return accepted
 
     def _source_of(self, output: I420Frame | None, now: float) -> FrameSource:
         if output is None:
@@ -137,7 +164,8 @@ class FramePipeline:
         self._restart_quality_on_correction_change(self.quality, now)
         if self._measuring is not None and not self._measuring.done():
             return
-        self._measuring = self._quality_worker.submit(self.quality.observe, now, output[:OUTPUT_HEIGHT])
+        _, height = frame_size(output)
+        self._measuring = self._quality_worker.submit(self.quality.observe, now, output[:height])
 
     def _restart_quality_on_correction_change(self, quality: QualityMeter, now: float) -> None:
         correction = self.color_correction
@@ -150,31 +178,30 @@ class FramePipeline:
 
     async def _next_frame(self) -> VideoFrame | None:
         try:
-            return await asyncio.wait_for(self._pending.get(), FRAME_INTERVAL_SECONDS)
+            return await asyncio.wait_for(self._pending.get(), 1 / self.output.fps)
         except TimeoutError:
             return None
 
-    def _accept_phone_frame(self, frame: VideoFrame, now: float) -> None:
+    def _accept_phone_frame(self, frame: VideoFrame, now: float, placeholder: I420Frame) -> None:
         self.color_range = declared_range(frame)
         self.color_matrix = declared_matrix(frame)
         self.portrait = frame.height > frame.width
+        output_width, output_height = frame_size(placeholder)
         if self.portrait:
-            self._last_phone = None
+            self._last_phone = self._pillarboxed(frame, placeholder)
+            self.frames_scaled += 1
+        elif (frame.width, frame.height) == (output_width, output_height):
+            self._last_phone = self._converted(frame, output_width, output_height)
+        else:
             return
         self._last_phone_at = now
-        if (frame.width, frame.height) == (OUTPUT_WIDTH, OUTPUT_HEIGHT):
-            self._last_phone = self._converted(frame, OUTPUT_WIDTH, OUTPUT_HEIGHT)
-            return
-        self._last_phone = self._letterboxed(frame)
-        self.frames_scaled += 1
 
-    def _letterboxed(self, frame: VideoFrame) -> I420Frame:
-        scale = min(OUTPUT_WIDTH / frame.width, OUTPUT_HEIGHT / frame.height)
-        width = even(frame.width * scale)
-        height = even(frame.height * scale)
-        scaled = self._converted(frame, width, height)
-        canvas = self._placeholder.copy()
-        paste_i420(canvas, scaled, width, height)
+    def _pillarboxed(self, frame: VideoFrame, placeholder: I420Frame) -> I420Frame:
+        _, output_height = frame_size(placeholder)
+        width = even(frame.width * output_height / frame.height)
+        reduced = self._converted(frame, width, output_height)
+        canvas = placeholder.copy()
+        paste_i420(canvas, reduced, width, output_height)
         return canvas
 
     def _converted(self, frame: VideoFrame, width: int, height: int) -> I420Frame:
@@ -199,6 +226,7 @@ def i420_array(frame: VideoFrame, width: int, height: int, color_range: ColorRan
             width=width,
             height=height,
             format=I420_FORMAT,
+            interpolation=REDUCTION_INTERPOLATION,
             src_color_range=kept_range,
             dst_color_range=kept_range,
         )
@@ -206,15 +234,20 @@ def i420_array(frame: VideoFrame, width: int, height: int, color_range: ColorRan
     return array
 
 
+def fits(frame: I420Frame | None, placeholder: I420Frame) -> bool:
+    return frame is not None and frame.shape == placeholder.shape
+
+
 def even(value: float) -> int:
-    return max(2, int(value) // 2 * 2)
+    return max(2, round(value / 2) * 2)
 
 
 def paste_i420(canvas: I420Frame, image: I420Frame, width: int, height: int) -> None:
-    top = even((OUTPUT_HEIGHT - height) / 2) if height < OUTPUT_HEIGHT else 0
-    left = even((OUTPUT_WIDTH - width) / 2) if width < OUTPUT_WIDTH else 0
+    canvas_width, canvas_height = frame_size(canvas)
+    top = even((canvas_height - height) / 2) if height < canvas_height else 0
+    left = even((canvas_width - width) / 2) if width < canvas_width else 0
     for canvas_plane, image_plane, divisor in zip(
-        i420_planes(canvas, OUTPUT_WIDTH, OUTPUT_HEIGHT),
+        i420_planes(canvas, canvas_width, canvas_height),
         i420_planes(image, width, height),
         (1, 2, 2),
         strict=True,

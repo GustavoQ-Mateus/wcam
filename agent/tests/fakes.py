@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
 from wcam.media.color_correction import ColorCorrection
@@ -35,7 +36,7 @@ OFFER_SDP = "\r\n".join(
 class FakePeer:
     def __init__(self, events: PeerEvents) -> None:
         self.events = events
-        self.sent: list[dict[str, str]] = []
+        self.sent: list[Mapping[str, object]] = []
         self.gate_open = False
         self.closed = False
         self.video: VideoStats | None = None
@@ -55,7 +56,7 @@ class FakePeer:
     def set_color_correction(self, correction: ColorCorrection) -> None:
         self.color_corrections.append(correction)
 
-    def send(self, message: dict[str, str]) -> None:
+    def send(self, message: Mapping[str, object]) -> None:
         self.sent.append(message)
 
     async def close(self) -> None:

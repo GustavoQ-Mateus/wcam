@@ -14,10 +14,11 @@ from av import VideoFrame
 
 from tests.conftest import LAN, console_app, console_client, opened_pipeline
 from tests.fakes import FakePeerFactory
-from tests.unit.test_quality_preset import live_manager
 from tests.unit.test_session_manager import connected_manager, session_request
+from tests.unit.test_video_format import live_manager
 from wcam.app import create_console_app, phone_page_url
 from wcam.config import Settings
+from wcam.media.camera_format import CameraFormatControl
 from wcam.media.color_correction import IDENTITY_TABLE
 from wcam.media.color_difference import RgbSpace
 from wcam.media.comparison_report import GRID_COLUMNS, GRID_ROWS, decoded_png, image_difference
@@ -441,7 +442,8 @@ async def test_dev_routes_report_a_comparison_with_dev_tools(settings: Settings)
     await manager.create_session(session_request_for(manager))
     factory.last.events.on_connected()
     manager.confirm()
-    services = AgentServices(manager, opened_pipeline(), CpuMonitor(), comparisons)
+    pipeline = opened_pipeline()
+    services = AgentServices(manager, pipeline, CpuMonitor(), CameraFormatControl(pipeline), comparisons)
     app = create_console_app(settings, services, phone_page_url(settings, LAN))
     phone = scene()
 

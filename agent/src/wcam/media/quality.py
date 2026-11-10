@@ -88,6 +88,8 @@ class QualityMeter:
     def observe(self, now: float, luma: Luma) -> None:
         if self._started_at is None or now - self._started_at < WARMUP_SECONDS:
             return
+        if luma.shape != self._reference.shape:
+            return
         value = ssim(self._reference, luma)
         self._total += value
         self._minimum = value if self._minimum is None else min(self._minimum, value)

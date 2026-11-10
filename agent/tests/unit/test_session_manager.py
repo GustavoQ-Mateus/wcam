@@ -63,7 +63,15 @@ async def test_connected_session_awaits_confirmation_with_contract_code() -> Non
     )
     assert factory.last.sent == [
         {"type": "session_state", "state": "awaiting_confirmation"},
-        {"type": "quality_preset", "preset": "balanced"},
+        {
+            "type": "video_format",
+            "format": "1080p30",
+            "width": 1920,
+            "height": 1080,
+            "fps": 30,
+            "maxBitrate": 10_000_000,
+            "available": ["1080p30"],
+        },
     ]
 
 
