@@ -6,6 +6,10 @@
   min-height: var(--control-size);
   padding: var(--space-3);
   border-radius: var(--radius-box);
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
   transition: transform var(--duration-press) var(--ease-out);
 
   &:active {
