@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import secrets
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -10,8 +10,14 @@ from typing import Any, Protocol
 from wcam.clock import Clock, utc_now
 from wcam.media.color_correction import ColorCorrection, DisplayConvention, color_correction, default_correction
 from wcam.media.metrics import VideoStats
-from wcam.media.quality_preset import DEFAULT_QUALITY_PRESET, QualityPreset
 from wcam.media.sdp_filter import is_publishable_offer, sha256_fingerprint
+from wcam.media.video_format import (
+    DEFAULT_VIDEO_FORMAT,
+    CameraLimits,
+    VideoFormat,
+    available_formats,
+    format_after_capabilities,
+)
 from wcam.pairing.attempts import AttemptLimiter
 from wcam.pairing.confirmation_code import confirmation_code
 from wcam.pairing.errors import PairingTokenExpiredError, PairingTokenInvalidError, PairingWindowClosedError
@@ -24,12 +30,13 @@ from wcam.sessions.errors import (
     NoSessionAwaitingConfirmationError,
     SessionAlreadyActiveError,
     TooManyAttemptsError,
+    UnavailableVideoFormatError,
 )
 from wcam.sessions.phone_messages import (
     CameraCapabilitiesMessage,
     ScreenshotBeginMessage,
     ScreenshotChunkMessage,
-    SetQualityPresetMessage,
+    SetVideoFormatMessage,
     SnapshotBeginMessage,
     SnapshotChunkMessage,
     parse_phone_message,
@@ -39,7 +46,8 @@ CONFIRMATION_TIMEOUT_SECONDS = 120.0
 ID_BYTES = 16
 COUNTED_FAILURES = (PairingTokenInvalidError, PairingTokenExpiredError, PairingWindowClosedError)
 IGNORED_PHONE_MESSAGE = "Ignored a phone message outside the contract"
-PRESET_BEFORE_LIVE = "Ignored a quality preset change from a phone that is not live yet"
+FORMAT_BEFORE_LIVE = "Ignored a video format change from a phone that is not live yet"
+UNAVAILABLE_FORMAT_FROM_PHONE = "Ignored a video format the phone camera does not offer"
 PHONE_IMAGE_WITHOUT_DEV_TOOLS = "Ignored a phone image because development tools are off"
 
 type PhoneImageMessage = SnapshotBeginMessage | SnapshotChunkMessage | ScreenshotBeginMessage | ScreenshotChunkMessage
@@ -82,9 +90,21 @@ class MediaPeer(Protocol):
 
     def set_color_correction(self, correction: ColorCorrection) -> None: ...
 
-    def send(self, message: dict[str, str]) -> None: ...
+    def send(self, message: Mapping[str, object]) -> None: ...
 
     async def close(self) -> None: ...
+
+
+class FormatCamera(Protocol):
+    @property
+    def camera_format(self) -> VideoFormat | None: ...
+
+    @property
+    def pending(self) -> bool: ...
+
+    def on_change(self, listener: Callable[[], None]) -> None: ...
+
+    def request(self, video_format: VideoFormat) -> None: ...
 
 
 type PeerFactory = Callable[[str, PeerEvents], Awaitable[MediaPeer]]
@@ -125,11 +145,19 @@ class LastEnded:
 
 
 @dataclass(frozen=True, slots=True)
+class VideoFormatState:
+    selected: VideoFormat
+    available: tuple[VideoFormat, ...]
+    camera: VideoFormat
+    pending: bool
+
+
+@dataclass(frozen=True, slots=True)
 class Status:
     pairing_expires_at: datetime | None
     session: SessionView | None
     last_ended: LastEnded | None
-    quality_preset: QualityPreset
+    video_format: VideoFormatState
 
 
 @dataclass(slots=True)
@@ -150,9 +178,11 @@ class SessionManager:
         clock: Clock = utc_now,
         confirmation_timeout: float = CONFIRMATION_TIMEOUT_SECONDS,
         comparisons: ComparisonStore | None = None,
+        camera: FormatCamera | None = None,
     ) -> None:
         self._peer_factory = peer_factory
         self._comparisons = comparisons
+        self._camera = camera
         self._clock = clock
         self._confirmation_timeout = confirmation_timeout
         self._pairing = PairingWindow(clock)
@@ -160,9 +190,12 @@ class SessionManager:
         self._session: Session | None = None
         self._creating = False
         self._last_ended: LastEnded | None = None
-        self._quality_preset = DEFAULT_QUALITY_PRESET
+        self._selected_format = DEFAULT_VIDEO_FORMAT
+        self._available_formats = available_formats(None)
         self._confirmation_timer: asyncio.Task[None] | None = None
         self._background: set[asyncio.Task[None]] = set()
+        if camera is not None:
+            camera.on_change(self._send_video_format)
 
     def open_pairing(self) -> PairingTicket:
         self._ensure_idle()
@@ -172,13 +205,12 @@ class SessionManager:
         self._pairing.close()
 
     def status(self) -> Status:
-        return Status(self._pairing.expires_at, self._view(), self._last_ended, self._quality_preset)
+        return Status(self._pairing.expires_at, self._view(), self._last_ended, self._video_format_state())
 
-    def set_quality_preset(self, preset: QualityPreset) -> None:
-        self._quality_preset = preset
-        if self._session is not None:
-            self._session.peer.limit_bitrate(preset.max_bitrate_bps)
-            self._session.peer.send(quality_preset_message(preset))
+    def set_video_format(self, video_format: VideoFormat) -> None:
+        if video_format not in self._available_formats:
+            raise UnavailableVideoFormatError
+        self._select_format(video_format)
 
     def start_comparison(self) -> str:
         session = self._session
@@ -250,7 +282,7 @@ class SessionManager:
             peer = await self._peer_factory(request.offer_sdp, events)
         except ValueError as error:
             raise InvalidOfferError from error
-        peer.limit_bitrate(self._quality_preset.max_bitrate_bps)
+        peer.limit_bitrate(self._phone_format().size.max_bitrate_bps)
         peer.set_color_correction(default_correction(request.display))
         agent_fingerprint = sha256_fingerprint(peer.answer_sdp) or ""
         code = confirmation_code(nonce, phone_fingerprint, agent_fingerprint)
@@ -265,7 +297,7 @@ class SessionManager:
             return
         session.state = SessionState.AWAITING_CONFIRMATION
         session.peer.send(state_message(SessionState.AWAITING_CONFIRMATION))
-        session.peer.send(quality_preset_message(self._quality_preset))
+        self._send_video_format()
         self._confirmation_timer = asyncio.get_running_loop().create_task(self._expire_confirmation(session))
 
     def _handle_lost(self, sessions: list[Session], reason: EndReason) -> None:
@@ -279,20 +311,55 @@ class SessionManager:
             return
         message = parse_phone_message(data)
         if isinstance(message, CameraCapabilitiesMessage):
-            session.camera_capabilities = message
-            session.peer.set_color_correction(color_correction(message.camera_color_space(), session.request.display))
+            self._receive_capabilities(session, message)
         elif isinstance(message, PHONE_IMAGE_MESSAGES):
             self._receive_phone_image(message)
-        elif isinstance(message, SetQualityPresetMessage):
-            self._apply_phone_preset(session, message.preset)
+        elif isinstance(message, SetVideoFormatMessage):
+            self._apply_phone_format(session, message.format)
         else:
             logger.warning(IGNORED_PHONE_MESSAGE)
 
-    def _apply_phone_preset(self, session: Session, preset: QualityPreset) -> None:
+    def _receive_capabilities(self, session: Session, message: CameraCapabilitiesMessage) -> None:
+        session.camera_capabilities = message
+        session.peer.set_color_correction(color_correction(message.camera_color_space(), session.request.display))
+        self._available_formats = available_formats(CameraLimits(message.width, message.height, message.frame_rate))
+        following = format_after_capabilities(self._selected_format, self._available_formats)
+        if following is not self._selected_format:
+            self._select_format(following)
+        self._send_video_format()
+
+    def _apply_phone_format(self, session: Session, video_format: VideoFormat) -> None:
         if session.state is not SessionState.LIVE:
-            logger.warning(PRESET_BEFORE_LIVE)
+            logger.warning(FORMAT_BEFORE_LIVE)
             return
-        self.set_quality_preset(preset)
+        if video_format not in self._available_formats:
+            logger.warning(UNAVAILABLE_FORMAT_FROM_PHONE)
+            self._send_video_format()
+            return
+        self._select_format(video_format)
+
+    def _select_format(self, video_format: VideoFormat) -> None:
+        self._selected_format = video_format
+        if self._camera is None:
+            self._send_video_format()
+            return
+        self._camera.request(video_format)
+
+    def _phone_format(self) -> VideoFormat:
+        camera_format = None if self._camera is None else self._camera.camera_format
+        return camera_format or self._selected_format
+
+    def _send_video_format(self) -> None:
+        session = self._session
+        if session is None:
+            return
+        phone_format = self._phone_format()
+        session.peer.limit_bitrate(phone_format.size.max_bitrate_bps)
+        session.peer.send(video_format_message(phone_format, self._available_formats))
+
+    def _video_format_state(self) -> VideoFormatState:
+        pending = self._camera is not None and self._camera.pending
+        return VideoFormatState(self._selected_format, self._available_formats, self._phone_format(), pending)
 
     def _receive_phone_image(self, message: PhoneImageMessage) -> None:
         comparisons = self._comparisons
@@ -369,5 +436,14 @@ def snapshot_request_message(comparison_id: str) -> dict[str, str]:
     return {"type": "snapshot_request", "id": comparison_id}
 
 
-def quality_preset_message(preset: QualityPreset) -> dict[str, str]:
-    return {"type": "quality_preset", "preset": preset}
+def video_format_message(video_format: VideoFormat, available: tuple[VideoFormat, ...]) -> dict[str, object]:
+    size = video_format.size
+    return {
+        "type": "video_format",
+        "format": video_format,
+        "width": size.width,
+        "height": size.height,
+        "fps": size.fps,
+        "maxBitrate": size.max_bitrate_bps,
+        "available": list(available),
+    }

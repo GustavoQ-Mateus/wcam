@@ -22,6 +22,7 @@ internal sealed unsafe partial class MediaStream : IMFMediaStream2, IKsControl
     private readonly SessionFrameReader _reader = new();
     private readonly DeliveryStats _stats = new();
     private FramePacer? _pacer;
+    private readonly FrameFormat _format;
     private MF_STREAM_STATE _state = MF_STREAM_STATE.MF_STREAM_STATE_STOPPED;
     private bool _isShutdown;
 
@@ -29,8 +30,10 @@ internal sealed unsafe partial class MediaStream : IMFMediaStream2, IKsControl
     {
         _source = source;
         PInvoke.MFCreateEventQueue(out _events).ThrowOnFailure();
+        _format = _reader.ReadFormat() ?? FrameFormat.Default;
+        Log.Info($"stream created at {_format}");
         Attributes = CreateAttributes();
-        Descriptor = CreateDescriptor(Attributes);
+        Descriptor = CreateDescriptor(Attributes, _format);
     }
 
     public IMFAttributes Attributes { get; }
@@ -149,7 +152,7 @@ internal sealed unsafe partial class MediaStream : IMFMediaStream2, IKsControl
     private void BeginDelivery()
     {
         _state = MF_STREAM_STATE.MF_STREAM_STATE_RUNNING;
-        _pacer ??= new FramePacer(DeliverPendingSample);
+        _pacer ??= new FramePacer(DeliverPendingSample, _format.FramesPerSecond);
     }
 
     private void EndDelivery(MF_STREAM_STATE state)
@@ -200,14 +203,14 @@ internal sealed unsafe partial class MediaStream : IMFMediaStream2, IKsControl
 
     private IMFSample CreateSample(object? token)
     {
-        PInvoke.MFCreateMemoryBuffer(VideoFormat.FrameSize, out IMFMediaBuffer buffer).ThrowOnFailure();
+        PInvoke.MFCreateMemoryBuffer((uint)_format.FrameSize, out IMFMediaBuffer buffer).ThrowOnFailure();
         try
         {
             FillBuffer(buffer);
             PInvoke.MFCreateSample(out IMFSample sample).ThrowOnFailure();
             sample.AddBuffer(buffer);
             sample.SetSampleTime(PInvoke.MFGetSystemTime());
-            sample.SetSampleDuration(VideoFormat.FrameDurationTicks);
+            sample.SetSampleDuration(_format.FrameDurationTicks);
             if (token is not null)
             {
                 sample.SetObject(PInvoke.MFSampleExtension_Token, token);
@@ -226,13 +229,13 @@ internal sealed unsafe partial class MediaStream : IMFMediaStream2, IKsControl
         buffer.Lock(&data, null, null);
         try
         {
-            _reader.Fill(new Span<byte>(data, VideoFormat.FrameSize));
+            _reader.Fill(new Span<byte>(data, _format.FrameSize), _format);
         }
         finally
         {
             buffer.Unlock();
         }
-        buffer.SetCurrentLength(VideoFormat.FrameSize);
+        buffer.SetCurrentLength((uint)_format.FrameSize);
     }
 
     private void QueueEvent(MediaEvent type, in PROPVARIANT value)
@@ -261,9 +264,9 @@ internal sealed unsafe partial class MediaStream : IMFMediaStream2, IKsControl
         return attributes;
     }
 
-    private static IMFStreamDescriptor CreateDescriptor(IMFAttributes attributes)
+    private static IMFStreamDescriptor CreateDescriptor(IMFAttributes attributes, FrameFormat format)
     {
-        IMFMediaType mediaType = CaptureMediaType.Create();
+        IMFMediaType mediaType = CaptureMediaType.Create(format);
         PInvoke.MFCreateStreamDescriptor(StreamId, [mediaType], out IMFStreamDescriptor descriptor).ThrowOnFailure();
         descriptor.GetMediaTypeHandler(out IMFMediaTypeHandler handler);
         handler.SetCurrentMediaType(mediaType);

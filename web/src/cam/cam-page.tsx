@@ -16,19 +16,19 @@ export default function CamPage() {
   const { state } = cam;
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} data-portrait={isLive(state) && state.portrait}>
       <Viewfinder videoRef={cam.videoRef} mirrored={isMirrored(cam.facing)} visible={isLive(state) && !cam.switching} />
       {isLive(state) ? (
         <LiveLayer
           state={state}
           showNotice={cam.wakeLockUnavailable && !noticeDismissed}
-          qualityPreset={cam.qualityPreset}
+          videoFormat={cam.videoFormat}
           onDismissNotice={() => {
             setNoticeDismissed(true);
           }}
           onSwitchCamera={cam.switchCamera}
           onTogglePreview={cam.togglePreview}
-          onChooseQuality={cam.chooseQualityPreset}
+          onChooseFormat={cam.chooseVideoFormat}
           onSendScreenshot={cam.screenshotRequested ? cam.sendScreenshot : undefined}
         />
       ) : (

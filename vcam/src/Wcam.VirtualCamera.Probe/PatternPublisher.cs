@@ -1,13 +1,14 @@
+using System.Diagnostics;
+
 namespace Wcam.VirtualCamera.Probe;
 
 internal sealed class PatternPublisher : IDisposable
 {
-    private const int ReportEveryFrames = VideoFormat.FramesPerSecond * 10;
-    private static readonly TimeSpan FrameInterval = TimeSpan.FromTicks(VideoFormat.FrameDurationTicks);
+    private const int ReportEverySeconds = 10;
+    private const int SleepThresholdMilliseconds = 3;
 
     private readonly CameraLibrary _library;
     private readonly FrameRenderer _render;
-    private readonly byte[] _frame = new byte[VideoFormat.FrameSize];
     private readonly Thread _thread;
     private volatile bool _stopping;
 
@@ -27,15 +28,44 @@ internal sealed class PatternPublisher : IDisposable
 
     private void Run()
     {
+        byte[] frame = [];
+        long deadline = Stopwatch.GetTimestamp();
+        long reportAt = deadline;
         for (long frameNumber = 0; !_stopping; frameNumber++)
         {
-            _render(_frame, frameNumber);
-            int status = _library.Publish(_frame);
-            if (status != 0 || frameNumber % ReportEveryFrames == 0)
+            FrameFormat format = _library.AnnouncedFormat() ?? FrameFormat.Default;
+            if (frame.Length != format.FrameSize)
             {
-                Console.WriteLine($"pattern: frame {frameNumber}, WcamFramePublish 0x{status:X8}");
+                frame = new byte[format.FrameSize];
             }
-            Thread.Sleep(FrameInterval);
+            _render(frame, format, frameNumber);
+            int status = _library.Publish(frame, format);
+            if (status != 0 || Stopwatch.GetTimestamp() >= reportAt)
+            {
+                Console.WriteLine($"pattern: frame {frameNumber} at {format}, WcamFramePublish 0x{status:X8}");
+                reportAt = Stopwatch.GetTimestamp() + Stopwatch.Frequency * ReportEverySeconds;
+            }
+            deadline = Math.Max(deadline + Stopwatch.Frequency / format.FramesPerSecond, Stopwatch.GetTimestamp() - Stopwatch.Frequency);
+            WaitUntil(deadline);
+        }
+    }
+
+    private static void WaitUntil(long deadline)
+    {
+        long sleepThreshold = Stopwatch.Frequency * SleepThresholdMilliseconds / 1000;
+        while (true)
+        {
+            long remaining = deadline - Stopwatch.GetTimestamp();
+            if (remaining <= 0)
+            {
+                return;
+            }
+            if (remaining > sleepThreshold)
+            {
+                Thread.Sleep(1);
+                continue;
+            }
+            Thread.SpinWait(100);
         }
     }
 }

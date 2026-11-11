@@ -7,15 +7,30 @@ namespace Wcam.VirtualCamera;
 
 internal static class VirtualCameraHost
 {
-    private static readonly Lock Gate = new();
+    private static readonly Lock CameraGate = new();
+    private static readonly Lock StateGate = new();
+    private static readonly FormatSwitch Formats = new(FrameFormat.Default);
     private static IMFVirtualCamera? _camera;
     private static PublishedFrameSection? _section;
+    private static StreamingMonitor? _monitor;
+    private static bool _running;
+
+    public static WcamFormatState State
+    {
+        get
+        {
+            lock (StateGate)
+            {
+                return WcamFormatState.From(Formats, _running);
+            }
+        }
+    }
 
     public static void Start()
     {
-        lock (Gate)
+        lock (CameraGate)
         {
-            if (_camera is not null)
+            if (_section is not null)
             {
                 return;
             }
@@ -23,36 +38,38 @@ internal static class VirtualCameraHost
             PInvoke.MFStartup(PInvoke.MF_VERSION, PInvoke.MFSTARTUP_FULL).ThrowOnFailure();
             try
             {
-                _section = PublishedFrameSection.Create(FrameTransport.LocalSectionName);
+                OpenSection();
                 _camera = CreateCamera();
+                SetRunning(true);
+                _monitor = StreamingMonitor.Start(OnStreamingAppsChanged);
             }
             catch
             {
+                ReleaseCamera();
                 ReleaseSection();
                 PInvoke.MFShutdown();
                 throw;
             }
         }
-        Log.Info("virtual camera started");
+        Log.Info($"virtual camera started at {State.Width}x{State.Height}@{State.FramesPerSecond}");
     }
 
     public static void Stop()
     {
-        lock (Gate)
+        lock (CameraGate)
         {
-            if (_camera is null)
+            if (_section is null)
             {
                 return;
             }
+            _monitor?.Dispose();
+            _monitor = null;
             try
             {
-                _camera.Stop();
+                ReleaseCamera();
             }
             finally
             {
-                _camera.Shutdown();
-                ComObjects.Release(_camera);
-                _camera = null;
                 ReleaseSection();
                 PInvoke.MFShutdown();
             }
@@ -60,10 +77,32 @@ internal static class VirtualCameraHost
         Log.Info("virtual camera stopped");
     }
 
-    public static bool Publish(ReadOnlySpan<byte> frame)
+    public static FormatRequestOutcome SetFormat(FrameFormat format)
     {
-        lock (Gate)
+        lock (CameraGate)
         {
+            FormatRequestOutcome outcome;
+            lock (StateGate)
+            {
+                outcome = Formats.Request(format, _section is not null);
+            }
+            Log.Info($"format {format} requested: {outcome}");
+            if (outcome == FormatRequestOutcome.RestartCamera)
+            {
+                Restart(format);
+            }
+            return outcome;
+        }
+    }
+
+    public static bool Publish(ReadOnlySpan<byte> frame, uint width, uint height)
+    {
+        lock (StateGate)
+        {
+            if (!FrameTransport.AcceptsFrame((uint)frame.Length, width, height, Formats.Announced))
+            {
+                throw new ArgumentException($"frame {width}x{height} does not match {Formats.Announced}");
+            }
             if (_section is null)
             {
                 return false;
@@ -73,10 +112,110 @@ internal static class VirtualCameraHost
         }
     }
 
+    private static void OpenSection()
+    {
+        lock (StateGate)
+        {
+            _section = PublishedFrameSection.Create(FrameTransport.LocalSectionName, Formats.Requested);
+            Formats.Announce(Formats.Requested);
+        }
+    }
+
+    private static void Restart(FrameFormat format)
+    {
+        SetRunning(false);
+        ReleaseCamera();
+        lock (StateGate)
+        {
+            _section?.SetFormat(format);
+            Formats.Announce(format);
+        }
+        _camera = CreateCamera();
+        SetRunning(true);
+        Log.Info($"virtual camera restarted at {format}");
+    }
+
+    private static void OnStreamingAppsChanged(int count)
+    {
+        bool applyPending;
+        lock (StateGate)
+        {
+            applyPending = Formats.UpdateStreamingApps(count, Environment.TickCount64);
+        }
+        if (applyPending)
+        {
+            ScheduleApplyPending(FormatSwitch.IdleBeforeApplyMilliseconds);
+        }
+    }
+
+    private static void ScheduleApplyPending(long delayMilliseconds) =>
+        Task.Delay(TimeSpan.FromMilliseconds(delayMilliseconds)).ContinueWith(_ => ApplyPending());
+
+    private static void ApplyPending()
+    {
+        try
+        {
+            lock (CameraGate)
+            {
+                FrameFormat format;
+                lock (StateGate)
+                {
+                    long? remaining = Formats.MillisecondsUntilPendingApplies(Environment.TickCount64);
+                    if (_section is null || remaining is null)
+                    {
+                        return;
+                    }
+                    if (remaining > 0)
+                    {
+                        ScheduleApplyPending(remaining.Value);
+                        return;
+                    }
+                    format = Formats.Requested;
+                }
+                Restart(format);
+            }
+        }
+        catch (Exception exception)
+        {
+            Log.Error("pending format change failed", exception);
+        }
+    }
+
+    private static void SetRunning(bool running)
+    {
+        lock (StateGate)
+        {
+            _running = running;
+        }
+    }
+
+    private static void ReleaseCamera()
+    {
+        SetRunning(false);
+        IMFVirtualCamera? camera = _camera;
+        _camera = null;
+        if (camera is null)
+        {
+            return;
+        }
+        try
+        {
+            camera.Stop();
+        }
+        finally
+        {
+            camera.Shutdown();
+            ComObjects.Release(camera);
+        }
+    }
+
     private static void ReleaseSection()
     {
-        _section?.Dispose();
-        _section = null;
+        lock (StateGate)
+        {
+            _section?.Dispose();
+            _section = null;
+        }
     }
 
     private static void InitializeCom()

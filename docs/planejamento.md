@@ -36,12 +36,12 @@ Limitação conhecida: o driver do OBS Virtual Camera é DirectShow, e apps que 
 
 **CA-2. Sem perda de qualidade entre o celular e a câmera virtual.**
 "Sem perda" literal (vídeo sem compressão) é fisicamente impossível por Wi-Fi: 1080p30 bruto são cerca de 1,5 Gbit/s. O critério é ausência de perda perceptível e de qualquer degradação evitável no caminho, medido na saída da câmera virtual:
-- Resolução e taxa de quadros da câmera virtual iguais às da captura: alvo 1920x1080 a 30 fps. Sem redimensionar em nenhum ponto do pipeline.
+- Resolução e taxa de quadros da câmera virtual iguais às da captura: alvo 1920x1080 a 30 fps. Sem redimensionar em nenhum ponto do pipeline. Emenda da v0.7.0 (2026-11-10): o formato é o escolhido pelo usuário entre os que o celular entrega (de 1280x720 a 3840x2160, 30 ou 60 fps; padrão 1920x1080 a 30 fps), e a câmera virtual anuncia esse formato. A única redução de tamanho permitida é a do celular em pé (retrato): a imagem inteira, reduzida à altura do formato e centralizada com faixas pretas dos lados.
 - Sem conversão de cor: o quadro decodificado (YUV 4:2:0) vai direto para a câmera virtual em I420/NV12, sem passar por RGB. Emenda da v0.6.0 (2026-11-06): a única transformação permitida é igualar a cor ao que o próprio celular exibe, a partir da configuração de cor declarada pela câmera do celular a cada conexão: ajustar a faixa declarada (por exemplo, faixa cheia do iPhone) à faixa anunciada pela câmera (16 a 235) e aplicar a curva de exibição da plataforma do celular (Apple: 1,961 do ColorSync; demais: sRGB) à transferência declarada, por tabela de consulta no YUV, sem passar por RGB e sem tocar em resolução nem enquadramento. Revisão de 2026-11-08: nada é medido na imagem e nada é ajustado por modelo de aparelho.
 - Bitrate alto para LAN (alvo 10 Mbit/s em 1080p30) e `degradationPreference: "maintain-resolution"`: sob congestionamento cai o fps, nunca a resolução.
 - Teste automatizado: track sintética de alto detalhe passando por codificação, rede local, decodificação e sink falso, com SSIM médio de pelo menos 0,98 contra o original.
 - Teste real: 10 minutos em 1080p na LAN com média de pelo menos 29 fps e nenhuma queda de resolução registrada nas métricas.
-- Captura em paisagem. Celular em pé gera quadro em retrato, e encaixar retrato em 16:9 obriga a reduzir ou recortar e ampliar, o que é perda. A `/cam` pede para girar o celular e só libera "Ao vivo" em paisagem.
+- Captura em paisagem. Celular em pé gera quadro em retrato, e encaixar retrato em 16:9 obriga a reduzir ou recortar e ampliar, o que é perda. A `/cam` pede para girar o celular e só libera "Ao vivo" em paisagem. Substituído pela emenda da v0.7.0 (2026-11-10): em retrato, a câmera mostra a imagem inteira com faixas laterais, e a `/cam` só sugere deitar o celular.
 
 Fora do nosso controle: Meet, Teams e Zoom recomprimem o vídeo antes de enviar para a chamada. O CA-2 vale até a saída da câmera virtual.
 
@@ -302,7 +302,7 @@ Ajustes (resolução, fps, câmera padrão, espelhar, idioma, iniciar com o Wind
 |---|---|
 | Sem token | como parear pelo PC, e nada mais |
 | Antes da permissão | por que a câmera será pedida, depois o pedido do navegador |
-| Em retrato | pede para girar; "Ao vivo" só em paisagem (CA-2) |
+| Em retrato | imagem inteira com faixas laterais; sugere deitar o celular (CA-2, emenda da v0.7.0) |
 | Confirmar | o mesmo código, enorme, "Confira se é igual no PC" |
 | Ao vivo | visor em tela cheia, tally, controles na zona do polegar |
 | Pausado, reconectando, encerrado | estado claro e o que fazer |

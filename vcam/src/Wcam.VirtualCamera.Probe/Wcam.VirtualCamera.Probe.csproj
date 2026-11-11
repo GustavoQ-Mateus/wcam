@@ -7,5 +7,6 @@
   <ItemGroup>
     <Compile Include="..\Wcam.VirtualCamera\CameraIdentity.cs" Link="Shared\CameraIdentity.cs" />
     <Compile Include="..\Wcam.VirtualCamera\VideoFormat.cs" Link="Shared\VideoFormat.cs" />
+    <Compile Include="..\Wcam.VirtualCamera\FrameFormat.cs" Link="Shared\FrameFormat.cs" />
   </ItemGroup>
 </Project>

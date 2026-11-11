@@ -9,7 +9,7 @@ public class SessionFrameReaderTests
     {
         byte[] frame = new byte[VideoFormat.FrameSize];
         new Random(9).NextBytes(frame);
-        SessionFrameReader.FillBlack(frame);
+        SessionFrameReader.FillBlack(frame, FrameFormat.Default);
         Assert.All(frame[..LumaSize], value => Assert.Equal(16, value));
         Assert.All(frame[LumaSize..], value => Assert.Equal(128, value));
     }

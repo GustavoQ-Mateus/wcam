@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { cameraFailureFromError, type CamEvent, type Facing, type FrameSize } from "../data/cam-state";
+import { requestContinuousModes } from "./camera-modes";
 import { captureConstraints, captureFormat, oppositeFacing } from "./capture";
+import { isScreenPortrait } from "./use-screen-orientation";
 
 export interface CameraStream {
   facing: Facing;
@@ -43,11 +45,22 @@ export function useCameraStream(
         if (!isCurrent()) {
           return;
         }
+        const track = videoTrack(stream);
+        if (track) {
+          await requestContinuousModes(track);
+        }
+        if (!isCurrent()) {
+          return;
+        }
         facingRef.current = nextFacing;
         setFacing(nextFacing);
         setOpening(false);
         setTrack(videoTrack(stream) ?? null);
-        onEvent({ type: "granted", capture: captureFormat(videoTrack(stream)?.getSettings() ?? {}, frame), frame });
+        onEvent({
+          type: "granted",
+          capture: captureFormat(videoTrack(stream)?.getSettings() ?? {}, frame),
+          portrait: isScreenPortrait(),
+        });
         videoTrack(stream)?.addEventListener("ended", () => {
           reopenRef.current();
         });

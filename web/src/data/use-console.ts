@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ApiError,
-  changeQualityPreset,
+  changeVideoFormat,
   confirmSession,
   disconnectSession,
   fetchStatus,
@@ -9,7 +9,7 @@ import {
   rejectSession,
 } from "./api-client";
 import type { PairingWindow, Status } from "./contract";
-import type { QualityPreset } from "./quality-preset";
+import type { VideoFormat } from "./video-format";
 
 export interface ConsoleData {
   status: Status | null;
@@ -20,7 +20,7 @@ export interface ConsoleData {
   confirm: () => void;
   reject: () => void;
   disconnect: () => void;
-  chooseQualityPreset: (preset: QualityPreset) => void;
+  chooseVideoFormat: (format: VideoFormat) => void;
 }
 
 const POLL_INTERVAL_MS = 250;
@@ -85,8 +85,8 @@ export function useConsole(): ConsoleData {
     disconnect: () => {
       run(disconnectSession);
     },
-    chooseQualityPreset: (preset) => {
-      run(() => changeQualityPreset({ preset }));
+    chooseVideoFormat: (format) => {
+      run(() => changeVideoFormat({ format }));
     },
   };
 }

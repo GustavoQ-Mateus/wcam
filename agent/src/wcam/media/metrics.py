@@ -1,10 +1,16 @@
 from dataclasses import dataclass
+from enum import StrEnum
 
 from wcam.media.color_correction import ColorCorrection
 
 WINDOW_SECONDS = 1.0
 BITS_PER_BYTE = 8
 BITS_PER_KILOBIT = 1000
+
+
+class Orientation(StrEnum):
+    LANDSCAPE = "landscape"
+    PORTRAIT = "portrait"
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,6 +21,7 @@ class VideoStats:
     bitrate_kbps: int
     codec: str | None = None
     frames_scaled: int = 0
+    orientation: Orientation = Orientation.LANDSCAPE
     color_range: str = "unspecified"
     color_matrix: str = "unspecified"
     color_correction: ColorCorrection | None = None

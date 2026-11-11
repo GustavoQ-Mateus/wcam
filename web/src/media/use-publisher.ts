@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import { ApiError, createSession } from "../data/api-client";
 import type { CamEvent } from "../data/cam-state";
 import { confirmationCode, sdpFingerprint } from "../data/confirmation-code";
-import { cameraCapabilitiesData, parseControlMessage, setQualityPresetMessage } from "../data/control-message";
-import { DEFAULT_QUALITY_PRESET, maxBitrate, type QualityPreset } from "../data/quality-preset";
+import type { ControlMessage } from "../data/contract";
+import { cameraCapabilitiesData, parseControlMessage, setVideoFormatMessage } from "../data/control-message";
+import { DEFAULT_VIDEO_FORMAT, formatSpec, type VideoFormat } from "../data/video-format";
 import { readCameraCapabilities } from "./camera-capabilities";
 
 interface PublisherOptions {
@@ -16,11 +17,13 @@ interface PublisherOptions {
 }
 
 export interface Publisher {
-  qualityPreset: QualityPreset | null;
+  videoFormat: VideoFormatMessage | null;
   snapshotRequest: SnapshotRequest | null;
-  chooseQualityPreset: (preset: QualityPreset) => void;
+  chooseVideoFormat: (format: VideoFormat) => void;
   sendPaced: (messages: readonly string[]) => Promise<void>;
 }
+
+export type VideoFormatMessage = Extract<ControlMessage, { type: "video_format" }>;
 
 export interface SnapshotRequest {
   id: string;
@@ -29,14 +32,14 @@ export interface SnapshotRequest {
 
 interface PublisherSession {
   replaceTrack: (track: MediaStreamTrack) => void;
-  chooseQualityPreset: (preset: QualityPreset) => void;
+  chooseVideoFormat: (format: VideoFormat) => void;
   sendPaced: (messages: readonly string[]) => Promise<void>;
   close: () => void;
 }
 
 interface SessionCallbacks {
   onEvent: (event: CamEvent) => void;
-  onQualityPreset: (preset: QualityPreset) => void;
+  onVideoFormat: (message: VideoFormatMessage) => void;
   onSnapshotRequest: (request: SnapshotRequest) => void;
   readVideo: () => HTMLVideoElement | null;
 }
@@ -61,7 +64,7 @@ export function usePublisher({
   videoRef,
 }: PublisherOptions): Publisher {
   const sessionRef = useRef<PublisherSession | null>(null);
-  const [qualityPreset, setQualityPreset] = useState<QualityPreset | null>(null);
+  const [videoFormat, setVideoFormat] = useState<VideoFormatMessage | null>(null);
   const [snapshotRequest, setSnapshotRequest] = useState<SnapshotRequest | null>(null);
   const sendPaced = useCallback((messages: readonly string[]) => {
     return sessionRef.current?.sendPaced(messages) ?? Promise.resolve();
@@ -78,7 +81,7 @@ export function usePublisher({
     onEvent({ type: "session_started" });
     sessionRef.current = startSession(track, token, {
       onEvent,
-      onQualityPreset: setQualityPreset,
+      onVideoFormat: setVideoFormat,
       onSnapshotRequest: setSnapshotRequest,
       readVideo: () => videoRef.current,
     });
@@ -106,10 +109,10 @@ export function usePublisher({
   );
 
   return {
-    qualityPreset,
+    videoFormat,
     snapshotRequest,
-    chooseQualityPreset: (preset) => {
-      sessionRef.current?.chooseQualityPreset(preset);
+    chooseVideoFormat: (format) => {
+      sessionRef.current?.chooseVideoFormat(format);
     },
     sendPaced,
   };
@@ -118,14 +121,14 @@ export function usePublisher({
 function startSession(
   track: MediaStreamTrack,
   token: string,
-  { onEvent, onQualityPreset, onSnapshotRequest, readVideo }: SessionCallbacks,
+  { onEvent, onVideoFormat, onSnapshotRequest, readVideo }: SessionCallbacks,
 ): PublisherSession {
   const connection = new RTCPeerConnection({ iceServers: [] });
   const channel = connection.createDataChannel(CONTROL_CHANNEL);
   track.contentHint = CONTENT_HINT;
   const { sender } = connection.addTransceiver(track, {
     direction: "sendonly",
-    sendEncodings: [{ maxBitrate: maxBitrate(DEFAULT_QUALITY_PRESET) }],
+    sendEncodings: [{ maxBitrate: formatSpec(DEFAULT_VIDEO_FORMAT).maxBitrate }],
   });
   let currentTrack = track;
   let closed = false;
@@ -175,10 +178,10 @@ function startSession(
     if (!message) {
       return;
     }
-    if (message.type === "quality_preset") {
-      changeParameters(limitBitrate(maxBitrate(message.preset)));
+    if (message.type === "video_format") {
+      changeParameters(limitBitrate(message.maxBitrate));
       if (isActive()) {
-        onQualityPreset(message.preset);
+        onVideoFormat(message);
       }
       return;
     }
@@ -216,8 +219,8 @@ function startSession(
         sendCapabilities();
       }
     },
-    chooseQualityPreset: (preset) => {
-      sendControl(setQualityPresetMessage(preset));
+    chooseVideoFormat: (format) => {
+      sendControl(setVideoFormatMessage(format));
     },
     sendPaced: async (messages) => {
       for (const message of messages) {

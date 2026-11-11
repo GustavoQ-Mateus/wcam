@@ -13,7 +13,7 @@ export interface CaptureFormat extends FrameSize {
   frameRate: number;
 }
 
-interface SessionFields {
+interface FramedFields {
   capture: CaptureFormat;
   portrait: boolean;
 }
@@ -24,25 +24,25 @@ export type CamState =
   | { kind: "requesting" }
   | { kind: "denied" }
   | { kind: "unavailable"; reason: UnavailableReason }
-  | { kind: "rotate"; capture: CaptureFormat }
-  | { kind: "ready"; capture: CaptureFormat }
-  | { kind: "preview_off"; capture: CaptureFormat }
-  | ({ kind: "connecting" } & SessionFields)
-  | ({ kind: "awaiting_confirmation"; code: string } & SessionFields)
-  | ({ kind: "live"; previewOff: boolean } & SessionFields)
+  | ({ kind: "ready" } & FramedFields)
+  | ({ kind: "preview_off" } & FramedFields)
+  | ({ kind: "connecting" } & FramedFields)
+  | ({ kind: "awaiting_confirmation"; code: string } & FramedFields)
+  | ({ kind: "live"; previewOff: boolean } & FramedFields)
   | { kind: "pairing_failed" }
   | { kind: "blocked"; reason: BlockedReason }
   | { kind: "busy" }
   | { kind: "ended"; reason: EndedReason };
 
 export type LiveCamState = Extract<CamState, { capture: CaptureFormat }>;
-export type SessionCamState = Extract<CamState, { portrait: boolean }>;
+export type SessionCamState = Extract<CamState, { kind: "connecting" | "awaiting_confirmation" | "live" }>;
 
 export type CamEvent =
   | { type: "start" }
-  | { type: "granted"; capture: CaptureFormat; frame: FrameSize }
+  | { type: "granted"; capture: CaptureFormat; portrait: boolean }
   | { type: "failed"; failure: CameraFailure }
-  | { type: "frame_changed"; frame: FrameSize }
+  | { type: "orientation_changed"; portrait: boolean }
+  | { type: "capture_changed"; capture: CaptureFormat }
   | { type: "preview_toggled" }
   | { type: "session_started" }
   | { type: "session_awaiting_confirmation"; code: string }
@@ -50,6 +50,7 @@ export type CamEvent =
   | { type: "session_failed"; code: string }
   | { type: "session_ended"; reason: string };
 
+const SESSION_KINDS: ReadonlySet<CamState["kind"]> = new Set(["connecting", "awaiting_confirmation", "live"]);
 const STARTABLE_KINDS: ReadonlySet<CamState["kind"]> = new Set(["intro", "denied", "unavailable"]);
 const FINAL_KINDS: ReadonlySet<CamState["kind"]> = new Set([
   "missing_pairing",
@@ -93,7 +94,7 @@ export function isLive(state: CamState): state is LiveCamState {
 }
 
 export function isSession(state: CamState): state is SessionCamState {
-  return "portrait" in state;
+  return SESSION_KINDS.has(state.kind);
 }
 
 export function isFinal(state: CamState): boolean {
@@ -111,16 +112,18 @@ export function camReducer(state: CamState, event: CamEvent): CamState {
     case "start":
       return STARTABLE_KINDS.has(state.kind) ? { kind: "requesting" } : state;
     case "granted":
-      return framedState(event.capture, event.frame, state.kind === "preview_off");
+      return framedState(event.capture, event.portrait, state.kind === "preview_off");
     case "failed":
       return failedState(event.failure);
-    case "frame_changed":
-      return isLive(state) ? framedState(state.capture, event.frame, state.kind === "preview_off") : state;
+    case "orientation_changed":
+      return isLive(state) ? framedState(state.capture, event.portrait, state.kind === "preview_off") : state;
+    case "capture_changed":
+      return isLive(state) ? { ...state, capture: event.capture } : state;
     case "preview_toggled":
       return togglePreview(state);
     case "session_started":
       return state.kind === "ready" || state.kind === "preview_off"
-        ? { kind: "connecting", capture: state.capture, portrait: false }
+        ? { kind: "connecting", capture: state.capture, portrait: state.portrait }
         : state;
     default:
       return state;
@@ -137,9 +140,11 @@ export function cameraFailureFromError(error: unknown): CameraFailure {
 function sessionReducer(state: SessionCamState, event: CamEvent): CamState {
   switch (event.type) {
     case "granted":
-      return { ...state, capture: event.capture, portrait: isPortrait(event.frame) };
-    case "frame_changed":
-      return { ...state, portrait: isPortrait(event.frame) };
+      return { ...state, capture: event.capture, portrait: event.portrait };
+    case "orientation_changed":
+      return { ...state, portrait: event.portrait };
+    case "capture_changed":
+      return { ...state, capture: event.capture };
     case "failed":
       return failedState(event.failure);
     case "preview_toggled":
@@ -162,15 +167,8 @@ function sessionReducer(state: SessionCamState, event: CamEvent): CamState {
   }
 }
 
-function isPortrait(frame: FrameSize): boolean {
-  return frame.width <= frame.height;
-}
-
-function framedState(capture: CaptureFormat, frame: FrameSize, previewOff: boolean): LiveCamState {
-  if (isPortrait(frame)) {
-    return { kind: "rotate", capture };
-  }
-  return { kind: previewOff ? "preview_off" : "ready", capture };
+function framedState(capture: CaptureFormat, portrait: boolean, previewOff: boolean): LiveCamState {
+  return { kind: previewOff ? "preview_off" : "ready", capture, portrait };
 }
 
 function failedState(failure: CameraFailure): CamState {
@@ -179,10 +177,10 @@ function failedState(failure: CameraFailure): CamState {
 
 function togglePreview(state: CamState): CamState {
   if (state.kind === "ready") {
-    return { kind: "preview_off", capture: state.capture };
+    return { ...state, kind: "preview_off" };
   }
   if (state.kind === "preview_off") {
-    return { kind: "ready", capture: state.capture };
+    return { ...state, kind: "ready" };
   }
   return state;
 }

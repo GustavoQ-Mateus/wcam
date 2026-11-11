@@ -9,15 +9,16 @@ namespace Wcam.VirtualCamera;
 internal sealed class FramePacer : IDisposable
 {
     private const uint InfiniteWait = uint.MaxValue;
-    private static readonly long Interval = Stopwatch.Frequency / VideoFormat.FramesPerSecond;
 
     private readonly Action _tick;
     private readonly Thread _thread;
+    private readonly long _interval;
     private volatile bool _stopping;
 
-    public FramePacer(Action tick)
+    public FramePacer(Action tick, int framesPerSecond)
     {
         _tick = tick;
+        _interval = Stopwatch.Frequency / framesPerSecond;
         _thread = new Thread(Run) { IsBackground = true, Name = "WCam frame pacer" };
         _thread.Start();
     }
@@ -39,7 +40,7 @@ internal sealed class FramePacer : IDisposable
             long deadline = Stopwatch.GetTimestamp();
             while (!_stopping)
             {
-                deadline = NextDeadline(deadline);
+                deadline = NextDeadline(deadline, _interval);
                 WaitUntil(timer, deadline);
                 Tick();
             }
@@ -62,9 +63,9 @@ internal sealed class FramePacer : IDisposable
         }
     }
 
-    private static long NextDeadline(long previous)
+    private static long NextDeadline(long previous, long interval)
     {
-        long next = previous + Interval;
+        long next = previous + interval;
         long now = Stopwatch.GetTimestamp();
         return next < now ? now : next;
     }

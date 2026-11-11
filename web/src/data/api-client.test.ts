@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, changeQualityPreset, requestJson, uploadComparisonPc, uploadComparisonScreen } from "./api-client";
+import { ApiError, changeVideoFormat, requestJson, uploadComparisonPc, uploadComparisonScreen } from "./api-client";
 
 const FORBIDDEN_STATUS = 403;
 const NO_CONTENT_STATUS = 204;
@@ -25,15 +25,15 @@ describe("api client", () => {
     await expect(requestJson("/api/health")).rejects.toMatchObject({ code: "network_error" });
   });
 
-  it("quality preset change is a PUT with the preset in the body", async () => {
+  it("video format change is a PUT with the format in the body", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: NO_CONTENT_STATUS }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await changeQualityPreset({ preset: "light" });
+    await changeVideoFormat({ format: "720p60" });
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/quality-preset", {
+    expect(fetchMock).toHaveBeenCalledWith("/api/video-format", {
       method: "PUT",
-      body: '{"preset":"light"}',
+      body: '{"format":"720p60"}',
       headers: { "Content-Type": "application/json" },
     });
   });
