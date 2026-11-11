@@ -2,15 +2,54 @@ import { constraintFailure } from "../data/constraint-failure";
 import { formatConstraints, matchesScreen, type FormatConstraints, type VideoFormat } from "../data/video-format";
 import { continuousModes } from "./camera-modes";
 
+export interface FrameSource {
+  readonly videoWidth: number;
+  readonly videoHeight: number;
+  addEventListener: (type: "resize", listener: () => void) => void;
+  removeEventListener: (type: "resize", listener: () => void) => void;
+}
+
+export const FRAME_WAIT_MS = 1500;
+
+const lastSizes = new WeakMap<MediaStreamTrack, string>();
+
 export async function applyVideoFormat(
   track: MediaStreamTrack,
+  frames: FrameSource,
   format: VideoFormat,
   screenPortrait: boolean,
+  signal: AbortSignal,
 ): Promise<void> {
-  const size = await applySize(track, format, screenPortrait);
-  if (!size) {
+  const oriented = formatConstraints(format, screenPortrait);
+  const other = formatConstraints(format, !screenPortrait);
+  if (lastSizes.get(track) === sizeKey(oriented) && !(await applySize(track, format, other))) {
     return;
   }
+  const nextFrame = waitForFrame(frames, signal);
+  if (!(await applySize(track, format, oriented))) {
+    return;
+  }
+  await nextFrame;
+  if (signal.aborted || frameMatchesScreen(frames, screenPortrait)) {
+    return;
+  }
+  await applySize(track, format, other);
+}
+
+function frameMatchesScreen(frames: FrameSource, screenPortrait: boolean): boolean {
+  const width = frames.videoWidth;
+  const height = frames.videoHeight;
+  return width === 0 || height === 0 || matchesScreen({ width, height }, screenPortrait);
+}
+
+async function applySize(track: MediaStreamTrack, format: VideoFormat, size: FormatConstraints): Promise<boolean> {
+  try {
+    await track.applyConstraints(size);
+  } catch (error) {
+    console.warn(constraintFailure(format, error));
+    return false;
+  }
+  lastSizes.set(track, sizeKey(size));
   // Chromium keeps the old size when camera modes come in the same call.
   const advanced = continuousModes(track);
   if (advanced.length > 0) {
@@ -18,31 +57,23 @@ export async function applyVideoFormat(
       console.warn(constraintFailure(format, error));
     });
   }
+  return true;
 }
 
-async function applySize(
-  track: MediaStreamTrack,
-  format: VideoFormat,
-  screenPortrait: boolean,
-): Promise<FormatConstraints | null> {
-  const landscape = formatConstraints(format, false);
-  if (!(await tryConstraints(track, format, landscape))) {
-    return null;
-  }
-  const { width, height } = track.getSettings();
-  if (!width || !height || matchesScreen({ width, height }, screenPortrait)) {
-    return landscape;
-  }
-  const swapped = formatConstraints(format, true);
-  return (await tryConstraints(track, format, swapped)) ? swapped : null;
+function sizeKey(size: FormatConstraints): string {
+  return `${String(size.width.exact)}x${String(size.height.exact)}`;
 }
 
-async function tryConstraints(track: MediaStreamTrack, format: VideoFormat, size: FormatConstraints): Promise<boolean> {
-  try {
-    await track.applyConstraints(size);
-    return true;
-  } catch (error) {
-    console.warn(constraintFailure(format, error));
-    return false;
-  }
+function waitForFrame(frames: FrameSource, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      frames.removeEventListener("resize", done);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, FRAME_WAIT_MS);
+    frames.addEventListener("resize", done);
+    signal.addEventListener("abort", done);
+  });
 }
