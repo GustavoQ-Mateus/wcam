@@ -39,9 +39,9 @@ export type SessionCamState = Extract<CamState, { kind: "connecting" | "awaiting
 
 export type CamEvent =
   | { type: "start" }
-  | { type: "granted"; capture: CaptureFormat; frame: FrameSize }
+  | { type: "granted"; capture: CaptureFormat; portrait: boolean }
   | { type: "failed"; failure: CameraFailure }
-  | { type: "frame_changed"; frame: FrameSize }
+  | { type: "orientation_changed"; portrait: boolean }
   | { type: "capture_changed"; capture: CaptureFormat }
   | { type: "preview_toggled" }
   | { type: "session_started" }
@@ -112,11 +112,11 @@ export function camReducer(state: CamState, event: CamEvent): CamState {
     case "start":
       return STARTABLE_KINDS.has(state.kind) ? { kind: "requesting" } : state;
     case "granted":
-      return framedState(event.capture, event.frame, state.kind === "preview_off");
+      return framedState(event.capture, event.portrait, state.kind === "preview_off");
     case "failed":
       return failedState(event.failure);
-    case "frame_changed":
-      return isLive(state) ? framedState(state.capture, event.frame, state.kind === "preview_off") : state;
+    case "orientation_changed":
+      return isLive(state) ? framedState(state.capture, event.portrait, state.kind === "preview_off") : state;
     case "capture_changed":
       return isLive(state) ? { ...state, capture: event.capture } : state;
     case "preview_toggled":
@@ -140,9 +140,9 @@ export function cameraFailureFromError(error: unknown): CameraFailure {
 function sessionReducer(state: SessionCamState, event: CamEvent): CamState {
   switch (event.type) {
     case "granted":
-      return { ...state, capture: event.capture, portrait: isPortrait(event.frame) };
-    case "frame_changed":
-      return { ...state, portrait: isPortrait(event.frame) };
+      return { ...state, capture: event.capture, portrait: event.portrait };
+    case "orientation_changed":
+      return { ...state, portrait: event.portrait };
     case "capture_changed":
       return { ...state, capture: event.capture };
     case "failed":
@@ -167,12 +167,8 @@ function sessionReducer(state: SessionCamState, event: CamEvent): CamState {
   }
 }
 
-function isPortrait(frame: FrameSize): boolean {
-  return frame.width <= frame.height;
-}
-
-function framedState(capture: CaptureFormat, frame: FrameSize, previewOff: boolean): LiveCamState {
-  return { kind: previewOff ? "preview_off" : "ready", capture, portrait: isPortrait(frame) };
+function framedState(capture: CaptureFormat, portrait: boolean, previewOff: boolean): LiveCamState {
+  return { kind: previewOff ? "preview_off" : "ready", capture, portrait };
 }
 
 function failedState(failure: CameraFailure): CamState {

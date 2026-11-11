@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import { cameraFailureFromError, camReducer, initialCamState, type CamEvent, type CamState } from "./cam-state";
 
 const CAPTURE = { width: 1920, height: 1080, frameRate: 30 };
-const LANDSCAPE = { width: 1920, height: 1080 };
-const PORTRAIT = { width: 1080, height: 1920 };
 const CONNECTING: CamState = { kind: "connecting", capture: CAPTURE, portrait: false };
 const LIVE: CamState = { kind: "live", capture: CAPTURE, portrait: false, previewOff: false };
 
@@ -15,7 +13,7 @@ describe("cam state", () => {
   it("cam state goes from intro to requesting to ready when permission is granted", () => {
     const intro = initialCamState(true);
     const requesting = camReducer(intro, { type: "start" });
-    const ready = camReducer(requesting, { type: "granted", capture: CAPTURE, frame: LANDSCAPE });
+    const ready = camReducer(requesting, { type: "granted", capture: CAPTURE, portrait: false });
 
     expect([intro.kind, requesting.kind, ready]).toEqual([
       "intro",
@@ -30,18 +28,18 @@ describe("cam state", () => {
     expect(state).toEqual({ kind: "denied" });
   });
 
-  it("a portrait frame is ready to stream and marked portrait", () => {
-    const state = run(initialCamState(true), { type: "start" }, { type: "granted", capture: CAPTURE, frame: PORTRAIT });
+  it("a phone held upright is ready to stream and marked portrait", () => {
+    const state = run(initialCamState(true), { type: "start" }, { type: "granted", capture: CAPTURE, portrait: true });
 
     expect(state).toEqual({ kind: "ready", capture: CAPTURE, portrait: true });
   });
 
-  it("cam state stays ready and drops the portrait mark when the frame turns landscape", () => {
+  it("cam state stays ready and drops the portrait mark when the screen turns landscape", () => {
     const state = run(
       initialCamState(true),
       { type: "start" },
-      { type: "granted", capture: CAPTURE, frame: PORTRAIT },
-      { type: "frame_changed", frame: LANDSCAPE },
+      { type: "granted", capture: CAPTURE, portrait: true },
+      { type: "orientation_changed", portrait: false },
     );
 
     expect(state).toEqual({ kind: "ready", capture: CAPTURE, portrait: false });
@@ -80,7 +78,7 @@ describe("cam state", () => {
     const state = run(
       initialCamState(false),
       { type: "start" },
-      { type: "granted", capture: CAPTURE, frame: LANDSCAPE },
+      { type: "granted", capture: CAPTURE, portrait: false },
     );
 
     expect(state).toEqual({ kind: "missing_pairing" });
@@ -148,9 +146,9 @@ describe("cam state", () => {
     ]);
   });
 
-  it("portrait frame during the session keeps the session and marks it portrait", () => {
-    const portrait = camReducer(LIVE, { type: "frame_changed", frame: PORTRAIT });
-    const landscape = camReducer(portrait, { type: "frame_changed", frame: LANDSCAPE });
+  it("turning the screen upright during the session keeps the session and marks it portrait", () => {
+    const portrait = camReducer(LIVE, { type: "orientation_changed", portrait: true });
+    const landscape = camReducer(portrait, { type: "orientation_changed", portrait: false });
 
     expect([portrait, landscape]).toEqual([{ ...LIVE, portrait: true }, LIVE]);
   });
@@ -161,7 +159,7 @@ describe("cam state", () => {
 
   it("final states ignore every later event", () => {
     const ended: CamState = { kind: "ended", reason: "rejected" };
-    const state = run(ended, { type: "start" }, { type: "granted", capture: CAPTURE, frame: LANDSCAPE });
+    const state = run(ended, { type: "start" }, { type: "granted", capture: CAPTURE, portrait: false });
 
     expect(state).toBe(ended);
   });
