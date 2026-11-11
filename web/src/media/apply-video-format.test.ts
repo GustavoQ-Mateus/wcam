@@ -146,6 +146,15 @@ describe("applyVideoFormat", () => {
     ]);
   });
 
+  it("a repeated size waits for the frame of the forcing request before asking for the oriented size", async () => {
+    const camera = delayedCamera(neverRotates, false);
+
+    const first = await turnAndApply(camera, false);
+    const repeated = await turnAndApply(camera, false);
+
+    expect([first, repeated, shape(camera.frames)]).toEqual([["1920x1080"], ["1080x1920", "1920x1080"], "landscape"]);
+  });
+
   it("a new turn before the frame arrives cancels the correction of the old one", async () => {
     const camera = delayedCamera(readsSensorTerms, true);
     const controller = new AbortController();

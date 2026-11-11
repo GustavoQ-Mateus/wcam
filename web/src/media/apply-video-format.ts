@@ -22,7 +22,10 @@ export async function applyVideoFormat(
 ): Promise<void> {
   const oriented = formatConstraints(format, screenPortrait);
   const other = formatConstraints(format, !screenPortrait);
-  if (lastSizes.get(track) === sizeKey(oriented) && !(await applySize(track, format, other))) {
+  if (
+    lastSizes.get(track) === sizeKey(oriented) &&
+    !(await forceReconfiguration(track, frames, format, other, signal))
+  ) {
     return;
   }
   const nextFrame = waitForFrame(frames, signal);
@@ -34,6 +37,21 @@ export async function applyVideoFormat(
     return;
   }
   await applySize(track, format, other);
+}
+
+async function forceReconfiguration(
+  track: MediaStreamTrack,
+  frames: FrameSource,
+  format: VideoFormat,
+  other: FormatConstraints,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const otherFrame = waitForFrame(frames, signal);
+  if (!(await applySize(track, format, other))) {
+    return false;
+  }
+  await otherFrame;
+  return !signal.aborted;
 }
 
 function frameMatchesScreen(frames: FrameSource, screenPortrait: boolean): boolean {
