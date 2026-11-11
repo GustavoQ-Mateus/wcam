@@ -7,7 +7,10 @@ const CONSOLE_CHUNK_NAME = "console-page";
 const PORTRAIT_FRAME = { width: 1080, height: 1920 };
 const UNUSED_FRAGMENT = "#t=never-sent";
 const DEFAULT_FORMAT = "1080p30";
-const STEADY_PHONE_MS = 3000;
+const STEADY_PHONE_MS = 2500;
+const ROTATION_DELAY_MS = 300;
+const TURN_TIMEOUT_MS = 5000;
+const MAXIMUM_REQUESTS_PER_TURN = 2;
 
 test.use({ hasTouch: true, viewport: PHONE_LANDSCAPE });
 
@@ -58,57 +61,64 @@ test.describe("in portrait", () => {
     await expect(page.getByRole("button", { name: translate("en", "cam.switch_camera") })).toBeVisible();
   });
 
-  test("an upright phone whose camera rotates by itself stays upright without reapplying", async ({
+  test("turning the phone upright, lying down and upright again ends each turn matching the screen", async ({
     page,
     request,
   }) => {
-    await page.addInitScript((frame) => {
-      const calls: string[] = [];
-      const flips: string[] = [];
-      Object.assign(window, { formatCalls: calls, layoutFlips: flips });
-      navigator.mediaDevices.getUserMedia = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = frame.width;
-        canvas.height = frame.height;
-        const context = canvas.getContext("2d");
-        const paint = () => {
-          context?.fillRect(0, 0, canvas.width, canvas.height);
-          requestAnimationFrame(paint);
-        };
-        paint();
-        const stream = canvas.captureStream();
-        const track = stream.getVideoTracks()[0];
-        if (track) {
-          track.applyConstraints = (constraints?: MediaTrackConstraints) => {
-            const exact = (value: unknown) =>
-              typeof value === "object" && value !== null && "exact" in value ? Number(value.exact) : null;
-            const width = exact(constraints?.width) ?? canvas.width;
-            const height = exact(constraints?.height) ?? canvas.height;
-            calls.push(`${String(width)}x${String(height)}`);
-            canvas.width = Math.min(width, height);
-            canvas.height = Math.max(width, height);
-            return Promise.resolve();
+    await page.addInitScript(
+      ({ frame, delay }) => {
+        const calls: string[] = [];
+        Object.assign(window, { formatCalls: calls });
+        navigator.mediaDevices.getUserMedia = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = frame.width;
+          canvas.height = frame.height;
+          const context = canvas.getContext("2d");
+          const paint = () => {
+            context?.fillRect(0, 0, canvas.width, canvas.height);
+            requestAnimationFrame(paint);
           };
-          track.getSettings = () => ({ width: canvas.width, height: canvas.height, frameRate: 30 });
-        }
-        return Promise.resolve(stream);
-      };
-      new MutationObserver(() => {
-        const portrait = document.querySelector("main")?.dataset.portrait ?? "";
-        if (flips.at(-1) !== portrait) {
-          flips.push(portrait);
-        }
-      }).observe(document, { attributes: true, subtree: true, attributeFilter: ["data-portrait"] });
-    }, PORTRAIT_FRAME);
+          paint();
+          const stream = canvas.captureStream();
+          const track = stream.getVideoTracks()[0];
+          let lastRequest = "";
+          if (track) {
+            track.applyConstraints = (constraints?: MediaTrackConstraints) => {
+              const exact = (value: unknown) =>
+                typeof value === "object" && value !== null && "exact" in value ? Number(value.exact) : null;
+              const width = exact(constraints?.width) ?? canvas.width;
+              const height = exact(constraints?.height) ?? canvas.height;
+              const request = `${String(width)}x${String(height)}`;
+              calls.push(request);
+              if (request !== lastRequest) {
+                lastRequest = request;
+                const devicePortrait = window.matchMedia("(orientation: portrait)").matches;
+                window.setTimeout(() => {
+                  canvas.width = devicePortrait ? height : width;
+                  canvas.height = devicePortrait ? width : height;
+                }, delay);
+              }
+              return Promise.resolve();
+            };
+            track.getSettings = () => ({ width: canvas.width, height: canvas.height, frameRate: 30 });
+          }
+          return Promise.resolve(stream);
+        };
+      },
+      { frame: PORTRAIT_FRAME, delay: ROTATION_DELAY_MS },
+    );
 
     await goLive(page, request);
-    await page.waitForTimeout(STEADY_PHONE_MS);
-    const settled = await readRotationLog(page);
-    await page.waitForTimeout(STEADY_PHONE_MS);
+    const upright = await settledTurn(page, true);
+    await page.setViewportSize(PHONE_LANDSCAPE);
+    const lyingDown = await settledTurn(page, false);
+    await page.setViewportSize(PHONE_PORTRAIT);
+    const uprightAgain = await settledTurn(page, true);
 
-    const later = await readRotationLog(page);
-    expect(later).toEqual(settled);
-    expect(later.flips.at(-1)).toBe("true");
+    expect([upright.portrait, lyingDown.portrait, uprightAgain.portrait]).toEqual([true, false, true]);
+    expect(Math.max(lyingDown.calls - upright.calls, uprightAgain.calls - lyingDown.calls)).toBeLessThanOrEqual(
+      MAXIMUM_REQUESTS_PER_TURN,
+    );
     await expect(page.getByText(translate("en", "cam.portrait_hint"))).toBeVisible();
   });
 });
@@ -125,9 +135,22 @@ test("cam shows denied when the permission is refused", async ({ page }) => {
   await expect(page.getByRole("button", { name: translate("en", "cam.retry") })).toBeVisible();
 });
 
-function readRotationLog(page: Page): Promise<{ calls: number; flips: string[] }> {
+async function settledTurn(page: Page, screenPortrait: boolean): Promise<{ portrait: boolean; calls: number }> {
+  await expect(page.locator("main")).toHaveAttribute("data-portrait", String(screenPortrait));
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const video = document.querySelector("video");
+          return video ? video.videoHeight > video.videoWidth : null;
+        }),
+      { timeout: TURN_TIMEOUT_MS },
+    )
+    .toBe(screenPortrait);
+  await page.waitForTimeout(STEADY_PHONE_MS);
   return page.evaluate(() => {
-    const state = window as unknown as { formatCalls: string[]; layoutFlips: string[] };
-    return { calls: state.formatCalls.length, flips: [...state.layoutFlips] };
+    const video = document.querySelector("video");
+    const calls = (window as unknown as { formatCalls: string[] }).formatCalls.length;
+    return { portrait: video ? video.videoHeight > video.videoWidth : false, calls };
   });
 }
