@@ -6,6 +6,7 @@ import {
   formatConstraints,
   frameRatesFor,
   isVideoFormat,
+  matchesScreen,
   maxBitrateMbps,
   resolutionsIn,
   type VideoFormat,
@@ -59,5 +60,14 @@ describe("video format", () => {
 
   it("bitrate limit follows the contract table", () => {
     expect(ALL.map(maxBitrateMbps)).toEqual([5, 8, 10, 18, 35]);
+  });
+
+  it("a delivered frame matches the screen when both are upright or both are lying down", () => {
+    expect([
+      matchesScreen({ width: 1080, height: 1920 }, true),
+      matchesScreen({ width: 1920, height: 1080 }, false),
+      matchesScreen({ width: 1920, height: 1080 }, true),
+      matchesScreen({ width: 1080, height: 1920 }, false),
+    ]).toEqual([true, true, false, false]);
   });
 });

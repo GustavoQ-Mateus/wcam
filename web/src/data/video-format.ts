@@ -100,6 +100,10 @@ export function formatConstraints(format: VideoFormat, portrait: boolean): Forma
   };
 }
 
+export function matchesScreen(delivered: { width: number; height: number }, screenPortrait: boolean): boolean {
+  return delivered.height > delivered.width === screenPortrait;
+}
+
 export function maxBitrateMbps(format: VideoFormat): number {
   return FORMATS[format].maxBitrate / BITS_PER_MEGABIT;
 }
