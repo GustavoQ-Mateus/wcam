@@ -6,7 +6,7 @@ import type { VideoFormat } from "../data/video-format";
 import { useVideoFormat } from "../media/use-video-format";
 import { useCameraStream } from "../media/use-camera-stream";
 import { readPngFile } from "../media/screenshot-file";
-import { useOrientation } from "../media/use-orientation";
+import { useScreenOrientation } from "../media/use-screen-orientation";
 import { usePublisher, type VideoFormatMessage } from "../media/use-publisher";
 import { useSnapshotResponder } from "../media/use-snapshot-responder";
 import { useWakeLock } from "../media/use-wake-lock";
@@ -33,7 +33,7 @@ export function useCam(hasPairing: boolean): Cam {
   const capturing = state.kind === "ready" || state.kind === "preview_off";
   const final = isFinal(state);
   const wakeLock = useWakeLock(capturing || isSession(state));
-  useOrientation(videoRef, dispatch);
+  useScreenOrientation(dispatch);
   const publisher = usePublisher({
     track: camera.track,
     shouldStart: capturing,
