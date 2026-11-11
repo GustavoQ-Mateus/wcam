@@ -1,6 +1,6 @@
 # Spec v0.7.0, Resolução e fps
 
-Status: Aprovada (2026-11-10)
+Status: Entregue (2026-11-11)
 Branch de integração: `feature/formato`
 Sessões: `agent`, `web`, `vcam`
 Referências: `docs/planejamento.md` §1 (CA-2), §6 (roteiro da 0.7.0); ADRs 0011 e 0012; spec v0.6.0 §5 e changelog (capacidades do iPhone, benchmark de decodificação, achados)
@@ -155,3 +155,31 @@ Chaves novas em `locales/en.json` e `locales/pt-BR.json` no mesmo commit, na bra
 3. Celular em pé com faixas laterais, única redução de tamanho permitida (usuário, 2026-11-10).
 4. Codec: só medição do H.264 nesta versão (usuário, 2026-11-10).
 5. Exposição, balanço de branco e foco automáticos pela própria câmera do celular, no modo contínuo, sem ajuste calculado pela imagem nem controle manual (usuário, 2026-11-10).
+
+## Changelog
+
+### 0.7.0, 2026-11-11
+
+Entregue pelas sessões `agent` (`feature/formato-agent`), `web` (`feature/formato-web`) e `vcam` (`feature/formato-vcam`), integradas em `feature/formato` (PRs #19 a #26). Relatórios em `docs/relatorio-v0.7.0-agent.md`, `docs/relatorio-v0.7.0-web.md` e `docs/relatorio-v0.7.0-vcam.md`.
+
+| CA | Resultado | Evidência |
+|---|---|---|
+| 1 | Verificado | Spikes `h264-levels` e `vcam-format` no handoff antes do código: tabela final 720p30, 720p60, 1080p30, 1440p30 e 2160p30 (o Safari entrega 30 fps acima de 720p nas duas câmeras); troca na próxima abertura (ADR 0013). |
+| 2 | Verificado, com ressalva aceita pelo usuário | Câmera virtual com o probe, 2 min por formato pelo `track.stats` do Chrome: 720p30 30,00; 720p60 59,96; 1080p30 30,01; 1440p30 30,00; 2160p30 29,84 fps, sem descarte. Com o iPhone: 2160p30 de 28,9 a 29,6 fps em cerca de 19 min; 720p60 60, 1080p30 30 e 1440p30 30 fps em trechos de 16 a 56 s; 720p30 não medido com o celular. O usuário aceitou registrar assim em 2026-11-11. `framesScaled` 0 em paisagem. |
+| 3 | Verificado | e2e: escolha nos dois sentidos em menos de 300 ms, tamanho no agente em até 3 s, `422` fora de `available`. Usado pelo usuário no iPhone. |
+| 4 | Verificado | Chrome e app Câmera: troca pendente (`S_FALSE`) com o app recebendo vídeo, aplicada sozinha ao fechar (0,12 a 0,33 s); sem app, reinício em 0,17 s. Troca aplicada só depois de 1 s seguido sem app recebendo vídeo. Teams e OBS verificados pelo usuário em 2026-11-11. Nenhum quadro de tamanho errado. |
+| 5 | Verificado | Teste do pipeline com quadro de retrato (faixas Y=16, UV=128). No iPhone, dois defeitos achados pelo usuário e corrigidos: oscilação com o celular parado em pé (PR #25) e captura presa na orientação anterior ao girar (PR #26). Validado pelo usuário em 2026-11-11, frontal e traseira, deitado, em pé e girando. |
+| 6 | Verificado | ADR 0014: H.264 continua, com taxa, fps, CPU e aquecimento de cada formato. |
+| 7 | Verificado, com limite do navegador | Safari no iPhone (traseira): `whiteBalanceMode` `continuous`, `exposureMode` e `focusMode` `null` (o Safari não informa). Nenhum controle manual na tela. O usuário aprovou a imagem nas duas câmeras no OBS e no Teams; a comparação formal com o app Câmera nativo não foi feita. |
+| 8 | Verificado | `tests/integration/test_shutdown.py`: Ctrl+C sem rastro, `terminal.stopped` e código 0. |
+| 9 | Verificado | `docs/design-v0.7.0.md` com as skills; audit e polish por código. Aprovação visual do usuário no console e no celular em 2026-11-11. |
+| 10 | Verificado, CI no PR | Estado final da branch (`origin/main` contida): agent ruff, format e pyright limpos, pytest 328 passados e 1 pulado; web build sem avisos, lint e Vitest 94; e2e no compose 19 de 19, SSIM 0,9843 (mínimo 0,9836); vcam build sem avisos, 143 testes e publish Native AOT sem avisos. Versão 0.7.0 nos três projetos. |
+| 11 | Verificado | Contrato 0.7.0, emenda do CA-2 e ADR 0013 registrados antes do código. |
+
+Achados registrados:
+- 2160p30 cabe com pouca folga neste PC (i5-8500): mediana de 26 ms por quadro contra 33,3 ms, p95 de 35 a 38 ms pela disputa entre a decodificação do aiortc, a tradução de cor (que prende o GIL) e o sistema; 2 a 3 descartes por segundo no p90. A tradução direta dos planos rendeu cerca de 1 ms. Folga maior pede decodificação no hardware (ADR 0014).
+- Picos do codificador acima do `maxBitrate` em janelas de 1 s no e2e (média abaixo do teto); o `maxBitrate` está aplicado no sender desde o primeiro `video_format`.
+- Mudar o formato com um app usando a câmera exige o app fechar e abrir a câmera (ADR 0013). O usuário não gostou; a próxima versão avalia reiniciar a câmera virtual com o app aberto e medir como cada app se recupera.
+- A interface não mostra se a câmera em uso é a frontal ou a traseira (`facingMode` já chega em `camera_capabilities`); pedido do usuário para a interface definitiva.
+- A diferença de qualidade entre a câmera frontal e a traseira em 4K é do sensor do iPhone, com a mesma resolução nas duas.
+

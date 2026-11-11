@@ -19,4 +19,4 @@ A câmera WCam anuncia um formato só, 1920x1080 a 30 fps, fixo no canal `WCamFr
 - A media source continua só leitura no canal (ADR 0012); nenhum caminho de escrita do Frame Server para o agente é criado.
 - Um app aberto num formato nunca recebe quadro de outro tamanho.
 - Evidência do spike (2026-11-10, DLL `A9812F81...5494`): com a câmera virtual reiniciada em cada formato, o Chrome recebeu 1280x720 a 30 e 60 fps, 1920x1080, 2560x1440 e 3840x2160 a 30 fps, sem quadro de tamanho errado; a DLL entregou 30,0 e 60,0 quadros/s. Mudar o canal sem reiniciar a câmera deu preto no tamanho antigo. O monitor de sensores listou a WCam com o pid de cada app e o estado de `streaming`.
-- Pendente de verificação com o usuário: Teams e OBS, inclusive app que segura a câmera sem receber vídeo (Teams) durante o reinício da câmera virtual.
+- Verificação final (2026-11-11): troca pendente aplicada sozinha ao fechar o Chrome e o app Câmera, em 0,12 a 0,33 s, e só depois de 1 s seguido sem app recebendo vídeo (o Chrome abre, para e abre a câmera em 0,3 s). Teams e OBS verificados pelo usuário.
