@@ -61,7 +61,17 @@ CSV `stages-20261110-195613.csv` (sonda fora do repositório, um registro por se
 - 2160p30: a mediana do `deliver` cabe nos 33,3 ms; o p95 passa. O custo está no `accept` (cerca de 75% do `deliver`). Decomposição em 2160p com ruído (pior caso): `to_ndarray` 3,9 ms, tabela de luma 10,1 ms, tabela de croma 8,9 ms. `translate_in_place` copia o plano para `bytes`, traduz e copia de volta: três passagens sobre 12 MB, com o GIL preso.
 - O p95 acompanha a disputa de CPU, não um estágio novo: correlação do p95 do `deliver` com o p95 do `accept` 0,89, com o p95 do decode 0,87, com a CPU do sistema 0,64. O decode do aiortc (20 a 23 ms em 2160p30) e as tabelas disputam núcleos com o sistema já em 65%; o atraso do event loop sobe de 10 a 14 ms para 20 ms de mediana (pico de 200 ms) porque `bytes.translate` não solta o GIL.
 - Efeito visível: o celular segue em 30 fps de mediana; a fila de um quadro descarta 2 a 3 quadros/s no p90, repetindo o quadro anterior.
-- Otimização possível dentro da spec, sem contrato nem dependência nova: traduzir direto dos planos do `VideoFrame` para o array de saída, sem `to_ndarray` e sem a cópia de ida e volta (`translate` direto do plano: 6,5 ms contra 10,1 ms na luma). Estimativa: `accept` de cerca de 20 para 13 ms e `deliver` de 27 para 20 ms de mediana em 2160p30, o que deixa folga para o p95 sob a mesma disputa. A medir antes de adotar: `numpy.take` com a tabela, que solta o GIL, contra `bytes.translate`; e gerar o NV12 no mesmo passo da tradução de croma (economiza os 4 ms do `i420_to_nv12`). Fica para decisão do orquestrador (PATCH ou item novo).
+- Otimização adotada (§1.2): `translated_i420` traduz cada plano do `VideoFrame` direto para o array de saída, sem `to_ndarray` e sem a cópia de ida e volta de `translate_in_place` (removido). Sem tabelas, o caminho segue com `to_ndarray`. Saída igual byte a byte à conversão anterior em paisagem e retrato (com e sem preenchimento de linha), com tabela Apple, só faixa e sem correção (`tests/unit/test_plane_translation.py`).
+- Microbenchmark em 2160p (yuvj420p, curva Apple, 80 rodadas intercaladas, mediana; `deliver` com o sink falso mais `i420_to_nv12`, sem `WcamFramePublish`):
+
+| Imagem | `accept` antes | `accept` depois | `deliver` + NV12 antes | `deliver` + NV12 depois |
+|---|---|---|---|---|
+| Ruído | 17,1 ms | 16,1 ms | 20,1 ms | 19,1 ms |
+| Rampa | 17,2 ms | 16,0 ms | 20,6 ms | 19,5 ms |
+
+- O ganho é de cerca de 1 ms (6%), não os 7 ms estimados: a medida de 6,5 ms contra 10,1 ms foi feita com a máquina carregada e não contava a cópia `bytes(plane)`, que a tradução direta continua precisando (`bytes.translate` só aceita `bytes`). O custo dominante é o próprio `bytes.translate` (cerca de 6 ms na luma e 4 ms na croma em 2160p), que prende o GIL.
+- Candidatos medidos e não adotados: `numpy.take` com a tabela é 5 vezes mais lento (85 ms contra 17 ms) e deixa outra thread rodar 85% do tempo contra 58% a 67%, o que não compensa; gerar o NV12 no passo da croma economiza cerca de 1,2 ms (17,8 contra 19,0 ms), mas faz o pipeline entregar NV12 em vez de I420, o que muda o `VirtualCameraSink` (sink falso, OBS, retrato e SSIM), fora do escopo desta otimização.
+- Conclusão: a mediana de 2160p30 ganha cerca de 1 ms de folga nos 33,3 ms; o p95 do campo vem da disputa com o decode e o sistema e não cai de forma relevante com isso.
 
 ## Retrato (item 4)
 
@@ -71,5 +81,5 @@ CSV `stages-20261110-195613.csv` (sonda fora do repositório, um registro por se
 ## Verificação
 
 - `uv run ruff check`, `uv run ruff format --check`, `uv run pyright` (strict): limpos.
-- `uv run pytest`: 257 unitários e 52 de integração passando, 1 pulado (precisa de DLL do Windows fora do Windows). Portas 8080/8443 conferidas livres antes da integração.
+- `uv run pytest`: 328 passando, 1 pulado (precisa de DLL do Windows fora do Windows). Portas 8080/8443 conferidas livres antes da integração.
 - Não verificado: fluxo real com o iPhone e a câmera WCam nativa (formato, pendência, 720p60, retrato visto no app), DLL real com `WcamFormatGet`, e2e da sessão web contra esta branch. Fica para a rodada combinada com o orquestrador e o usuário.
