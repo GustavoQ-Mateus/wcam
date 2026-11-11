@@ -58,9 +58,3 @@ def declared_range(frame: VideoFrame) -> ColorRange:
 
 def declared_matrix(frame: VideoFrame) -> str:
     return MATRIX_NAMES.get(frame.colorspace, UNSPECIFIED_MATRIX)
-
-
-def translate_in_place(plane: I420Frame, translation: bytes) -> None:
-    # bytes.translate looks up 256 entries in C, about twice as fast as numpy fancy indexing with intp indices.
-    view = memoryview(plane.reshape(-1))
-    view[:] = bytes(view).translate(translation)

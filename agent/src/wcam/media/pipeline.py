@@ -14,7 +14,6 @@ from wcam.media.color_range import (
     ColorRange,
     declared_matrix,
     declared_range,
-    translate_in_place,
 )
 from wcam.media.placeholder import black_i420
 from wcam.media.quality import QualityMeter, QualityReport
@@ -205,33 +204,48 @@ class FramePipeline:
         return canvas
 
     def _converted(self, frame: VideoFrame, width: int, height: int) -> I420Frame:
-        array = i420_array(frame, width, height, self.color_range)
-        apply_color_tables(array, height, self.color_tables())
-        return array
+        return i420_array(frame, width, height, self.color_range, self.color_tables())
 
 
-def apply_color_tables(frame: I420Frame, height: int, tables: ColorTables | None) -> None:
-    if tables is None:
-        return
-    luma_table, chroma_table = tables
-    translate_in_place(frame[:height], luma_table)
-    translate_in_place(frame[height:], chroma_table)
-
-
-def i420_array(frame: VideoFrame, width: int, height: int, color_range: ColorRange) -> I420Frame:
-    source = frame
-    if frame.format.name not in RAW_I420_FORMATS or (frame.width, frame.height) != (width, height):
-        kept_range = DeclaredRange.JPEG if color_range is ColorRange.FULL else DeclaredRange.MPEG
-        source = frame.reformat(
-            width=width,
-            height=height,
-            format=I420_FORMAT,
-            interpolation=REDUCTION_INTERPOLATION,
-            src_color_range=kept_range,
-            dst_color_range=kept_range,
-        )
+def i420_array(
+    frame: VideoFrame,
+    width: int,
+    height: int,
+    color_range: ColorRange,
+    tables: ColorTables | None = None,
+) -> I420Frame:
+    source = reformatted(frame, width, height, color_range)
+    if tables is not None:
+        return translated_i420(source, tables)
     array: I420Frame = np.ascontiguousarray(source.to_ndarray(), dtype=np.uint8)
     return array
+
+
+def reformatted(frame: VideoFrame, width: int, height: int, color_range: ColorRange) -> VideoFrame:
+    if frame.format.name in RAW_I420_FORMATS and (frame.width, frame.height) == (width, height):
+        return frame
+    kept_range = DeclaredRange.JPEG if color_range is ColorRange.FULL else DeclaredRange.MPEG
+    return frame.reformat(
+        width=width,
+        height=height,
+        format=I420_FORMAT,
+        interpolation=REDUCTION_INTERPOLATION,
+        src_color_range=kept_range,
+        dst_color_range=kept_range,
+    )
+
+
+def translated_i420(frame: VideoFrame, tables: ColorTables) -> I420Frame:
+    luma_table, chroma_table = tables
+    output = np.empty(frame.width * frame.height * 3 // 2, dtype=np.uint8)
+    offset = 0
+    # bytes.translate reads a 256 entry table in C, about five times faster here than numpy.take.
+    for plane, table in zip(frame.planes, (luma_table, chroma_table, chroma_table), strict=True):
+        size = plane.width * plane.height
+        rows = np.frombuffer(bytes(plane).translate(table), dtype=np.uint8).reshape(-1, plane.line_size)
+        output[offset : offset + size].reshape(plane.height, plane.width)[:] = rows[: plane.height, : plane.width]
+        offset += size
+    return output.reshape(frame.height * 3 // 2, frame.width)
 
 
 def fits(frame: I420Frame | None, placeholder: I420Frame) -> bool:
