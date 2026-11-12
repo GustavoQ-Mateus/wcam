@@ -11,7 +11,7 @@ Objetivos de portfólio e estudo: arquitetura limpa de ponta a ponta, WebRTC de 
 ### Escopo do produto (v1.0.0)
 - Vídeo do celular aparecendo como câmera no Windows, utilizável em qualquer app.
 - Pareamento por QR code com token de uso único.
-- Console no PC: QR, estado, prévia, métricas (fps, resolução, latência, bitrate) e controles (pausar, câmera frontal ou traseira, resolução, espelhar, prévia ligada ou desligada).
+- Console no PC: QR, estado, prévia, métricas (fps, resolução, latência, bitrate) e controles (congelar imagem, desligar câmera, câmera frontal ou traseira, resolução, espelhar, prévia ligada ou desligada).
 - Quadro "sem sinal" na câmera virtual quando o celular cai, para a reunião não travar numa imagem congelada.
 - Reconexão automática dentro da sessão em andamento; toda sessão nova exige ler o QR.
 - No PC, app Windows com instalador e ícone na bandeja. No celular nada é baixado nem instalado: só o navegador.
@@ -54,7 +54,7 @@ Fora do nosso controle: Meet, Teams e Zoom recomprimem o vídeo antes de enviar 
 |---|---|---|
 | Papel | central de controle e monitoramento | visor da câmera que transmite |
 | Uso | mouse e teclado, sentado, olhando de vez em quando | uma mão, em pé ou apoiado, configurado e esquecido |
-| Conteúdo | QR, prévia do que sai na câmera virtual, estado, métricas, controles, histórico, dispositivos | visor em tela cheia (prévia que pode ser desligada), luz de tally, pausar, troca de câmera |
+| Conteúdo | QR, prévia do que sai na câmera virtual, estado, métricas, controles, histórico, dispositivos | visor em tela cheia (prévia que pode ser desligada), luz de tally, congelar imagem, desligar câmera, troca de câmera |
 | Layout | painel largo, prévia como protagonista | tela cheia em paisagem, controles na zona do polegar |
 | Acesso | só `127.0.0.1` no próprio PC | só pelo link do QR, na LAN |
 - Abrir `/cam` sem token mostra uma tela que explica como parear pelo PC; abrir `/` pela LAN não é possível.
@@ -258,7 +258,7 @@ Autorização: só pelo QR, só na mesma rede
 - Limite de tentativas por IP (5 por minuto, bloqueio de 10 minutos depois disso).
 - Reconexão: o token de sessão (também guardado como hash) só religa a sessão em andamento, em até 60 segundos após a queda. Passou disso, sessão encerrada ou agente parado, só um novo QR.
 - Uma sessão ativa por vez; segunda tentativa recebe `session_already_active`. O console mostra o aparelho e o IP conectados e tem "Desconectar".
-- Código de confirmação: depois do QR, PC e celular mostram o mesmo código de 6 caracteres (Crockford base32, sem `0/O/1/I/L`, cerca de 30 bits), derivado das impressões digitais DTLS das duas pontas. Cada lado calcula o seu. O usuário confere e clica "Confirmar" no PC; até lá nenhum quadro chega à câmera virtual. Protege contra QR lido por outra pessoa (o código aparece no aparelho dela, não no do usuário) e contra intermediário na conexão (os códigos divergem). Uma confirmação por sessão; reconexão em até 60 segundos não pede de novo. Nada é digitado no celular.
+- Código de confirmação: depois do QR, PC e celular mostram o mesmo código de 6 caracteres (Crockford base32, sem `0/O/1/I/L`, cerca de 30 bits), derivado das impressões digitais DTLS das duas pontas. Cada lado calcula o seu. O usuário confere e confirma nos dois lados, "É igual" no celular e no PC, em qualquer ordem; até as duas confirmações o celular não envia nenhum pacote de vídeo nem mensagem além da própria confirmação ou recusa, e nenhum quadro chega à câmera virtual (emenda da v0.8.0). Protege contra QR lido por outra pessoa (o código aparece no aparelho dela, não no do usuário) e contra intermediário na conexão (os códigos divergem). Uma confirmação por sessão; reconexão em até 60 segundos não pede de novo. Nada é digitado no celular.
 
 Transporte
 - HTTPS com certificado ECDSA gerado por instalação; chave privada no diretório de dados do usuário, com permissão só para ele. Impressão digital visível no console.
@@ -288,9 +288,10 @@ As duas telas são máquinas de estado: em cada momento há uma coisa a fazer, e
 | Estado | O que domina |
 |---|---|
 | Aguardando celular | QR grande, contagem da janela de 2 min, uma linha sobre o aviso de certificado |
-| Confirmar | código de confirmação grande, nome e IP do aparelho, Confirmar e Recusar |
+| Confirmar | código de confirmação grande, nome e IP do aparelho, estado da confirmação em cada lado, É igual e É diferente |
 | Ao vivo | prévia 16:9 do que os apps recebem (espelho aplicado), tally, cadeia de sinal, métricas (resolução, fps, bitrate, latência), controles; com a prévia desligada, a cadeia de sinal e as métricas ocupam o lugar dela |
-| Pausado | prévia escura com "Pausado", Retomar como ação principal |
+| Imagem congelada | prévia parada com aviso de desde quando, Descongelar como ação principal |
+| Câmera desligada | prévia preta com "Câmera desligada", Ligar câmera como ação principal |
 | Sinal perdido | prévia congelada e esmaecida, contagem de reconexão |
 | Problema | cadeia de sinal destaca o trecho com falha e a correção |
 
@@ -303,9 +304,9 @@ Ajustes (resolução, fps, câmera padrão, espelhar, idioma, iniciar com o Wind
 | Sem token | como parear pelo PC, e nada mais |
 | Antes da permissão | por que a câmera será pedida, depois o pedido do navegador |
 | Em retrato | imagem inteira com faixas laterais; sugere deitar o celular (CA-2, emenda da v0.7.0) |
-| Confirmar | o mesmo código, enorme, "Confira se é igual no PC" |
+| Confirmar | o mesmo código, enorme, "O código no computador é igual a este?", É igual e É diferente |
 | Ao vivo | visor em tela cheia, tally, controles na zona do polegar |
-| Pausado, reconectando, encerrado | estado claro e o que fazer |
+| Imagem congelada, câmera desligada, reconectando, encerrado | estado claro e o que fazer |
 
 Prévia desligada: um toque cobre o visor de preto, deixando só a tally e os controles esmaecidos (economia em OLED, menos calor, sem luz no rosto); a transmissão continua igual. Um toque religa. Com a câmera frontal, o visor do celular é espelhado como selfie, independente do ajuste Espelhar, que vale só para a saída do PC.
 
@@ -315,7 +316,8 @@ Toda ação existe nos dois lados quando faz sentido, e qualquer mudança aparec
 
 | Ação | Bandeja | Console | Celular | Efeito |
 |---|---|---|---|---|
-| Pausar / Retomar câmera | sim | sim | sim | a câmera do celular é desligada de fato (o indicador de privacidade do sistema apaga); a câmera virtual mostra o quadro "Pausado"; a sessão continua |
+| Congelar imagem / Descongelar | sim | sim | sim | a câmera virtual repete o último quadro; o celular continua enviando |
+| Desligar câmera / Ligar câmera | sim | sim | sim | a câmera do celular é desligada de fato (o indicador de privacidade do sistema apaga); a câmera virtual mostra o quadro de câmera desligada (ícone, sem texto); a sessão continua |
 | Desconectar | sim | sim | sim | encerra a sessão; voltar exige novo QR |
 | Trocar câmera (frontal, traseira) | sim | sim | sim | |
 | Espelhar | sim | sim | não | só na saída do PC |
@@ -326,7 +328,7 @@ Toda ação existe nos dois lados quando faz sentido, e qualquer mudança aparec
 | Parar WCam | sim | sim | | fecha as portas e a câmera virtual volta a "Desligada" |
 | Sair | sim | | | |
 
-O ícone da bandeja muda com o estado: cinza (parado ou aguardando), verde (ao vivo), âmbar (pausado ou reconectando), vermelho (problema). Cada estado também muda a forma do ícone, não só a cor.
+O ícone da bandeja tem cinco estados, cada um com cor e forma do selo: ao vivo (círculo cheio, `--data`), imagem congelada (quadrado, `--data-2`), câmera desligada (duas barras, `--warning`), aguardando ou parado (círculo vazado, `--muted`), problema ou reconectando (triângulo, `--negative`). Emenda da v0.8.0.
 
 ### 5.5 Idiomas
 
@@ -412,9 +414,10 @@ Cada linha vira uma spec `docs/specs/spec-vX.Y.Z.md` com CA verificáveis. Uma s
 | 0.6.0 | Fidelidade de imagem | faixa de cor normalizada para a câmera, matriz declarada, congelar a última imagem numa falha curta e recuperar o vídeo, registro de episódios, escolha de taxa (Máxima, Equilibrada, Leve) no celular e no console, QR fora de arquivo de log, medição de capacidades do celular e do custo de decodificação | sombras e cores da WCam no nível da prévia do celular; reunião de 30 min sem preto |
 | 0.7.0 | Resolução e fps | o usuário escolhe resolução e fps entre os que o celular entrega e o PC sustenta; a câmera WCam anuncia o formato escolhido; avaliação de codecs mais eficientes que o H.264 (VP9, AV1, HEVC) por medição de qualidade, CPU no PC e aquecimento do celular, com a troca só se a medição justificar; ADR nova e CA-2 reescrito | cada formato oferecido funciona de ponta a ponta sem redimensionar; decisão de codec registrada em ADR com os números |
 | 0.8.0 | Console | correção de segurança: confirmação nos dois lados (botão "O código é igual" no celular e Confirmar no PC), nenhum vídeo nem mensagem do celular antes das duas confirmações, terminal indicando onde confirmar; QR no console, SSE, prévia por MediaRelay com liga e desliga, métricas numa área de detalhes, controles via DataChannel, revisão de linguagem de todas as superfícies (§5.7) | CA-3 completo; trocar câmera pelo console muda a imagem no Meet; teste prova que nenhum pacote de vídeo chega ao agente antes das duas confirmações e que, com um falso computador (código diferente), o celular nunca envia vídeo |
-| 0.9.0 | Persistência | SQLite, migrations, preferências, histórico de sessões e métricas | preferências sobrevivem a reinício; histórico visível no console |
-| 0.10.0 | Robustez | reconexão com token de sessão, troca de rede, tela do celular bloqueada, encerramento limpo | Wi-Fi do celular fora por 10 s volta sozinho; fora por mais de 60 s exige novo QR |
-| 0.11.0 | Polimento do front | passada completa de `impeccable audit`, `emil-design-eng`, Playwright e2e | auditoria sem pendência crítica; e2e verde no CI |
+| 0.9.0 | Zoom e enquadramento | zoom real no celular (lentes de 0,5x ao máximo e enquadramento aberto da frontal), controlado pelo console e pelo celular, a partir do spike da v0.8.0; enquadramento no PC (recorte 16:9 escolhido na prévia, ampliado para o formato anunciado), com ADR que abre exceção ao CA-2 só quando o usuário liga o recorte | zoom muda a imagem no Meet pelos dois lados; sem recorte, SSIM do CA-2 mantido |
+| 0.10.0 | Persistência | SQLite, migrations, preferências, histórico de sessões e métricas | preferências sobrevivem a reinício; histórico visível no console |
+| 0.11.0 | Robustez | reconexão com token de sessão, troca de rede, tela do celular bloqueada, encerramento limpo | Wi-Fi do celular fora por 10 s volta sozinho; fora por mais de 60 s exige novo QR |
+| 0.12.0 | Polimento do front | passada completa de `impeccable audit`, `emil-design-eng`, Playwright e2e | auditoria sem pendência crítica; e2e verde no CI |
 | 1.0.0 | App Windows | executável PyInstaller, bandeja, janela WebView2, instalador único nas Releases do GitHub que, com um só pedido de administrador, copia os arquivos, registra a câmera "WCam" e cria a regra de firewall (desinstalar remove tudo; o usuário final nunca roda script nem PowerShell), README com GIF de demonstração, guia de solução de problemas, varredura `nmap` do CA-4 | instalação limpa num Windows sem o repositório funciona do zero; celular não instala nada |
 | 1.x | Futuro | Linux, macOS | cada uma com ADR própria |
 
