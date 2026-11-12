@@ -3,12 +3,13 @@ import styles from "./primary-button.module.scss";
 
 interface PrimaryButtonProps {
   onClick: () => void;
+  quiet?: boolean;
   children: ReactNode;
 }
 
-export function PrimaryButton({ onClick, children }: PrimaryButtonProps) {
+export function PrimaryButton({ onClick, quiet = false, children }: PrimaryButtonProps) {
   return (
-    <button type="button" className={styles.button} onClick={onClick}>
+    <button type="button" className={styles.button} data-quiet={quiet} onClick={onClick}>
       {children}
     </button>
   );

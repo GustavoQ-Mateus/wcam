@@ -22,6 +22,7 @@ export interface Cam {
   switchCamera: () => void;
   togglePreview: () => void;
   chooseVideoFormat: (format: VideoFormat) => void;
+  answerCode: (same: boolean) => void;
   screenshotRequested: boolean;
   sendScreenshot: (file: File) => Promise<boolean>;
 }
@@ -74,6 +75,13 @@ export function useCam(hasPairing: boolean): Cam {
       dispatch({ type: "preview_toggled" });
     },
     chooseVideoFormat: publisher.chooseVideoFormat,
+    answerCode: (same) => {
+      if (same) {
+        publisher.confirmCode();
+      } else {
+        publisher.rejectCode();
+      }
+    },
     screenshotRequested: state.kind === "live" && publisher.snapshotRequest !== null,
     sendScreenshot: async (file) => {
       const request = publisher.snapshotRequest;

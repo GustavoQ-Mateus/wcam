@@ -22,6 +22,7 @@ interface LiveLayerProps {
   onSwitchCamera: () => void;
   onTogglePreview: () => void;
   onChooseFormat: (format: VideoFormat) => void;
+  onAnswerCode: (same: boolean) => void;
   onSendScreenshot?: ((file: File) => Promise<boolean>) | undefined;
 }
 
@@ -38,9 +39,10 @@ export function LiveLayer({
   onSwitchCamera,
   onTogglePreview,
   onChooseFormat,
+  onAnswerCode,
   onSendScreenshot,
 }: LiveLayerProps) {
-  const prompt = promptFor(state);
+  const prompt = promptFor(state, onAnswerCode);
   const previewOff = state.kind === "preview_off" || (state.kind === "live" && state.previewOff);
   return (
     <>
@@ -69,12 +71,26 @@ export function LiveLayer({
   );
 }
 
-function promptFor(state: LiveCamState): Prompt | null {
+function promptFor(state: LiveCamState, onAnswerCode: (same: boolean) => void): Prompt | null {
   if (state.kind === "connecting") {
     return { key: "connecting", content: <ConnectingPrompt /> };
   }
   if (state.kind === "awaiting_confirmation") {
-    return { key: "awaiting_confirmation", content: <ConfirmationPrompt code={state.code} /> };
+    return {
+      key: "awaiting_confirmation",
+      content: (
+        <ConfirmationPrompt
+          code={state.code}
+          answer={state.answer}
+          onSame={() => {
+            onAnswerCode(true);
+          }}
+          onDifferent={() => {
+            onAnswerCode(false);
+          }}
+        />
+      ),
+    };
   }
   return null;
 }

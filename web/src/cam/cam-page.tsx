@@ -29,6 +29,7 @@ export default function CamPage() {
           onSwitchCamera={cam.switchCamera}
           onTogglePreview={cam.togglePreview}
           onChooseFormat={cam.chooseVideoFormat}
+          onAnswerCode={cam.answerCode}
           onSendScreenshot={cam.screenshotRequested ? cam.sendScreenshot : undefined}
         />
       ) : (

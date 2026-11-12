@@ -101,7 +101,6 @@
   "cam.keep_screen_on": "Mantenha a tela ligada nas configurações do celular enquanto usa o WCam.",
   "cam.connecting": "Conectando ao computador",
   "cam.confirm_title": "O código no computador é igual a este?",
-  "cam.confirm_body": "Se for igual, clique em Confirmar no computador.",
   "cam.live": "Ao vivo",
   "cam.pairing_failed": "Este QR code não vale mais. Leia um novo.",
   "cam.blocked_network": "Este celular não está na rede do computador.",
