@@ -1,7 +1,16 @@
 import { expect, test } from "@playwright/test";
 import { translate } from "../src/data/i18n";
 import { PHONE_LANDSCAPE, trackSettings, turnOnCamera } from "./cam-helpers";
-import { consoleUrl, endSession, goLive, NO_CONTENT_STATUS, reachConfirmation, status } from "./session-helpers";
+import {
+  confirmOnComputer,
+  confirmOnPhone,
+  consoleUrl,
+  endSession,
+  goLive,
+  NO_CONTENT_STATUS,
+  reachConfirmation,
+  status,
+} from "./session-helpers";
 
 const VIDEO_TIMEOUT_MS = 20_000;
 const SOURCE_TIMEOUT_MS = 5_000;
@@ -13,12 +22,13 @@ test.afterEach(async ({ request }) => {
   await endSession(request);
 });
 
-test("phone and computer show the same code and the phone goes live after confirmation", async ({ page, request }) => {
+test("phone and computer show the same code and the phone goes live after both confirm", async ({ page, request }) => {
   await reachConfirmation(page, request);
   expect(new URL(page.url()).hash).toBe("");
   expect((await status(request)).virtualCamera.source).toBe("placeholder");
 
-  expect((await request.post(consoleUrl("/api/sessions/current/confirm"))).status()).toBe(NO_CONTENT_STATUS);
+  await confirmOnPhone(page);
+  await confirmOnComputer(request);
 
   await expect(page.getByText(translate("en", "cam.live")).first()).toBeVisible();
   const settings = await trackSettings(page);
