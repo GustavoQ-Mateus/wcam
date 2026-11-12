@@ -1,6 +1,6 @@
 # Contrato entre web e agent
 
-Versão: 0.7.0
+Versão: 0.8.0
 
 Fonte da verdade da comunicação entre `web` e `agent`. Mudou aqui, muda na spec da versão antes do código.
 
@@ -39,6 +39,7 @@ O cliente decide pelo `code`, nunca pela `message`. O texto mostrado ao usuário
 | `session_already_active` | 409 | já existe uma sessão; também no `POST /api/pairing` |
 | `no_session_awaiting_confirmation` | 409 | confirmar ou recusar sem sessão aguardando |
 | `no_active_session` | 404 | desconectar sem sessão |
+| `no_live_session` | 409 | ação que exige o celular em `live` sem sessão `live` (controles e rotas de desenvolvimento) |
 
 Qualquer outro status de erro do framework vira `invalid_request` (4xx) ou `internal_error` (5xx). Não existe código genérico fora desta tabela.
 
@@ -75,6 +76,11 @@ Nos dois servidores.
 | `POST /api/sessions/current/confirm` | nenhum | `204` | `409 no_session_awaiting_confirmation` |
 | `POST /api/sessions/current/reject` | nenhum | `204` | `409 no_session_awaiting_confirmation` |
 | `DELETE /api/sessions/current` | nenhum | `204` | `404 no_active_session` |
+| `GET /api/events` | nenhum | `200 text/event-stream` ("Eventos do console") | nenhum |
+| `PATCH /api/controls` | subconjunto de `{"frozen","cameraOff","mirror","facing"}` | `204` | `409 no_live_session`, `422 invalid_request` |
+| `POST /api/preview` | `{"sdp"}` | `201 {"sdp"}` | `422 invalid_request` |
+| `DELETE /api/preview` | nenhum | `204` | nenhum |
+| `GET /api/dev/events` | nenhum | `200 text/event-stream` ("Console do desenvolvedor") | nenhum |
 
 - `POST /api/pairing` abre a janela de pareamento por 120 s, gera um token novo e invalida o anterior. `url` é `https://<ip-da-lan>:8443/cam#t=<token>`; `qrSvg` é o QR dessa URL como documento SVG completo e independente (com `xmlns="http://www.w3.org/2000/svg"`, sem declaração XML), pronto para virar uma imagem `data:`; `expiresAt` em ISO 8601 UTC.
 - A janela fecha quando expira, quando uma sessão é criada (o token é consumido) ou no `DELETE`.
@@ -91,18 +97,23 @@ Nos dois servidores.
     "remoteIp": "192.168.100.31",
     "startedAt": "2026-11-01T18:00:10Z",
     "confirmationCode": "92Q-M2H",
+    "confirmations": {"pc": true, "phone": false},
+    "rtpPacketsBeforeLive": 0,
     "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800}
   },
-  "lastEnded": {"reason": "rejected", "at": "2026-11-01T17:55:40Z"}
+  "lastEnded": {"reason": "rejected", "at": "2026-11-01T17:55:40Z", "rtpPacketsBeforeLive": 0},
+  "controls": {"frozen": false, "cameraOff": false, "mirror": false, "facing": "environment"}
 }
 ```
 
 - `pairing` é `null` com a janela fechada; `session` é `null` sem sessão.
 - `state`: `connecting`, `awaiting_confirmation`, `live`. Sessão encerrada vira `null`, e o motivo do último encerramento fica em `lastEnded: {"reason", "at"}`, campo sempre presente no primeiro nível (`null` se nenhuma sessão terminou desde que o agente subiu) (`rejected`, `disconnected_by_pc`, `disconnected_by_phone`, `connection_failed`, `confirmation_timeout`).
 - `confirmationCode` aparece a partir de `awaiting_confirmation`.
+- `confirmations`: quem já confirmou o código (spec v0.8.0 §1). `POST /api/sessions/current/confirm` marca só `pc`; `confirm_code` no DataChannel marca só `phone`. A sessão vai para `live` quando os dois são `true`, em qualquer ordem. `POST /api/sessions/current/reject` e `reject_code` encerram com `rejected`. `confirmation_timeout` vale enquanto qualquer um dos dois faltar.
+- `rtpPacketsBeforeLive`: pacotes RTP de vídeo recebidos do celular antes de `live`, contados pelo agente; esperado sempre 0. Fica também em `lastEnded`, para o teste ler depois do encerramento.
 - `video` é `null` até o primeiro quadro; `fps` e `bitrateKbps` são a média da última janela de 1 s, medidos pelo agente (quadros decodificados e bytes RTP recebidos), não o que o celular declara.
 - `deviceName` vem do `User-Agent`: sistema e navegador (`Android · Chrome`, `iPhone · Safari`), nunca o texto bruto. Parte não reconhecida é omitida (`Android`, `Chrome`); sem nenhuma reconhecida, `null`, e o console mostra `console.device_unknown`.
-- `video` só aparece depois do Confirmar: o agente mede depois do portão. Em `connecting` e `awaiting_confirmation` é `null`.
+- `video` só aparece depois de `live`: o agente mede depois do portão. Em `connecting` e `awaiting_confirmation` é `null`.
 - `connecting` vira `awaiting_confirmation` quando o DataChannel `control` abre do lado do agente.
 
 ### Comparação lado a lado (desenvolvimento, spec v0.6.0 §6)
@@ -143,6 +154,81 @@ Só com `WCAM_DEV_TOOLS=1`; sem a variável, todas as rotas abaixo respondem `40
 - Em `screenDifference`, `mirrored` e `correlation` são os do alinhamento do print (o print da câmera frontal vem espelhado, como o visor). `screen` é `null` até o print chegar; com ele, `{"receivedAt", "width", "height", "colorSpace"}` (do perfil ICC; sem perfil, `srgb`), e `screenDifference` traz `{"phone": <mesmo formato de difference>, "pc": <mesmo formato>}`: print contra o canvas do celular e print contra a imagem do PC. O print só é aceito com a comparação `ready`.
 - O agente guarda só as últimas 5 comparações, em memória.
 
+## Controles (spec v0.8.0 §3)
+
+`controls` no primeiro nível de `GET /api/status`, sempre presente: `{"frozen": bool, "cameraOff": bool, "mirror": bool, "facing": "user" | "environment" | null}`.
+
+- `frozen`: a câmera virtual repete o último quadro entregue; `virtualCamera.source` `held`. O celular continua enviando.
+- `cameraOff`: o celular para a faixa da câmera e envia `replaceTrack(null)`; a conexão continua; a câmera virtual mostra o quadro de câmera desligada (preto Y=16, UV=128, ícone de câmera riscada no centro, sem texto, no formato anunciado); `virtualCamera.source` `camera_off`.
+- `mirror`: o agente inverte as colunas dos planos Y, U e V antes da câmera. Vale até o agente fechar, inclusive entre conexões.
+- `facing`: câmera pedida ao celular. Sem sessão, é a da última `camera_capabilities` ou `null`; a câmera de fato em uso continua em `session.cameraCapabilities.facingMode`.
+- Regras: `frozen` e `cameraOff` voltam a `false` quando a sessão termina. Com `cameraOff` `true`, `frozen` é sempre `false` (pedir `frozen: true` é ignorado, sem erro); `cameraOff: false` com a imagem congelada também descongela.
+- `PATCH /api/controls` aceita qualquer subconjunto; campo desconhecido ou de tipo errado: `422 invalid_request`. `frozen`, `cameraOff` e `facing` sem sessão `live`: `409 no_live_session`; `mirror` vale sempre. Responde `204` depois de aplicar no agente; o celular recebe `controls` em seguida.
+- Toda mudança, venha do console, do celular ou da bandeja, sai no SSE do console e no `controls` do DataChannel em menos de 300 ms.
+
+## Eventos do console (`GET /api/events`)
+
+`text/event-stream`, só no console. Um evento `status` com o mesmo JSON de `GET /api/status`, enviado ao conectar, a cada mudança de qualquer campo que não seja medição (estado, confirmações, controles, formato, câmera virtual, `lastEnded`) e a cada 1 s:
+
+```
+event: status
+data: {"pairing": null, "session": {...}, "controls": {...}, ...}
+
+```
+
+O console reconecta com o `EventSource` padrão. `GET /api/status` continua.
+
+## Prévia do console (spec v0.8.0 §2.3)
+
+- `POST /api/preview` com `{"sdp": "<oferta completa, sem trickle>"}` do console: uma faixa de vídeo `recvonly`, sem DataChannel. Resposta `201 {"sdp": "<resposta>"}`. SDP ilegível ou sem vídeo: `422 invalid_request`.
+- Só no console (`127.0.0.1`), sem STUN e sem TURN; candidatos só de loopback.
+- O agente envia o quadro entregue à câmera virtual (com espelho, congelamento e quadro de câmera desligada aplicados), reduzido para 960x540 (ou a altura do formato, se menor, mantendo 16:9), a no máximo 30 fps. Sem celular, envia o quadro de espera da câmera.
+- Uma prévia por vez: um `POST` novo fecha a anterior. `DELETE /api/preview` fecha a atual (`204` mesmo sem prévia). O agente libera a prévia quando o ICE cai.
+- Sem prévia aberta, o agente não reduz nem codifica nada para ela.
+
+## Console do desenvolvedor (`GET /api/dev/events`, spec v0.8.0 §4)
+
+`text/event-stream`, só no console, sem variável de ambiente. A coleta detalhada (tempos por etapa e `stats_request` ao celular) roda só enquanto houver pelo menos um assinante.
+
+Evento `metrics`, a cada 1 s:
+
+```json
+{
+  "at": "2026-11-12T18:00:01.000Z",
+  "session": {"state": "live", "liveSince": "2026-11-12T17:58:00Z", "deviceName": "iPhone · Safari", "facing": "environment", "format": "1080p30", "codec": "H264"},
+  "received": {"fps": 30.0, "bitrateKbps": 9400, "packetsLost": 0, "jitterMs": 2.1},
+  "delivered": {"fps": 30.0, "frames": 3540, "dropped": 2},
+  "stages": {
+    "decode": {"median": 3.1, "p95": 4.8},
+    "color": {"median": 2.0, "p95": 2.9},
+    "deliver": {"median": 0.6, "p95": 1.1},
+    "total": {"median": 5.9, "p95": 8.2}
+  },
+  "frameTimesMs": [5.8, 6.1],
+  "budgetMs": 33.3,
+  "ceilingKbps": 10000,
+  "virtualCamera": {"format": "1080p30", "pendingFormat": null, "streamingApps": 1, "source": "phone"},
+  "process": {"cpuPercent": 12.5},
+  "phone": null
+}
+```
+
+- `session` é `null` sem sessão; `received`, `delivered`, `stages` e `frameTimesMs` vêm `null` fora de `live`.
+- `received`: medido pelo agente na faixa recebida, janela de 1 s. `packetsLost` é o total da janela; `jitterMs`, o do receptor RTP.
+- `delivered`: quadros entregues à câmera virtual na janela (`fps`) e totais da sessão (`frames`, e `dropped` para descartes da fila).
+- `stages`: mediana e p95 em ms dos quadros da janela; `color` inclui retrato e espelho; `total` vai do quadro decodificado à entrega. `frameTimesMs`: todos os `total` da janela, para o histograma.
+- `budgetMs` é 1000 / fps do formato anunciado; `ceilingKbps`, a taxa máxima do formato.
+- `virtualCamera.pendingFormat`: chave do formato pedido enquanto `videoFormat.pending`, senão `null`; `streamingApps` vem de `WcamFormatGet` (`null` em outros backends).
+- `phone`: o último `stats` do celular, sem o `type`, ou `null`.
+
+Evento `event`, a cada acontecimento; o agente guarda os últimos 50 em memória e os envia no início de cada assinatura:
+
+```json
+{"at": "2026-11-12T18:00:01.200Z", "kind": "controls", "data": {"frozen": true}}
+```
+
+`kind`: `session_state` (`{"state", "reason"}`), `controls` (só os campos que mudaram), `video_format` (`{"format"}`), `camera_capabilities` (`{"facingMode", "width", "height", "frameRate"}`), `virtual_camera` (`{"state", "source", "format"}`), `episode` (o registro de episódio da v0.6.0), `preview` (`{"open": bool}`).
+
 ## Celular (`<ip-da-lan>:8443`)
 
 `POST /api/sessions` com `{"token": "...", "sdp": "<oferta completa, sem trickle>"}`:
@@ -157,14 +243,20 @@ Só com `WCAM_DEV_TOOLS=1`; sem a variável, todas as rotas abaixo respondem `40
 Do agente para o celular, JSON:
 
 - `{"type": "session_state", "state": "awaiting_confirmation"}` quando a conexão sobe;
-- `{"type": "session_state", "state": "live"}` depois do Confirmar;
+- `{"type": "session_state", "state": "live"}` depois das duas confirmações;
+- `{"type": "confirmation", "pc": bool, "phone": bool}` ao abrir o canal e a cada mudança em `awaiting_confirmation`;
+- `{"type": "controls", "frozen": bool, "cameraOff": bool, "mirror": bool, "facing": "user" | "environment" | null}` ao chegar a `live` e a cada mudança, venha de onde vier (ver "Controles"). Com `cameraOff` `true`, o celular para a faixa e envia `replaceTrack(null)`; com `false`, abre a câmera de `facing` e volta a enviar. `facing` diferente da câmera em uso faz o celular trocar de câmera;
+- `{"type": "stats_request", "enabled": bool}` quando o primeiro assinante de `GET /api/dev/events` chega (`true`), quando o último sai (`false`) e ao chegar a `live` com assinante;
 - `{"type": "session_state", "state": "ended", "reason": "<motivo de lastEnded>"}` antes de fechar;
-- `{"type": "video_format", "format": "1080p30", "width": 1920, "height": 1080, "fps": 30, "maxBitrate": 10000000, "available": ["720p30", "720p60", "1080p30"]}` quando o canal abre, a cada mudança de formato, venha ela do console ou do próprio celular, e a cada `camera_capabilities` (ver "Formato de vídeo").
+- `{"type": "video_format", "format": "1080p30", "width": 1920, "height": 1080, "fps": 30, "maxBitrate": 10000000, "available": ["720p30", "720p60", "1080p30"]}` ao chegar a `live`, a cada mudança de formato, venha ela do console ou do próprio celular, e a cada `camera_capabilities` (ver "Formato de vídeo").
 
 Do celular para o agente, JSON:
 
-- `{"type": "set_video_format", "format": "<chave>"}` quando o usuário escolhe um formato no celular. O agente aplica e responde com `video_format` (inclusive ao próprio celular), que é a fonte da verdade do que está em uso. Só vale com a sessão em `live`: antes do Confirmar o aparelho ainda não foi aceito, e a mensagem é ignorada com registro no log, sem resposta. Chave fora de `available` também é ignorada com log, e o agente reenvia o `video_format` atual. O seletor do celular só aparece depois de `session_state` `live`;
-- `{"type": "camera_capabilities", "width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"], "colorSpace": {"primaries": "bt709", "transfer": "bt709", "matrix": "bt709", "fullRange": true}}` quando o canal abre e a cada troca de câmera. `width`, `height` e `frameRate` são os máximos de `getCapabilities()` da faixa em uso (`null` quando o navegador não informa); `facingMode` é `user`, `environment` ou `null`; `codecs` são os `mimeType` de vídeo de `RTCRtpSender.getCapabilities("video")`, sem repetição e sem `video/rtx`, `video/red` e `video/ulpfec`; `colorSpace` é o `VideoFrame.colorSpace` de um quadro da câmera em uso (`primaries`, `transfer`, `matrix` com os nomes do WebCodecs, `fullRange` booleano; campo `null` quando o navegador não informa) ou `null` quando o navegador não expõe `VideoFrame` (spec v0.6.0 §1.1). `modes` é `{"exposureMode", "whiteBalanceMode", "focusMode"}` com os valores de `getSettings()` da faixa em uso, cada um `null` quando o navegador não informa (spec v0.7.0 §4).
+- Antes de `live`, as únicas mensagens aceitas são `{"type": "confirm_code"}` (o usuário tocou em É igual; marca `confirmations.phone`) e `{"type": "reject_code"}` (tocou em É diferente; encerra com `rejected`). Qualquer outra é ignorada com log. Nenhum pacote de vídeo sai do celular antes de `live`: o transceiver de vídeo nasce sem faixa, e a câmera entra com `replaceTrack` só depois de `session_state` `live` (spec v0.8.0 §1);
+- `{"type": "set_controls", "frozen"?, "cameraOff"?, "mirror"?, "facing"?}`: o mesmo subconjunto do `PATCH /api/controls`, só em `live`; o agente aplica e responde com `controls` ao celular;
+- `{"type": "stats", "at": <ms no relógio do celular>, "outbound": {"framesPerSecond", "framesSent", "framesEncoded", "keyFramesEncoded", "bytesSent", "qualityLimitationReason", "nackCount", "pliCount", "frameWidth", "frameHeight"}, "remoteInbound": {"roundTripTime", "jitter", "packetsLost"}}` a cada 1 s enquanto `stats_request` estiver ligado, de `RTCPeerConnection.getStats()` (`outbound-rtp` e `remote-inbound-rtp` de vídeo; `roundTripTime` e `jitter` em segundos, como no navegador). Campo que o navegador não informa vai `null`; bloco ausente vai `null`;
+- `{"type": "set_video_format", "format": "<chave>"}` quando o usuário escolhe um formato no celular. O agente aplica e responde com `video_format` (inclusive ao próprio celular), que é a fonte da verdade do que está em uso. Só vale com a sessão em `live`: antes das duas confirmações o aparelho ainda não foi aceito, e a mensagem é ignorada com registro no log, sem resposta. Chave fora de `available` também é ignorada com log, e o agente reenvia o `video_format` atual. O seletor do celular só aparece depois de `session_state` `live`;
+- `{"type": "camera_capabilities", "width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"], "colorSpace": {"primaries": "bt709", "transfer": "bt709", "matrix": "bt709", "fullRange": true}}` ao chegar a `live` e a cada troca de câmera (nunca antes de `live`). `width`, `height` e `frameRate` são os máximos de `getCapabilities()` da faixa em uso (`null` quando o navegador não informa); `facingMode` é `user`, `environment` ou `null`; `codecs` são os `mimeType` de vídeo de `RTCRtpSender.getCapabilities("video")`, sem repetição e sem `video/rtx`, `video/red` e `video/ulpfec`; `colorSpace` é o `VideoFrame.colorSpace` de um quadro da câmera em uso (`primaries`, `transfer`, `matrix` com os nomes do WebCodecs, `fullRange` booleano; campo `null` quando o navegador não informa) ou `null` quando o navegador não expõe `VideoFrame` (spec v0.6.0 §1.1). `modes` é `{"exposureMode", "whiteBalanceMode", "focusMode"}` com os valores de `getSettings()` da faixa em uso, cada um `null` quando o navegador não informa (spec v0.7.0 §4).
 
 
 Comparação lado a lado (só com `WCAM_DEV_TOOLS=1`; sem a variável, o agente não envia `snapshot_request` e ignora as respostas com log):
@@ -249,7 +341,7 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
 - `virtualCamera.state`: `active` ou `unavailable`. `reason` (só com `unavailable`): `driver_missing`, `device_in_use` ou `error`.
 - `backend`: `media_foundation` (câmera nativa "WCam", ADR 0011), `obs` (fallback) ou `fake`.
 - `fallbackReason`: por que a câmera nativa não está em uso; `null` quando `backend` é `media_foundation`. Valores: `native_not_registered` (DLL não registrada), `windows_too_old` (build anterior a 22000), `native_error` (a DLL falhou ao iniciar) e `not_windows`. Só é preenchido quando `WCAM_VIRTUAL_CAMERA` é `auto` e a escolha caiu da câmera nativa para outro backend; com backend explícito é sempre `null`. Com `WCAM_VIRTUAL_CAMERA=media_foundation` explícito e falha, não há fallback: `state` `unavailable` com `reason` `driver_missing` (DLL ausente) ou `error` (`WcamCameraStart` falhou).
-- `source`: `phone` quando os quadros vêm do celular; `frozen` quando a câmera repete o último quadro do celular porque nenhum quadro novo chegou há mais de 0,5 s (até completar 3 s sem quadro; antes de 0,5 s continua `phone`, que é o intervalo normal entre quadros); `placeholder` em qualquer outro momento.
+- `source`: `held` quando o usuário congelou a imagem (`controls.frozen`); `camera_off` com `controls.cameraOff`; `phone` quando os quadros vêm do celular; `frozen` quando a câmera repete o último quadro do celular porque nenhum quadro novo chegou há mais de 0,5 s (até completar 3 s sem quadro; antes de 0,5 s continua `phone`, que é o intervalo normal entre quadros); `placeholder` em qualquer outro momento.
 - `session.video.colorRange`: faixa declarada pelo celular no quadro mais recente, `full`, `limited` ou `unspecified`. `colorMatrix`: matriz declarada, `bt709`, `bt601`, outro nome do FFmpeg ou `unspecified`. A câmera sempre entrega faixa limitada; quadro em faixa cheia é ajustado pelo agente (CA-2, emenda da v0.6.0).
 - `session.video.colorCorrection`: correção de cor da conexão atual, derivada do `colorSpace` declarado pela câmera em `camera_capabilities` (spec v0.6.0 §1.1). `state`: `applied` (curva de exibição aplicada ao Y) ou `default` (só a faixa: sem `colorSpace`, transferência `srgb`, HDR ou convenção `standard`). `transfer`: o declarado, ou `null`. `display`: convenção de exibição do celular pela plataforma do `User-Agent`, `apple` (iPhone, iPad, Safari no macOS) ou `standard`. Recalculada a cada `camera_capabilities`; nada é guardado entre conexões.
 - `session.cameraCapabilities`: a última mensagem `camera_capabilities` do celular, sem o `type`; `null` até chegar a primeira.
