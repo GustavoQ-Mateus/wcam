@@ -4,6 +4,7 @@ import type { CamEvent } from "../data/cam-state";
 import { confirmationCode, sdpFingerprint } from "../data/confirmation-code";
 import type { ControlMessage } from "../data/contract";
 import { cameraCapabilitiesData, parseControlMessage, setVideoFormatMessage } from "../data/control-message";
+import { createPublisherGate } from "../data/publisher-gate";
 import { DEFAULT_VIDEO_FORMAT, formatSpec, type VideoFormat } from "../data/video-format";
 import { readCameraCapabilities } from "./camera-capabilities";
 
@@ -21,6 +22,8 @@ export interface Publisher {
   snapshotRequest: SnapshotRequest | null;
   chooseVideoFormat: (format: VideoFormat) => void;
   sendPaced: (messages: readonly string[]) => Promise<void>;
+  confirmCode: () => void;
+  rejectCode: () => void;
 }
 
 export type VideoFormatMessage = Extract<ControlMessage, { type: "video_format" }>;
@@ -34,6 +37,8 @@ interface PublisherSession {
   replaceTrack: (track: MediaStreamTrack) => void;
   chooseVideoFormat: (format: VideoFormat) => void;
   sendPaced: (messages: readonly string[]) => Promise<void>;
+  confirmCode: () => void;
+  rejectCode: () => void;
   close: () => void;
 }
 
@@ -50,6 +55,8 @@ const CONTROL_CHANNEL = "control";
 const CONTENT_HINT = "detail";
 const DEGRADATION_PREFERENCE = "maintain-resolution";
 const CONNECTION_FAILED_REASON = "connection_failed";
+const REJECTED_REASON = "rejected";
+const REJECT_GRACE_MS = 3000;
 const UNKNOWN_ERROR_CODE = "unknown";
 const BUFFERED_HIGH_BYTES = 1_000_000;
 const BUFFERED_LOW_BYTES = 256_000;
@@ -115,6 +122,12 @@ export function usePublisher({
       sessionRef.current?.chooseVideoFormat(format);
     },
     sendPaced,
+    confirmCode: () => {
+      sessionRef.current?.confirmCode();
+    },
+    rejectCode: () => {
+      sessionRef.current?.rejectCode();
+    },
   };
 }
 
@@ -125,12 +138,21 @@ function startSession(
 ): PublisherSession {
   const connection = new RTCPeerConnection({ iceServers: [] });
   const channel = connection.createDataChannel(CONTROL_CHANNEL);
-  track.contentHint = CONTENT_HINT;
-  const { sender } = connection.addTransceiver(track, {
+  const { sender } = connection.addTransceiver("video", {
     direction: "sendonly",
     sendEncodings: [{ maxBitrate: formatSpec(DEFAULT_VIDEO_FORMAT).maxBitrate }],
   });
+  const sendOnChannel = (data: string) => {
+    if (channel.readyState === "open") {
+      channel.send(data);
+    }
+  };
+  const gate = createPublisherGate<MediaStreamTrack>({
+    replaceTrack: (nextTrack) => void sender.replaceTrack(nextTrack),
+    send: sendOnChannel,
+  });
   let currentTrack = track;
+  let rejectGrace: ReturnType<typeof setTimeout> | undefined;
   let closed = false;
   let finished = false;
   let events = Promise.resolve();
@@ -144,20 +166,23 @@ function startSession(
   const changeParameters = (change: (parameters: SendParameters) => void) => {
     parameterChanges = parameterChanges.then(() => applyParameters(sender, change));
   };
-  const sendControl = (data: string) => {
-    if (channel.readyState === "open") {
-      channel.send(data);
-    }
-  };
   const sendCapabilities = () => {
     const track = currentTrack;
+    if (!gate.live) {
+      return;
+    }
     void readCameraCapabilities(track, readVideo()).then((capabilities) => {
       if (track === currentTrack) {
-        sendControl(cameraCapabilitiesData(capabilities));
+        gate.send(cameraCapabilitiesData(capabilities));
       }
     });
   };
+  const setCameraTrack = (nextTrack: MediaStreamTrack) => {
+    nextTrack.contentHint = CONTENT_HINT;
+    gate.setTrack(nextTrack);
+  };
   const finish = (event: CamEvent) => {
+    clearTimeout(rejectGrace);
     emit(event);
     finished = true;
   };
@@ -186,8 +211,14 @@ function startSession(
       return;
     }
     if (message.type === "snapshot_request") {
-      if (isActive()) {
+      if (isActive() && gate.live) {
         onSnapshotRequest({ id: message.id, receivedAt: performance.now() });
+      }
+      return;
+    }
+    if (message.type === "confirmation") {
+      if (message.phone) {
+        emit({ type: "code_answered", same: true });
       }
       return;
     }
@@ -195,6 +226,8 @@ function startSession(
       if (message.state === "awaiting_confirmation") {
         emit({ type: "session_awaiting_confirmation", code: await code });
       } else if (message.state === "live") {
+        gate.goLive();
+        sendCapabilities();
         emit({ type: "session_live" });
       } else {
         finish({ type: "session_ended", reason: message.reason });
@@ -202,7 +235,6 @@ function startSession(
     });
   });
   channel.bufferedAmountLowThreshold = BUFFERED_LOW_BYTES;
-  channel.addEventListener("open", sendCapabilities);
   channel.addEventListener("close", connectionLost);
   connection.addEventListener("connectionstatechange", () => {
     if (FAILED_CONNECTION_STATES.has(connection.connectionState)) {
@@ -210,30 +242,43 @@ function startSession(
     }
   });
 
+  setCameraTrack(track);
+
   return {
     replaceTrack: (nextTrack) => {
-      nextTrack.contentHint = CONTENT_HINT;
-      void sender.replaceTrack(nextTrack);
+      setCameraTrack(nextTrack);
       if (nextTrack !== currentTrack) {
         currentTrack = nextTrack;
         sendCapabilities();
       }
     },
     chooseVideoFormat: (format) => {
-      sendControl(setVideoFormatMessage(format));
+      gate.send(setVideoFormatMessage(format));
     },
     sendPaced: async (messages) => {
       for (const message of messages) {
         if (channel.bufferedAmount > BUFFERED_HIGH_BYTES) {
           await bufferedAmountLow(channel);
         }
-        if (!isActive() || channel.readyState !== "open") {
+        if (!isActive() || !gate.live || channel.readyState !== "open") {
           return;
         }
         channel.send(message);
       }
     },
+    confirmCode: () => {
+      gate.confirmCode();
+      emit({ type: "code_answered", same: true });
+    },
+    rejectCode: () => {
+      gate.rejectCode();
+      emit({ type: "code_answered", same: false });
+      rejectGrace = setTimeout(() => {
+        finish({ type: "session_ended", reason: REJECTED_REASON });
+      }, REJECT_GRACE_MS);
+    },
     close: () => {
+      clearTimeout(rejectGrace);
       closed = true;
       channel.close();
       connection.close();

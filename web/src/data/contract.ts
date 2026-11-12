@@ -52,6 +52,8 @@ export interface Session {
   remoteIp: string;
   startedAt: string;
   confirmationCode: string | null;
+  confirmations: { pc: boolean; phone: boolean };
+  rtpPacketsBeforeLive: number;
   video: Video | null;
   cameraCapabilities: Omit<CameraCapabilitiesMessage, "type"> | null;
 }
@@ -75,7 +77,7 @@ export interface Quality {
 export interface Status {
   pairing: { expiresAt: string } | null;
   session: Session | null;
-  lastEnded: { reason: EndReason; at: string } | null;
+  lastEnded: { reason: EndReason; at: string; rtpPacketsBeforeLive: number } | null;
   virtualCamera: VirtualCamera;
   videoFormat: VideoFormatStatus;
   process: { cpuPercent: number };
@@ -131,6 +133,7 @@ export type ControlMessage =
   | { type: "session_state"; state: "awaiting_confirmation" }
   | { type: "session_state"; state: "live" }
   | { type: "session_state"; state: "ended"; reason: string }
+  | { type: "confirmation"; pc: boolean; phone: boolean }
   | {
       type: "video_format";
       format: VideoFormat;

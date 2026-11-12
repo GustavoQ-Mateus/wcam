@@ -17,6 +17,20 @@ describe("control message", () => {
     ]);
   });
 
+  it("confirmation message from the agent is parsed with both sides", () => {
+    expect(parseControlMessage('{"type":"confirmation","pc":true,"phone":false}')).toEqual({
+      type: "confirmation",
+      pc: true,
+      phone: false,
+    });
+  });
+
+  it("confirmation message without both sides as booleans is ignored", () => {
+    const messages = ['{"type":"confirmation","pc":true}', '{"type":"confirmation","pc":1,"phone":0}'];
+
+    expect(messages.map(parseControlMessage)).toEqual([null, null]);
+  });
+
   it("unknown or malformed messages are ignored", () => {
     const messages = ["not json", '{"type":"other","state":"live"}', '{"type":"session_state","state":"paused"}', 42];
 

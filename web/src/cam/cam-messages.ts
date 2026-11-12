@@ -29,6 +29,7 @@ const BLOCKED_KEYS: Readonly<Record<BlockedReason, MessageKey>> = {
 };
 const ENDED_KEYS: Readonly<Record<EndedReason, MessageKey>> = {
   rejected: "cam.ended_rejected",
+  code_different: "cam.ended_code_different",
   disconnected: "cam.ended_disconnected",
   lost: "cam.ended_lost",
   timeout: "cam.ended_timeout",
