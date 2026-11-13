@@ -320,7 +320,7 @@ Toda ação existe nos dois lados quando faz sentido, e qualquer mudança aparec
 | Desligar câmera / Ligar câmera | sim | sim | sim | a câmera do celular é desligada de fato (o indicador de privacidade do sistema apaga); a câmera virtual mostra o quadro de câmera desligada (ícone, sem texto); a sessão continua |
 | Desconectar | sim | sim | sim | encerra a sessão; voltar exige novo QR |
 | Trocar câmera (frontal, traseira) | sim | sim | sim | |
-| Espelhar | sim | sim | não | só na saída do PC |
+| Espelhar | sim | sim | sim | só na saída do PC; no celular fica na folha do formato e não muda o visor (emenda da v0.8.0) |
 | Prévia ligada / desligada | não | sim | sim | cada lado controla a própria prévia; no PC desligar economiza CPU, no celular apaga a tela; a câmera virtual não é afetada |
 | Parear celular (mostrar QR) | sim | sim | | abre o console no estado Aguardando |
 | Abrir console | sim | | | |
