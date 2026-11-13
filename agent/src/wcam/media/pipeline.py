@@ -80,6 +80,7 @@ class FramePipeline:
         self.mirror = False
         self._last_sent: I420Frame | None = None
         self._camera_off_frame: I420Frame | None = None
+        self._source_listeners: list[Callable[[], None]] = []
 
     @property
     def quality_report(self) -> QualityReport | None:
@@ -116,6 +117,9 @@ class FramePipeline:
         self._phone_active = False
         self._last_phone = None
         self.color_correction = None
+
+    def on_source_change(self, listener: Callable[[], None]) -> None:
+        self._source_listeners.append(listener)
 
     def apply_controls(self, frozen: bool, camera_off: bool, mirror: bool) -> None:
         if self.camera_off and not camera_off and self._phone_active:
@@ -156,7 +160,8 @@ class FramePipeline:
         elif self._last_phone_at is None or now - self._last_phone_at > FREEZE_SECONDS:
             self._last_phone = None
         output = self._last_phone if self._phone_active and fits(self._last_phone, placeholder) else None
-        self.source, sent = self._chosen_frame(output, now, placeholder)
+        source, sent = self._chosen_frame(output, now, placeholder)
+        self._report_source(source)
         self._last_sent = sent
         if self.sink.status.state is CameraState.ACTIVE:
             self.sink.send(sent)
@@ -176,6 +181,13 @@ class FramePipeline:
         if self.frozen and self._last_sent is not None and fits(self._last_sent, placeholder):
             return FrameSource.HELD, self._last_sent
         return self._source_of(output, now), placeholder if output is None else output
+
+    def _report_source(self, source: FrameSource) -> None:
+        if source is self.source:
+            return
+        self.source = source
+        for listener in self._source_listeners:
+            listener()
 
     def _camera_off_like(self, placeholder: I420Frame) -> I420Frame:
         if self._camera_off_frame is None or not fits(self._camera_off_frame, placeholder):

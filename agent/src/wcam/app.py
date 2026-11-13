@@ -1,7 +1,8 @@
 import asyncio
 import contextlib
 import signal
-from collections.abc import Generator, Sequence
+from collections.abc import Callable, Generator, Sequence
+from socket import socket
 from types import FrameType
 
 import uvicorn
@@ -28,6 +29,14 @@ GRACEFUL_SHUTDOWN_SECONDS = 2
 
 
 class SupervisedServer(uvicorn.Server):
+    def __init__(self, config: uvicorn.Config, before_shutdown: Callable[[], None] = lambda: None) -> None:
+        super().__init__(config)
+        self._before_shutdown = before_shutdown
+
+    async def shutdown(self, sockets: list[socket] | None = None) -> None:
+        self._before_shutdown()
+        await super().shutdown(sockets)
+
     @contextlib.contextmanager
     def capture_signals(self) -> Generator[None]:
         yield
@@ -91,7 +100,7 @@ def create_servers(
         proxy_headers=False,
         timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
     )
-    return [SupervisedServer(console), SupervisedServer(phone)]
+    return [SupervisedServer(console, services.status_changes.close), SupervisedServer(phone)]
 
 
 async def run(servers: Sequence[uvicorn.Server], services: AgentServices) -> None:

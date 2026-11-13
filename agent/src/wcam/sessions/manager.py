@@ -231,10 +231,13 @@ class SessionManager:
 
     def open_pairing(self) -> PairingTicket:
         self._ensure_idle()
-        return self._pairing.open()
+        ticket = self._pairing.open()
+        self._notify_change()
+        return ticket
 
     def close_pairing(self) -> None:
         self._pairing.close()
+        self._notify_change()
 
     def status(self) -> Status:
         return Status(
@@ -330,6 +333,7 @@ class SessionManager:
         session = Session(secrets.token_hex(ID_BYTES), request, self._clock(), code, peer)
         sessions.append(session)
         self._session = session
+        self._notify_change()
         return SessionOffer(session.id, peer.answer_sdp, nonce)
 
     def _handle_connected(self, sessions: list[Session]) -> None:
@@ -381,8 +385,9 @@ class SessionManager:
         session.confirmations = confirmations
         if confirmations.pc and confirmations.phone:
             self._go_live(session)
-            return
-        session.peer.send(confirmation_message(confirmations))
+        else:
+            session.peer.send(confirmation_message(confirmations))
+        self._notify_change()
 
     def _go_live(self, session: Session) -> None:
         self._cancel_confirmation_timer()
@@ -402,6 +407,7 @@ class SessionManager:
         if following is not self._selected_format:
             self._select_format(following)
         self._send_video_format()
+        self._notify_change()
 
     def _receive_phone_controls(self, session: Session, message: SetControlsMessage) -> None:
         before = self._controls
@@ -429,6 +435,7 @@ class SessionManager:
 
     def _select_format(self, video_format: VideoFormat) -> None:
         self._selected_format = video_format
+        self._notify_change()
         if self._camera is None:
             self._send_video_format()
             return
@@ -480,6 +487,7 @@ class SessionManager:
         self._cancel_confirmation_timer()
         self._last_ended = LastEnded(reason, self._clock(), session.peer.rtp_packets_before_live)
         self._set_controls(after_session(self._controls))
+        self._notify_change()
         if self._comparisons is not None:
             self._comparisons.end_session()
         session.peer.send({"type": "session_state", "state": "ended", "reason": reason})

@@ -2,7 +2,9 @@ import io
 
 import segno
 from fastapi import APIRouter, Response, status
+from fastapi.responses import StreamingResponse
 
+from wcam.api.events import event_stream, repeated_events
 from wcam.api.health import create_health_router
 from wcam.api.schemas import (
     ControlsRequest,
@@ -41,6 +43,15 @@ def qr_svg(url: str) -> str:
 def create_console_router(services: AgentServices, phone_page_url: str) -> APIRouter:
     manager = services.manager
     router = APIRouter()
+
+    def current_status() -> StatusResponse:
+        return status_response(
+            manager.status(), services.pipeline, services.cpu.percent, services.comparisons is not None
+        )
+
+    def status_json() -> str:
+        return current_status().model_dump_json(by_alias=True)
+
     router.include_router(create_health_router("console"))
 
     @router.post(
@@ -73,9 +84,17 @@ def create_console_router(services: AgentServices, phone_page_url: str) -> APIRo
         "measured quality.",
     )
     async def get_status() -> StatusResponse:
-        return status_response(
-            manager.status(), services.pipeline, services.cpu.percent, services.comparisons is not None
-        )
+        return current_status()
+
+    @router.get(
+        "/api/events",
+        response_class=StreamingResponse,
+        summary="Status events",
+        description="Server-sent events with the same JSON as the status, named status: on connecting, on "
+        "every change that is not a measurement and every second.",
+    )
+    async def status_events() -> StreamingResponse:
+        return event_stream(repeated_events(services.status_changes, "status", status_json))
 
     @router.put(
         "/api/video-format",
