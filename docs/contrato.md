@@ -8,10 +8,10 @@ Fonte da verdade da comunicação entre `web` e `agent`. Mudou aqui, muda na spe
 
 | Servidor | Endereço | Protocolo | Serve |
 |---|---|---|---|
-| Console | `127.0.0.1:8080` | HTTP | página `/`, `/assets/*`, `/api/*` |
+| Console | `127.0.0.1:8080` | HTTP | páginas `/` e `/dev`, `/assets/*`, `/api/*` |
 | Celular | `<ip-da-lan>:8443` | HTTPS (certificado autoassinado) | página `/cam`, `/assets/*`, `/api/*` |
 
-As duas páginas são o mesmo `index.html` do build do web; a superfície é escolhida pelo caminho no navegador.
+As páginas são o mesmo `index.html` do build do web; a superfície é escolhida pelo caminho no navegador.
 
 ## Formato de erro
 
