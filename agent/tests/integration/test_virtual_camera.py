@@ -6,7 +6,7 @@ from wcam.config import Settings
 from wcam.sessions.manager import SessionManager
 from wcam.virtualcam.fake_sink import FakeSink
 from wcam.virtualcam.pyvirtualcam_sink import unavailable_reason
-from wcam.virtualcam.sink import UnavailableReason
+from wcam.virtualcam.sink import AnnouncedFormat, UnavailableReason
 
 
 @pytest.mark.parametrize("reason", [UnavailableReason.DRIVER_MISSING, UnavailableReason.DEVICE_IN_USE])
@@ -33,6 +33,7 @@ async def test_unavailable_driver_keeps_agent_running_and_reports_reason(
         "fallbackReason": None,
         "output": {"width": 1920, "height": 1080, "fps": 30},
         "source": "placeholder",
+        "streamingApps": None,
     }
     assert sink.frames_sent == 0
 
@@ -44,6 +45,23 @@ async def test_active_virtual_camera_is_reported(settings: Settings) -> None:
     assert status["virtualCamera"]["state"] == "active"
     assert status["virtualCamera"]["reason"] is None
     assert status["process"] == {"cpuPercent": 0.0}
+
+
+async def test_apps_streaming_from_the_camera_are_reported(settings: Settings) -> None:
+    pipeline = opened_pipeline()
+    pipeline.follow(AnnouncedFormat(1920, 1080, 30, pending=False, running=True, streaming_apps=2))
+
+    async with console_client(console_app(settings, SessionManager(FakePeerFactory()), pipeline)) as console:
+        status = (await console.get("/api/status")).json()
+
+    assert status["virtualCamera"]["streamingApps"] == 2
+
+
+async def test_camera_without_app_count_reports_null(settings: Settings) -> None:
+    async with console_client(console_app(settings)) as console:
+        status = (await console.get("/api/status")).json()
+
+    assert status["virtualCamera"]["streamingApps"] is None
 
 
 def test_obs_errors_map_to_reasons() -> None:

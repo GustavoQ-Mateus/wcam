@@ -10,6 +10,7 @@ from wcam.media.quality import QualityReport
 from wcam.media.video_format import VideoFormat
 from wcam.sessions.manager import LastEnded, SessionOffer, SessionView, Status, VideoFormatState
 from wcam.sessions.phone_messages import CameraCapabilitiesMessage, CameraColorSpaceMessage, CameraModesMessage
+from wcam.virtualcam.sink import CameraState
 
 
 class CamelModel(BaseModel):
@@ -105,6 +106,7 @@ class VirtualCameraBody(CamelModel):
     fallback_reason: str | None
     output: OutputBody
     source: str
+    streaming_apps: int | None
 
 
 class VideoFormatBody(CamelModel):
@@ -188,6 +190,7 @@ def virtual_camera_body(pipeline: FramePipeline, camera_format: VideoFormat) -> 
         fallback_reason=pipeline.fallback_reason,
         output=OutputBody(width=size.width, height=size.height, fps=size.fps),
         source=pipeline.source,
+        streaming_apps=pipeline.output.streaming_apps if sink_status.state is CameraState.ACTIVE else None,
     )
 
 
