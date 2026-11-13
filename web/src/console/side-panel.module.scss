@@ -137,8 +137,13 @@
   text-wrap: pretty;
 }
 
+details.panel {
+  display: block;
+}
+
 .details {
   display: grid;
+  margin-top: var(--space-4);
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4);
 }

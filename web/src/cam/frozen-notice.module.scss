@@ -2,7 +2,7 @@
   position: absolute;
   z-index: 2;
   top: calc(var(--margin-top) + var(--tally-height) + var(--space-2));
-  right: var(--margin-right);
+  left: var(--margin-left);
   display: flex;
   align-items: center;
   gap: var(--space-2);

@@ -28,6 +28,15 @@
 
 .control {
   background: var(--raised);
+  transition:
+    transform var(--duration-press) var(--ease-out),
+    color var(--duration-press) var(--ease-out);
+
+  @media (hover: hover) and (pointer: fine) {
+    &:hover:not(:disabled, [aria-pressed="true"]) {
+      background: var(--raised-hover);
+    }
+  }
 
   &[aria-pressed="true"] {
     background: var(--ink);

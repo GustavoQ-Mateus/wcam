@@ -107,6 +107,16 @@
   color: var(--muted);
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .segment:hover:not([aria-pressed="true"]) {
+    color: var(--ink);
+  }
+
+  .action:hover:not([aria-pressed="true"]) {
+    background: var(--raised-hover);
+  }
+}
+
 .action {
   background: var(--raised);
 }

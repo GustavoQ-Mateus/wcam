@@ -3,6 +3,8 @@ import { t } from "../data/language";
 import { ConsoleButton } from "./console-button";
 import styles from "./waiting-view.module.scss";
 
+const FULL_PERCENT = 100;
+
 interface WaitingViewProps {
   qrSvg: string | null;
   expiresAt: string | null;
@@ -31,7 +33,7 @@ export function WaitingView({ qrSvg, expiresAt, receivedAt, onNewPairing }: Wait
             <div className={styles.track}>
               <div
                 className={styles.fill}
-                style={{ inlineSize: `${String(windowProgress(expiresAt, receivedAt))}%` }}
+                style={{ transform: `scaleX(${String(windowProgress(expiresAt, receivedAt) / FULL_PERCENT)})` }}
               />
             </div>
           </div>

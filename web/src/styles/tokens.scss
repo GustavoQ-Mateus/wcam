@@ -2,6 +2,7 @@
   --ground: #000000;
   --surface: #111111;
   --raised: #2a2a2a;
+  --raised-hover: #353535;
   --rule: #1a1a1a;
   --divider: #222222;
   --grid: #2b2b2b;
@@ -61,6 +62,7 @@
   --margin-left: max(var(--space-5), env(safe-area-inset-left));
   --hit-min: 44px;
   --control-size: 56px;
+  --control-size-compact: 48px;
   --button-height: 52px;
   --radius-pill: 999px;
   --radius-box: 0.5rem;
