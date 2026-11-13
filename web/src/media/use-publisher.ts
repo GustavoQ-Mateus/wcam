@@ -7,6 +7,7 @@ import { cameraCapabilitiesData, parseControlMessage, setVideoFormatMessage } fr
 import { createPublisherGate } from "../data/publisher-gate";
 import { DEFAULT_VIDEO_FORMAT, formatSpec, type VideoFormat } from "../data/video-format";
 import { readCameraCapabilities } from "./camera-capabilities";
+import { iceGatheringComplete } from "./ice-gathering";
 
 interface PublisherOptions {
   track: MediaStreamTrack | null;
@@ -310,21 +311,6 @@ async function negotiate(connection: RTCPeerConnection, token: string): Promise<
     throw new TypeError("Session description without a sha-256 fingerprint");
   }
   return confirmationCode(answer.confirmationNonce, phoneFingerprint, agentFingerprint);
-}
-
-function iceGatheringComplete(connection: RTCPeerConnection): Promise<void> {
-  if (connection.iceGatheringState === "complete") {
-    return Promise.resolve();
-  }
-  return new Promise((resolve) => {
-    const check = () => {
-      if (connection.iceGatheringState === "complete") {
-        connection.removeEventListener("icegatheringstatechange", check);
-        resolve();
-      }
-    };
-    connection.addEventListener("icegatheringstatechange", check);
-  });
 }
 
 async function applyParameters(sender: RTCRtpSender, change: (parameters: SendParameters) => void): Promise<void> {
