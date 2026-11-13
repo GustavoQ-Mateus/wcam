@@ -1,6 +1,6 @@
 [project]
 name = "wcam"
-version = "0.7.0"
+version = "0.8.0"
 description = "Use your phone camera as a wireless webcam over local Wi-Fi"
 readme = "README.md"
 requires-python = ">=3.13"
