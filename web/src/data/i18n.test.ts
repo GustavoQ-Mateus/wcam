@@ -17,8 +17,8 @@ describe("i18n", () => {
   });
 
   it("translation fills placeholders by name", () => {
-    expect(translate("en", "console.status_running", { version: "0.1.0" })).toBe(
-      en["console.status_running"].replace("{version}", "0.1.0"),
+    expect(translate("en", "console.pairing_expires", { seconds: "42" })).toBe(
+      en["console.pairing_expires"].replace("{seconds}", "42"),
     );
   });
 

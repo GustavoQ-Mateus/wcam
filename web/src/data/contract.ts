@@ -1,4 +1,5 @@
 import type { CameraCapabilitiesMessage } from "./camera-capabilities";
+import type { Facing } from "./cam-state";
 import type { VideoFormat } from "./video-format";
 
 export type Surface = "console" | "phone";
@@ -65,8 +66,18 @@ export interface VirtualCamera {
   backend: "media_foundation" | "obs" | "fake";
   reason: VirtualCameraUnavailableReason | null;
   output: { width: number; height: number; fps: number };
-  source: "phone" | "frozen" | "placeholder";
+  source: "phone" | "frozen" | "held" | "camera_off" | "placeholder";
+  streamingApps: number | null;
 }
+
+export interface Controls {
+  frozen: boolean;
+  cameraOff: boolean;
+  mirror: boolean;
+  facing: Facing | null;
+}
+
+export type ControlsPatch = Partial<Omit<Controls, "facing">> & { facing?: Facing };
 
 export interface Quality {
   ssim: number | null;
@@ -83,6 +94,7 @@ export interface Status {
   process: { cpuPercent: number };
   quality: Quality | null;
   devTools: boolean;
+  controls: Controls;
 }
 
 export interface VideoFormatStatus {
