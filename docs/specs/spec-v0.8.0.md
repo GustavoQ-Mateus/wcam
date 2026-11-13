@@ -180,6 +180,8 @@ Chaves novas em `locales/en.json` e `locales/pt-BR.json` no mesmo commit, na bra
 
 - 2026-11-12, Espelhar no celular (§3, CA 4): o CA vale sobre o "não" do planejamento §5.4. Espelhar existe no `/cam`, mas não na coluna de botões, que comporta cinco no celular deitado: fica na folha do Formato como o interruptor "Espelhar nos apps". O visor do celular não muda.
 
+- 2026-11-12, e2e da prévia: o serviço `e2e` do compose roda com `network_mode: "service:agent"`, porque a prévia só aceita candidatos de loopback (contrato) e, em containers separados, não conecta. Os endereços `E2E_*` não mudam.
+
 ## Critérios de aceitação
 
 1. Spike `zoom` registrado no relatório web, com a tabela por câmera do iPhone do usuário.
