@@ -22,3 +22,46 @@ A skill pede uma rodada de perguntas antes do brief. Ela foi substituída pelos 
 5. **Estados.** Aguardando (QR, contagem, três passos, QR code novo); Conectando (S: pílula de espera, sem prévia); Confirmar (aparelho e IP, pergunta, código em caixas, estado de cada lado, É igual e É diferente); Ao vivo; Imagem congelada (prévia parada, aviso com a hora, Descongelar em destaque); Câmera desligada (prévia preta com texto e Ligar câmera); Sinal perdido (`virtualCamera.source` `frozen`: prévia esmaecida, trecho do celular com problema) (S); Problema (câmera virtual indisponível: trecho Apps com problema e a correção em texto) (S). Prévia desligada: texto no lugar da imagem.
 6. **Interação.** Os controles mostram sempre o estado do último `status` do SSE, nunca a escolha local. Congelar fica desabilitado com a câmera desligada. Desconectar fica separado à direita, em `--negative`. Detalhes é recolhível e é o único lugar com resolução, fps, taxa, codec, formato da câmera e CPU. Responsivo: abaixo da largura das duas colunas, a coluna lateral desce para baixo da prévia.
 7. **Restrições.** Textos só em `locales/`; termos do glossário §5.7; contraste da §5.6; foco visível de 2 px; cor nunca é o único sinal (pílula e caminho levam forma e texto).
+
+## Console: construção (`taste-skill`, regras de app screen)
+
+- Modo Operate: cor só em dado e estado. O verde (`--data`) aparece na pílula Ao vivo, nas marcas "Funcionando" do caminho e na série principal dos gráficos. Botões e navegação ficam em neutros (`--raised`, pílula branca para a ação principal).
+- Painéis planos em `--surface`, sem borda nem sombra. Elevação por luminosidade: `--raised` nos botões, `--raised-hover` (novo, #353535) no hover com mouse.
+- Rótulos pequenos em caixa normal ("Celular", "Caminho da imagem", "Detalhes"), sem maiúsculas espaçadas. O protótipo usava caixa alta nos títulos dos painéis, e a regra de app screen da skill pede no máximo um rótulo assim por tela.
+- Números em figuras tabulares (`font-variant-numeric: tabular-nums`) no código, nos detalhes e em `/dev`. Nenhuma fonte monoespaçada: o protótipo usava JetBrains Mono no código e nos números, e a skill trata isso como fantasia.
+- Estado sempre com cor, forma e texto (`StatusMark`): círculo vazado aguardando, círculo cheio ao vivo, quadrado congelada, duas barras câmera desligada, triângulo problema ou sinal perdido. Mesmas formas da bandeja (spec §5).
+- Fora do protótipo: Histórico e Ajustes (persistência) e o botão "Simular" (só do protótipo).
+
+## `/dev` (`dataviz`, `taste-skill`)
+
+- Gráficos em SVG próprio, sem biblioteca. Linha de 2 px para a série principal (`--data`); segunda série em `--data-2`, 1,5 px e tracejada; terceira em `--data-3`, pontilhada. Linha de referência tracejada em `--reference`; marcas de evento em `--warning` tracejadas e de perda em `--negative` cheias. Legenda sempre presente com mais de uma série.
+- Validador da `dataviz` sobre `#3ecf8e,#e6e6e6,#6b6b6b` no fundo `#111111`: separação para daltonismo (ΔE 14,1), visão normal (22,4) e contraste passam. Faixa de luminosidade e croma falham porque a paleta do projeto (planejamento §5.6, travada) é um verde mais neutros, não uma paleta categórica. Compensação: espessura e tracejado diferentes por série e legenda sempre visível, para a cor nunca ser o único sinal.
+- Camada de hover: linha vertical e tooltip com os valores do segundo apontado, sem animação (uso frequente).
+- Minigráficos na faixa de saúde: a regra de app screen da `taste-skill` desaconselha, mas a spec §4.1 pede "um minigráfico" por número, e a spec vence.
+- Escalas com teto arredondado (`niceCeiling`: 1, 2, 2,5, 5, 10 × potência de 10) e o valor do teto escrito no canto do gráfico.
+
+## Revisão (`emil-design-eng`)
+
+| Antes | Depois | Por quê |
+| --- | --- | --- |
+| Barra do QR com `transition: inline-size` | `transform: scaleX()` com origem à esquerda | Animar largura força layout; `transform` vai para a GPU |
+| Botões da fileira de controles sem hover | Hover em `--raised-hover`, só com mouse | O mouse precisa saber que o elemento é clicável; o hover não gruda no toque |
+| Botões de janela, pausa e exportação de `/dev` sem hover | O mesmo hover restrito ao mouse | Coerência com o console |
+| Tooltip dos gráficos | Sem animação (mantido) | Segue o ponteiro o tempo todo; animar atrasaria a leitura |
+| Troca de cor da pílula de estado | Instantânea (mantido) | Dado em tempo real; transição atrasaria a percepção |
+| Coluna de controles do celular centralizada, sobrepondo a tally | Começa abaixo da tally; em altura curta, botões de 48 px e espaço de 8 px | Visto na captura do celular deitado (844 × 390) |
+
+## Auditoria (`impeccable audit`)
+
+Detector mecânico em `web/src/console`, `web/src/dev`, `web/src/cam` e `web/src/styles`: nenhum achado.
+
+| # | Dimensão | Nota | Achado principal |
+| --- | --- | --- | --- |
+| 1 | Acessibilidade | 3 | Gráficos têm `role="img"` e rótulo, mas não há tabela equivalente na página (só o CSV), e o tooltip só responde ao ponteiro, não ao teclado |
+| 2 | Desempenho | 4 | Só `transform` e `opacity` animam; a prévia fecha a conexão quando desligada |
+| 3 | Temas | 4 | Tudo em tokens; um tema escuro só, por decisão do planejamento |
+| 4 | Responsivo | 3 | Console e `/dev` empilham em tela estreita; `/dev` estreito não foi visto renderizado (a rota dava 404 no agente na hora da captura) |
+| 5 | Integridade | 4 | Nenhum padrão genérico; o caminho da imagem e as marcas de forma vêm do produto |
+| **Total** | | **18/20** | Excelente, com as duas lacunas acima |
+
+Verificado com capturas renderizadas (Chromium no compose, câmera falsa): console Aguardando, Confirmar, Ao vivo, Congelada, Câmera desligada e Ao vivo em 390 px; celular Confirmar, esperando o PC, Ao vivo e Câmera desligada. Não verificado num celular real nem no iPhone.
