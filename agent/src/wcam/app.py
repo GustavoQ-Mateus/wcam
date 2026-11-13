@@ -21,7 +21,7 @@ from wcam.network.certificates import TlsCertificate
 from wcam.network.lan import LanInterface
 from wcam.services import AgentServices
 
-CONSOLE_PAGES = ("/",)
+CONSOLE_PAGES = ("/", "/dev")
 PHONE_PAGES = ("/cam",)
 STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM)
 SERVER_LOG_LEVEL = "warning"
