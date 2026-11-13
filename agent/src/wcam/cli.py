@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import contextlib
 import io
+import logging
 import sys
 from typing import TextIO
 
@@ -11,10 +12,12 @@ from wcam import __version__
 from wcam.api.console_routes import pairing_url
 from wcam.app import create_servers, phone_page_url, run, stop_signals_handled
 from wcam.config import Settings
+from wcam.diagnostics.dev_events import EpisodeEvents
 from wcam.i18n import Messages, load_messages, resolve_language, system_language_tag
 from wcam.media.camera_format import CameraFormatControl
 from wcam.media.color_correction import IDENTITY_TABLE, CorrectionState, DisplayConvention
-from wcam.media.episodes import open_episode_log
+from wcam.media.decode_timing import time_decoders
+from wcam.media.episodes import EPISODE_LOGGER, open_episode_log
 from wcam.media.peer import aiortc_peer_factory
 from wcam.media.pipeline import FramePipeline
 from wcam.media.quality import QualityMeter, read_y4m_luma
@@ -74,6 +77,8 @@ def start(settings: Settings, messages: Messages) -> None:
         output=pipeline,
     )
     services = AgentServices(manager, pipeline, CpuMonitor(), camera, comparisons)
+    time_decoders(pipeline.stage_times.record_decode)
+    logging.getLogger(EPISODE_LOGGER).addHandler(EpisodeEvents(services.dev_events))
     print_banner(messages, console_url, phone_url, certificate)
     print_virtual_camera(messages, selection)
     announce_pairing(messages, manager, phone_url, console_url, sys.stdout)

@@ -9,6 +9,7 @@ from av import VideoFrame
 from av.video.plane import VideoPlane
 from av.video.reformatter import ColorRange as DeclaredRange
 
+from wcam.diagnostics.stage_times import Stage, StageTimes
 from wcam.media.color_correction import ColorCorrection, ColorTables, CorrectionState, correction_tables
 from wcam.media.color_range import (
     UNSPECIFIED_MATRIX,
@@ -35,6 +36,7 @@ DEFAULT_OUTPUT = AnnouncedFormat(
     running=False,
 )
 QUALITY_WORKER_NAME = "wcam-quality"
+MILLISECONDS_PER_SECOND = 1000
 ALL_COLUMNS = slice(None)
 MIRRORED_COLUMNS = slice(None, None, -1)
 
@@ -62,7 +64,7 @@ class FramePipeline:
         self._clock = clock
         self.output = DEFAULT_OUTPUT
         self._placeholder = black_i420(DEFAULT_OUTPUT.width, DEFAULT_OUTPUT.height)
-        self._pending: asyncio.Queue[VideoFrame] = asyncio.Queue(maxsize=1)
+        self._pending: asyncio.Queue[tuple[VideoFrame, float]] = asyncio.Queue(maxsize=1)
         self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=WORKER_NAME)
         self._quality_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=QUALITY_WORKER_NAME)
         self._measuring: Future[None] | None = None
@@ -81,6 +83,9 @@ class FramePipeline:
         self._last_sent: I420Frame | None = None
         self._camera_off_frame: I420Frame | None = None
         self._source_listeners: list[Callable[[], None]] = []
+        self.stage_times = StageTimes()
+        self.frames_delivered = 0
+        self.frames_dropped = 0
 
     @property
     def last_sent(self) -> I420Frame | None:
@@ -111,6 +116,8 @@ class FramePipeline:
 
     def start_phone(self) -> None:
         self.frames_scaled = 0
+        self.frames_delivered = 0
+        self.frames_dropped = 0
         self.color_range = ColorRange.UNSPECIFIED
         self.color_matrix = UNSPECIFIED_MATRIX
         self._last_phone = None
@@ -147,24 +154,27 @@ class FramePipeline:
     def submit(self, frame: VideoFrame) -> None:
         if self._pending.full():
             self._pending.get_nowait()
-        self._pending.put_nowait(frame)
+            self.frames_dropped += 1
+        self._pending.put_nowait((frame, time.perf_counter()))
 
     async def run(self) -> None:
         loop = asyncio.get_running_loop()
         try:
             while True:
-                frame = await self._next_frame()
-                await loop.run_in_executor(self._worker, self.deliver, frame)
+                frame, submitted_at = await self._next_frame()
+                await loop.run_in_executor(self._worker, self.deliver, frame, submitted_at)
         finally:
             self._worker.shutdown(wait=True)
             self._quality_worker.shutdown(wait=True)
             self.sink.close()
 
-    def deliver(self, frame: VideoFrame | None) -> None:
+    def deliver(self, frame: VideoFrame | None, submitted_at: float | None = None) -> None:
         now = self._clock()
         placeholder = self._placeholder
         if frame is not None:
+            started = time.perf_counter()
             self._accept_phone_frame(frame, now, placeholder)
+            self.stage_times.record(Stage.COLOR, elapsed_since(started))
         elif self._last_phone_at is None or now - self._last_phone_at > FREEZE_SECONDS:
             self._last_phone = None
         output = self._last_phone if self._phone_active and fits(self._last_phone, placeholder) else None
@@ -172,9 +182,15 @@ class FramePipeline:
         self._report_source(source)
         self._last_sent = sent
         if self.sink.status.state is CameraState.ACTIVE:
+            sending = time.perf_counter()
             self.sink.send(sent)
-        if output is not None and sent is output and frame is not None:
-            self._measure(now, output)
+            self.stage_times.record(Stage.DELIVER, elapsed_since(sending))
+        if output is None or sent is not output or frame is None:
+            return
+        self.frames_delivered += 1
+        if submitted_at is not None:
+            self.stage_times.record(Stage.TOTAL, elapsed_since(submitted_at))
+        self._measure(now, output)
 
     def _change_format(self, width: int, height: int, fps: int) -> bool:
         accepted = self.sink.request_format(width, height, fps)
@@ -227,11 +243,11 @@ class FramePipeline:
         tables = self.color_tables() if state is CorrectionState.APPLIED else None
         self._quality_worker.submit(quality.restart, now, None if tables is None else tables[0])
 
-    async def _next_frame(self) -> VideoFrame | None:
+    async def _next_frame(self) -> tuple[VideoFrame | None, float | None]:
         try:
             return await asyncio.wait_for(self._pending.get(), 1 / self.output.fps)
         except TimeoutError:
-            return None
+            return None, None
 
     def _accept_phone_frame(self, frame: VideoFrame, now: float, placeholder: I420Frame) -> None:
         self.color_range = declared_range(frame)
@@ -313,6 +329,10 @@ def plane_rows(plane: VideoPlane, table: bytes | None) -> I420Frame:
     data = memoryview(plane) if table is None else bytes(plane).translate(table)
     rows: I420Frame = np.frombuffer(data, dtype=np.uint8).reshape(-1, plane.line_size)
     return rows
+
+
+def elapsed_since(started: float) -> float:
+    return (time.perf_counter() - started) * MILLISECONDS_PER_SECOND
 
 
 def fits(frame: I420Frame | None, placeholder: I420Frame) -> bool:

@@ -47,6 +47,35 @@ class SetControlsMessage(PhoneMessage):
         return ControlsChange(self.frozen, self.camera_off, self.mirror, self.facing)
 
 
+class OutboundStatsMessage(PhoneMessage):
+    frames_per_second: float | None = None
+    frames_sent: int | None = None
+    frames_encoded: int | None = None
+    key_frames_encoded: int | None = None
+    bytes_sent: int | None = None
+    quality_limitation_reason: str | None = None
+    nack_count: int | None = None
+    pli_count: int | None = None
+    frame_width: int | None = None
+    frame_height: int | None = None
+
+
+class RemoteInboundStatsMessage(PhoneMessage):
+    round_trip_time: float | None = None
+    jitter: float | None = None
+    packets_lost: int | None = None
+
+
+class StatsMessage(PhoneMessage):
+    type: Literal["stats"]
+    at: float
+    outbound: OutboundStatsMessage | None = None
+    remote_inbound: RemoteInboundStatsMessage | None = None
+
+    def without_type(self) -> dict[str, object]:
+        return self.model_dump(by_alias=True, exclude={"type"})
+
+
 class SetVideoFormatMessage(PhoneMessage):
     type: Literal["set_video_format"]
     format: VideoFormat
@@ -131,6 +160,7 @@ type AnyPhoneMessage = (
     ConfirmCodeMessage
     | RejectCodeMessage
     | SetControlsMessage
+    | StatsMessage
     | SetVideoFormatMessage
     | CameraCapabilitiesMessage
     | SnapshotBeginMessage
@@ -144,6 +174,7 @@ PHONE_MESSAGE = TypeAdapter[AnyPhoneMessage](
         ConfirmCodeMessage
         | RejectCodeMessage
         | SetControlsMessage
+        | StatsMessage
         | SetVideoFormatMessage
         | CameraCapabilitiesMessage
         | SnapshotBeginMessage

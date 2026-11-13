@@ -100,3 +100,31 @@ async def test_open_stream_does_not_hold_the_shutdown(tmp_path: Path, web_dist: 
         stopped_after = time.monotonic() - started
 
     assert stopped_after < SHUTDOWN_DEADLINE_SECONDS
+
+
+async def test_developer_events_replay_recent_events_then_send_metrics(tmp_path: Path, web_dist: Path) -> None:
+    async with running_agent(tmp_path, web_dist) as (console, agent):
+        agent.dev_events.record("controls", {"mirror": True})
+        async with console.stream("GET", "/api/dev/events") as stream:
+            lines = stream.aiter_lines()
+            first = await next_event(lines)
+            second = await next_event(lines)
+
+    names = {first[0], second[0]}
+    events = dict([first, second])
+    assert names == {"event", "metrics"}
+    assert events["event"]["kind"] == "controls"
+    assert events["event"]["data"] == {"mirror": True}
+    assert events["metrics"]["session"] is None
+    assert events["metrics"]["budgetMs"] == 33.3
+
+
+async def test_developer_events_turn_timing_on_only_while_open(tmp_path: Path, web_dist: Path) -> None:
+    async with running_agent(tmp_path, web_dist) as (console, agent):
+        before = agent.pipeline.stage_times.enabled
+        async with console.stream("GET", "/api/dev/events") as stream:
+            await next_event(stream.aiter_lines())
+            during = agent.pipeline.stage_times.enabled
+        await wait_until(lambda: not agent.pipeline.stage_times.enabled)
+
+    assert (before, during) == (False, True)

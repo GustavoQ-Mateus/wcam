@@ -12,14 +12,14 @@ from aiortc.clock import current_ms
 from aiortc.mediastreams import MediaStreamError
 from aiortc.rate import AimdRateControl, BandwidthUsage, RemoteBitrateEstimator
 from aiortc.rtcrtpreceiver import RTCRtpReceiver
-from aiortc.stats import RTCTransportStats
+from aiortc.stats import RTCInboundRtpStreamStats, RTCTransportStats
 from av import VideoFrame
 
 from wcam.media.color_correction import ColorCorrection
 from wcam.media.episodes import EpisodeTracker, LinkSample, write_episode
 from wcam.media.frame_gate import FrameGate
 from wcam.media.h264_level import declare_h264_level_5_1
-from wcam.media.metrics import Orientation, VideoMeter, VideoStats
+from wcam.media.metrics import Orientation, ReceiveStats, VideoMeter, VideoStats
 from wcam.media.pipeline import FramePipeline
 from wcam.media.pipeline import FrameSource as OutputSource
 from wcam.media.recovering_jitter_buffer import STALLED_SECONDS, RecoveringJitterBuffer
@@ -29,6 +29,8 @@ from wcam.media.video_format import DEFAULT_VIDEO_FORMAT
 from wcam.sessions.manager import EndReason, MediaPeer, PeerEvents, PeerFactory
 
 CONTROL_CHANNEL = "control"
+MILLISECONDS_PER_SECOND = 1000
+VIDEO_CLOCK_RATE = 90_000
 CLOSE_FLUSH_SECONDS = 0.2
 EPISODE_SAMPLE_SECONDS = 0.1
 VIDEO_JITTER_BUFFER_PACKETS = 2048
@@ -102,6 +104,7 @@ class AiortcPeer:
         self._events = events
         self._channel: RTCDataChannel | None = None
         self._frame_task: asyncio.Task[None] | None = None
+        self._receiver: RTCRtpReceiver | None = None
         self._jitter_buffers: list[RecoveringJitterBuffer] = []
         self._episodes = EpisodeTracker(write_episode)
         self._episode_task: asyncio.Task[None] | None = None
@@ -155,6 +158,15 @@ class AiortcPeer:
         self._pipeline.start_phone()
         self.gate.open()
         self._episode_task = asyncio.get_running_loop().create_task(self._watch_episodes())
+
+    async def receive_stats(self) -> ReceiveStats | None:
+        if self._receiver is None:
+            return None
+        report = cast(dict[str, object], await self._receiver.getStats())
+        for stats in report.values():
+            if isinstance(stats, RTCInboundRtpStreamStats):
+                return ReceiveStats(stats.packetsLost, stats.jitter * MILLISECONDS_PER_SECOND / VIDEO_CLOCK_RATE)
+        return None
 
     def limit_bitrate(self, max_bitrate_bps: int) -> None:
         cap_video_estimate(self._connection, max_bitrate_bps)
@@ -218,6 +230,7 @@ class AiortcPeer:
         if track.kind != "video" or self._frame_task is not None:
             return
         receiver = next(receiver for receiver in self._connection.getReceivers() if receiver.track is track)
+        self._receiver = receiver
         self._frame_task = asyncio.get_running_loop().create_task(self._consume_frames(track, receiver))
 
     def _handle_connection_state(self) -> None:

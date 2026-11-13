@@ -4,7 +4,7 @@ import segno
 from fastapi import APIRouter, Response, status
 from fastapi.responses import StreamingResponse
 
-from wcam.api.events import event_stream, repeated_events
+from wcam.api.events import developer_events, event_stream, repeated_events
 from wcam.api.health import create_health_router
 from wcam.api.schemas import (
     ControlsRequest,
@@ -98,6 +98,18 @@ def create_console_router(services: AgentServices, phone_page_url: str) -> APIRo
     )
     async def status_events() -> StreamingResponse:
         return event_stream(repeated_events(services.status_changes, "status", status_json))
+
+    @router.get(
+        "/api/dev/events",
+        response_class=StreamingResponse,
+        summary="Developer console events",
+        description="Server-sent events for the developer console: metrics every second and each event as it "
+        "happens, starting with the last 50. Detailed timing and the phone statistics run only while someone "
+        "listens.",
+    )
+    async def developer_console_events() -> StreamingResponse:
+        dev = services.dev_console
+        return event_stream(developer_events(services.dev_events, dev.metrics, services.status_changes))
 
     @router.put(
         "/api/video-format",

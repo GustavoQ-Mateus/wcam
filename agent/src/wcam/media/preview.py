@@ -70,9 +70,9 @@ class PreviewTrack(VideoStreamTrack):
 
 
 class Preview:
-    def __init__(self, pipeline: FramePipeline, on_change: Callable[[], None] = lambda: None) -> None:
+    def __init__(self, pipeline: FramePipeline) -> None:
         self._pipeline = pipeline
-        self._on_change = on_change
+        self._listeners: list[Callable[[], None]] = []
         self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=PREVIEW_WORKER_NAME)
         self._connection: RTCPeerConnection | None = None
         self._releasing: set[asyncio.Task[None]] = set()
@@ -80,6 +80,9 @@ class Preview:
     @property
     def is_open(self) -> bool:
         return self._connection is not None
+
+    def on_change(self, listener: Callable[[], None]) -> None:
+        self._listeners.append(listener)
 
     async def open(self, offer_sdp: str) -> str:
         if not has_video(offer_sdp):
@@ -93,7 +96,7 @@ class Preview:
             raise
         self._connection = connection
         connection.on("connectionstatechange", lambda: self._release_when_closed(connection))
-        self._on_change()
+        self._announce()
         return answer
 
     async def close(self) -> None:
@@ -102,7 +105,7 @@ class Preview:
             return
         self._connection = None
         await connection.close()
-        self._on_change()
+        self._announce()
 
     async def shutdown(self) -> None:
         for task in list(self._releasing):
@@ -110,6 +113,10 @@ class Preview:
         await asyncio.gather(*self._releasing, return_exceptions=True)
         await self.close()
         self._worker.shutdown(wait=True)
+
+    def _announce(self) -> None:
+        for listener in self._listeners:
+            listener()
 
     async def _answer(self, connection: RTCPeerConnection, offer_sdp: str) -> str:
         await connection.setRemoteDescription(RTCSessionDescription(offer_sdp, "offer"))
