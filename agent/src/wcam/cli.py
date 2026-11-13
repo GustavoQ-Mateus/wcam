@@ -4,13 +4,14 @@ import contextlib
 import io
 import logging
 import sys
+import webbrowser
 from typing import TextIO
 
 import segno
 
 from wcam import __version__
 from wcam.api.console_routes import pairing_url
-from wcam.app import create_servers, phone_page_url, run, stop_signals_handled
+from wcam.app import create_servers, phone_page_url, request_stop, run, stop_signals_handled
 from wcam.config import Settings
 from wcam.diagnostics.dev_events import EpisodeEvents
 from wcam.i18n import Messages, load_messages, resolve_language, system_language_tag
@@ -27,6 +28,7 @@ from wcam.process_monitor import CpuMonitor
 from wcam.services import AgentServices
 from wcam.sessions.comparisons import ComparisonStore, CorrectionSnapshot
 from wcam.sessions.manager import SessionManager, SessionState
+from wcam.tray.tray import Tray, windows_tray_icon
 from wcam.virtualcam.factory import FallbackReason, SinkSelection, select_sink
 from wcam.virtualcam.media_foundation_sink import load_native_library
 from wcam.virtualcam.sink import CameraState
@@ -84,8 +86,12 @@ def start(settings: Settings, messages: Messages) -> None:
     announce_pairing(messages, manager, phone_url, console_url, sys.stdout)
     hint_confirmation(messages, manager, sys.stdout)
     servers = create_servers(settings, lan, certificate, services)
+    icon = windows_tray_icon()
+    tray = None
+    if icon is not None:
+        tray = Tray(icon, services, messages, lambda: webbrowser.open(console_url), lambda: request_stop(servers))
     with stop_signals_handled(servers):
-        asyncio.run(run(servers, services))
+        asyncio.run(run(servers, services, None if tray is None else tray.run))
 
 
 def use_utf8_output(stream: TextIO) -> None:
