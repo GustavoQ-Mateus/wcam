@@ -173,6 +173,11 @@ Chaves novas em `locales/en.json` e `locales/pt-BR.json` no mesmo commit, na bra
 - Histórico de conexões (persistência).
 - Mudança na câmera virtual nativa.
 
+## Decisões registradas
+
+- 2026-11-12, falso computador (§1.3): o e2e troca o `confirmationNonce` da resposta em vez da impressão digital. Trocar a impressão digital na SDP derruba o DTLS, e o celular nem chega a enviar `reject_code`. O efeito pedido é o mesmo: o código do celular diverge do console. O caso do tempo limite usa os 120 s reais.
+- 2026-11-12, caminho da imagem (§2.1): `virtualCamera.streamingApps` entra em `GET /api/status` (contrato), para o trecho Apps mostrar quantos apps usam a câmera sem ligar a coleta de `/api/dev/events`.
+
 ## Critérios de aceitação
 
 1. Spike `zoom` registrado no relatório web, com a tabela por câmera do iPhone do usuário.
