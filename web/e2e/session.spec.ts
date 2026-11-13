@@ -55,7 +55,7 @@ test("phone and computer show the same code and the phone goes live after both c
 test("turning the preview off while live keeps the track live and the tally on", async ({ page, request }) => {
   await goLive(page, request);
 
-  await page.getByRole("button", { name: translate("en", "cam.preview_off") }).click();
+  await page.getByRole("button", { name: translate("en", "controls.preview_off") }).click();
 
   await expect(page.getByText(translate("en", "cam.preview_hidden"))).toBeVisible();
   await expect(page.getByText(translate("en", "cam.live")).first()).toBeVisible();

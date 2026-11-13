@@ -23,11 +23,15 @@ export default function CamPage() {
           state={state}
           showNotice={cam.wakeLockUnavailable && !noticeDismissed}
           videoFormat={cam.videoFormat}
+          controls={cam.controls}
           onDismissNotice={() => {
             setNoticeDismissed(true);
           }}
           onSwitchCamera={cam.switchCamera}
           onTogglePreview={cam.togglePreview}
+          onToggleFreeze={cam.toggleFreeze}
+          onToggleCamera={cam.toggleCamera}
+          onToggleMirror={cam.toggleMirror}
           onChooseFormat={cam.chooseVideoFormat}
           onAnswerCode={cam.answerCode}
           onSendScreenshot={cam.screenshotRequested ? cam.sendScreenshot : undefined}

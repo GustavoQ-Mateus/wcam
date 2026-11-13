@@ -2,8 +2,13 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import { ApiError, createSession } from "../data/api-client";
 import type { CamEvent } from "../data/cam-state";
 import { confirmationCode, sdpFingerprint } from "../data/confirmation-code";
-import type { ControlMessage } from "../data/contract";
-import { cameraCapabilitiesData, parseControlMessage, setVideoFormatMessage } from "../data/control-message";
+import type { ControlMessage, Controls, ControlsPatch } from "../data/contract";
+import {
+  cameraCapabilitiesData,
+  parseControlMessage,
+  setControlsMessage,
+  setVideoFormatMessage,
+} from "../data/control-message";
 import { createPublisherGate } from "../data/publisher-gate";
 import { DEFAULT_VIDEO_FORMAT, formatSpec, type VideoFormat } from "../data/video-format";
 import { readCameraCapabilities } from "./camera-capabilities";
@@ -21,6 +26,9 @@ interface PublisherOptions {
 export interface Publisher {
   videoFormat: VideoFormatMessage | null;
   snapshotRequest: SnapshotRequest | null;
+  controls: Controls | null;
+  statsRequested: boolean;
+  changeControls: (patch: ControlsPatch) => void;
   chooseVideoFormat: (format: VideoFormat) => void;
   sendPaced: (messages: readonly string[]) => Promise<void>;
   confirmCode: () => void;
@@ -35,7 +43,8 @@ export interface SnapshotRequest {
 }
 
 interface PublisherSession {
-  replaceTrack: (track: MediaStreamTrack) => void;
+  replaceTrack: (track: MediaStreamTrack | null) => void;
+  changeControls: (patch: ControlsPatch) => void;
   chooseVideoFormat: (format: VideoFormat) => void;
   sendPaced: (messages: readonly string[]) => Promise<void>;
   confirmCode: () => void;
@@ -47,6 +56,8 @@ interface SessionCallbacks {
   onEvent: (event: CamEvent) => void;
   onVideoFormat: (message: VideoFormatMessage) => void;
   onSnapshotRequest: (request: SnapshotRequest) => void;
+  onControls: (controls: Controls) => void;
+  onStatsRequest: (enabled: boolean) => void;
   readVideo: () => HTMLVideoElement | null;
 }
 
@@ -74,6 +85,8 @@ export function usePublisher({
   const sessionRef = useRef<PublisherSession | null>(null);
   const [videoFormat, setVideoFormat] = useState<VideoFormatMessage | null>(null);
   const [snapshotRequest, setSnapshotRequest] = useState<SnapshotRequest | null>(null);
+  const [controls, setControls] = useState<Controls | null>(null);
+  const [statsRequested, setStatsRequested] = useState(false);
   const sendPaced = useCallback((messages: readonly string[]) => {
     return sessionRef.current?.sendPaced(messages) ?? Promise.resolve();
   }, []);
@@ -91,14 +104,14 @@ export function usePublisher({
       onEvent,
       onVideoFormat: setVideoFormat,
       onSnapshotRequest: setSnapshotRequest,
+      onControls: setControls,
+      onStatsRequest: setStatsRequested,
       readVideo: () => videoRef.current,
     });
   }, [shouldStart, track, takeToken, onEvent, videoRef]);
 
   useEffect(() => {
-    if (track) {
-      sessionRef.current?.replaceTrack(track);
-    }
+    sessionRef.current?.replaceTrack(track);
   }, [track]);
 
   useEffect(() => {
@@ -119,6 +132,11 @@ export function usePublisher({
   return {
     videoFormat,
     snapshotRequest,
+    controls,
+    statsRequested,
+    changeControls: (patch) => {
+      sessionRef.current?.changeControls(patch);
+    },
     chooseVideoFormat: (format) => {
       sessionRef.current?.chooseVideoFormat(format);
     },
@@ -135,7 +153,7 @@ export function usePublisher({
 function startSession(
   track: MediaStreamTrack,
   token: string,
-  { onEvent, onVideoFormat, onSnapshotRequest, readVideo }: SessionCallbacks,
+  { onEvent, onVideoFormat, onSnapshotRequest, onControls, onStatsRequest, readVideo }: SessionCallbacks,
 ): PublisherSession {
   const connection = new RTCPeerConnection({ iceServers: [] });
   const channel = connection.createDataChannel(CONTROL_CHANNEL);
@@ -152,7 +170,7 @@ function startSession(
     replaceTrack: (nextTrack) => void sender.replaceTrack(nextTrack),
     send: sendOnChannel,
   });
-  let currentTrack = track;
+  let currentTrack: MediaStreamTrack | null = track;
   let rejectGrace: ReturnType<typeof setTimeout> | undefined;
   let closed = false;
   let finished = false;
@@ -169,7 +187,7 @@ function startSession(
   };
   const sendCapabilities = () => {
     const track = currentTrack;
-    if (!gate.live) {
+    if (!gate.live || track === null) {
       return;
     }
     void readCameraCapabilities(track, readVideo()).then((capabilities) => {
@@ -178,8 +196,10 @@ function startSession(
       }
     });
   };
-  const setCameraTrack = (nextTrack: MediaStreamTrack) => {
-    nextTrack.contentHint = CONTENT_HINT;
+  const setCameraTrack = (nextTrack: MediaStreamTrack | null) => {
+    if (nextTrack) {
+      nextTrack.contentHint = CONTENT_HINT;
+    }
     gate.setTrack(nextTrack);
   };
   const finish = (event: CamEvent) => {
@@ -214,6 +234,19 @@ function startSession(
     if (message.type === "snapshot_request") {
       if (isActive() && gate.live) {
         onSnapshotRequest({ id: message.id, receivedAt: performance.now() });
+      }
+      return;
+    }
+    if (message.type === "controls") {
+      if (isActive()) {
+        const { frozen, cameraOff, mirror, facing } = message;
+        onControls({ frozen, cameraOff, mirror, facing });
+      }
+      return;
+    }
+    if (message.type === "stats_request") {
+      if (isActive()) {
+        onStatsRequest(message.enabled);
       }
       return;
     }
@@ -255,6 +288,9 @@ function startSession(
     },
     chooseVideoFormat: (format) => {
       gate.send(setVideoFormatMessage(format));
+    },
+    changeControls: (patch) => {
+      gate.send(setControlsMessage(patch));
     },
     sendPaced: async (messages) => {
       for (const message of messages) {

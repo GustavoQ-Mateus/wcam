@@ -78,8 +78,6 @@
   "cam.unavailable_no_camera": "Nenhuma câmera encontrada neste aparelho.",
   "cam.unavailable_in_use": "Feche o outro app que usa a câmera.",
   "cam.capture_format": "{width} × {height} · {fps} fps",
-  "cam.switch_camera": "Trocar câmera",
-  "cam.preview_off": "Desligar prévia",
   "cam.preview_hidden": "Prévia desligada. A câmera continua ligada. Toque em qualquer ponto para mostrar.",
   "cam.keep_screen_on": "Mantenha a tela ligada nas configurações do celular enquanto usa o WCam.",
   "cam.connecting": "Conectando ao computador",
@@ -234,5 +232,6 @@
   "console.detail_percent": "{percent}%",
   "console.path_title": "Caminho da imagem",
   "console.detail_none": "Sem dados",
-  "console.apps_one": "1 app usando a câmera"
+  "console.apps_one": "1 app usando a câmera",
+  "cam.mirror_apps": "Espelhar nos apps"
 }

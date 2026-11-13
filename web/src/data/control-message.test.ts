@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { CameraCapabilitiesMessage } from "./camera-capabilities";
-import { cameraCapabilitiesData, parseControlMessage, setVideoFormatMessage } from "./control-message";
+import {
+  cameraCapabilitiesData,
+  parseControlMessage,
+  setControlsMessage,
+  setVideoFormatMessage,
+} from "./control-message";
 
 describe("control message", () => {
   it("session state messages from the contract are parsed", () => {
@@ -29,6 +34,38 @@ describe("control message", () => {
     const messages = ['{"type":"confirmation","pc":true}', '{"type":"confirmation","pc":1,"phone":0}'];
 
     expect(messages.map(parseControlMessage)).toEqual([null, null]);
+  });
+
+  it("controls message from the agent is parsed with every control", () => {
+    expect(
+      parseControlMessage('{"type":"controls","frozen":true,"cameraOff":false,"mirror":true,"facing":"user"}'),
+    ).toEqual({ type: "controls", frozen: true, cameraOff: false, mirror: true, facing: "user" });
+  });
+
+  it("controls message without a camera asked for keeps facing null", () => {
+    expect(
+      parseControlMessage('{"type":"controls","frozen":false,"cameraOff":false,"mirror":false,"facing":null}'),
+    ).toEqual({ type: "controls", frozen: false, cameraOff: false, mirror: false, facing: null });
+  });
+
+  it("controls message with a missing field or an unknown camera is ignored", () => {
+    const messages = [
+      '{"type":"controls","frozen":false,"mirror":false,"facing":null}',
+      '{"type":"controls","frozen":false,"cameraOff":false,"mirror":false,"facing":"left"}',
+    ];
+
+    expect(messages.map(parseControlMessage)).toEqual([null, null]);
+  });
+
+  it("stats request from the agent is parsed with its switch", () => {
+    expect(parseControlMessage('{"type":"stats_request","enabled":true}')).toEqual({
+      type: "stats_request",
+      enabled: true,
+    });
+  });
+
+  it("set controls message carries only the controls asked for", () => {
+    expect(JSON.parse(setControlsMessage({ cameraOff: true }))).toEqual({ type: "set_controls", cameraOff: true });
   });
 
   it("unknown or malformed messages are ignored", () => {

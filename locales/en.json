@@ -78,8 +78,6 @@
   "cam.unavailable_no_camera": "No camera found on this device.",
   "cam.unavailable_in_use": "Close the other app using the camera.",
   "cam.capture_format": "{width} × {height} · {fps} fps",
-  "cam.switch_camera": "Switch camera",
-  "cam.preview_off": "Turn off preview",
   "cam.preview_hidden": "Preview off. The camera is still on. Tap anywhere to show it.",
   "cam.keep_screen_on": "Keep the screen on in your phone settings while using WCam.",
   "cam.connecting": "Connecting to your computer",
@@ -234,5 +232,6 @@
   "console.detail_percent": "{percent}%",
   "console.path_title": "Image path",
   "console.detail_none": "No data",
-  "console.apps_one": "1 app using the camera"
+  "console.apps_one": "1 app using the camera",
+  "cam.mirror_apps": "Mirror in apps"
 }

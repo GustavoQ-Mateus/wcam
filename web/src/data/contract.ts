@@ -146,6 +146,8 @@ export type ControlMessage =
   | { type: "session_state"; state: "live" }
   | { type: "session_state"; state: "ended"; reason: string }
   | { type: "confirmation"; pc: boolean; phone: boolean }
+  | ({ type: "controls" } & Controls)
+  | { type: "stats_request"; enabled: boolean }
   | {
       type: "video_format";
       format: VideoFormat;

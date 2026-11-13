@@ -15,10 +15,12 @@ interface FormatPickerProps {
   format: VideoFormat;
   available: readonly VideoFormat[];
   dimmed: boolean;
+  mirror: boolean | null;
   onChoose: (format: VideoFormat) => void;
+  onToggleMirror: () => void;
 }
 
-export function FormatPicker({ format, available, dimmed, onChoose }: FormatPickerProps) {
+export function FormatPicker({ format, available, dimmed, mirror, onChoose, onToggleMirror }: FormatPickerProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
@@ -60,6 +62,12 @@ export function FormatPicker({ format, available, dimmed, onChoose }: FormatPick
               ))}
             </div>
           </div>
+        )}
+        {mirror !== null && (
+          <button type="button" className={styles.switch} role="switch" aria-checked={mirror} onClick={onToggleMirror}>
+            {t("cam.mirror_apps")}
+            <span className={styles.switchTrack} aria-hidden="true" />
+          </button>
         )}
       </div>
       <ControlButton
