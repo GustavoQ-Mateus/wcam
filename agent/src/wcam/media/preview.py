@@ -9,7 +9,7 @@ from av import VideoFrame
 
 from wcam.media.loopback_ice import gather_only_on_loopback
 from wcam.media.peer import peer_configuration
-from wcam.media.pipeline import I420_FORMAT, REDUCTION_INTERPOLATION, FramePipeline
+from wcam.media.pipeline import I420_FORMAT, REDUCTION_INTERPOLATION, FramePipeline, i420_planes
 from wcam.media.sdp_filter import has_video
 from wcam.virtualcam.sink import I420Frame, frame_size
 
@@ -30,8 +30,16 @@ def preview_size(output_width: int, output_height: int) -> tuple[int, int]:
 def reduced_frame(frame: I420Frame) -> VideoFrame:
     width, height = frame_size(frame)
     preview_width, preview_height = preview_size(width, height)
-    full = VideoFrame.from_ndarray(np.ascontiguousarray(frame), format=I420_FORMAT)
+    step = max(1, height // (2 * preview_height))
+    smaller = decimated(frame, width, height, step) if step > 1 else frame
+    full = VideoFrame.from_ndarray(np.ascontiguousarray(smaller), format=I420_FORMAT)
     return full.reformat(width=preview_width, height=preview_height, interpolation=REDUCTION_INTERPOLATION)
+
+
+def decimated(frame: I420Frame, width: int, height: int, step: int) -> I420Frame:
+    # Skipping pixels first keeps the area reduction of a 2160p frame as cheap as that of a 1080p one.
+    planes = [np.ascontiguousarray(plane[::step, ::step]).reshape(-1) for plane in i420_planes(frame, width, height)]
+    return np.concatenate(planes).reshape(height // step * 3 // 2, width // step)
 
 
 class PreviewTrack(VideoStreamTrack):
