@@ -9,6 +9,7 @@ import {
   setControlsMessage,
   setVideoFormatMessage,
 } from "../data/control-message";
+import { statsMessage } from "../data/phone-stats";
 import { createPublisherGate } from "../data/publisher-gate";
 import { DEFAULT_VIDEO_FORMAT, formatSpec, type VideoFormat } from "../data/video-format";
 import { readCameraCapabilities } from "./camera-capabilities";
@@ -27,7 +28,6 @@ export interface Publisher {
   videoFormat: VideoFormatMessage | null;
   snapshotRequest: SnapshotRequest | null;
   controls: Controls | null;
-  statsRequested: boolean;
   changeControls: (patch: ControlsPatch) => void;
   chooseVideoFormat: (format: VideoFormat) => void;
   sendPaced: (messages: readonly string[]) => Promise<void>;
@@ -57,7 +57,6 @@ interface SessionCallbacks {
   onVideoFormat: (message: VideoFormatMessage) => void;
   onSnapshotRequest: (request: SnapshotRequest) => void;
   onControls: (controls: Controls) => void;
-  onStatsRequest: (enabled: boolean) => void;
   readVideo: () => HTMLVideoElement | null;
 }
 
@@ -69,6 +68,7 @@ const DEGRADATION_PREFERENCE = "maintain-resolution";
 const CONNECTION_FAILED_REASON = "connection_failed";
 const REJECTED_REASON = "rejected";
 const REJECT_GRACE_MS = 3000;
+const STATS_INTERVAL_MS = 1000;
 const UNKNOWN_ERROR_CODE = "unknown";
 const BUFFERED_HIGH_BYTES = 1_000_000;
 const BUFFERED_LOW_BYTES = 256_000;
@@ -86,7 +86,6 @@ export function usePublisher({
   const [videoFormat, setVideoFormat] = useState<VideoFormatMessage | null>(null);
   const [snapshotRequest, setSnapshotRequest] = useState<SnapshotRequest | null>(null);
   const [controls, setControls] = useState<Controls | null>(null);
-  const [statsRequested, setStatsRequested] = useState(false);
   const sendPaced = useCallback((messages: readonly string[]) => {
     return sessionRef.current?.sendPaced(messages) ?? Promise.resolve();
   }, []);
@@ -105,7 +104,6 @@ export function usePublisher({
       onVideoFormat: setVideoFormat,
       onSnapshotRequest: setSnapshotRequest,
       onControls: setControls,
-      onStatsRequest: setStatsRequested,
       readVideo: () => videoRef.current,
     });
   }, [shouldStart, track, takeToken, onEvent, videoRef]);
@@ -133,7 +131,6 @@ export function usePublisher({
     videoFormat,
     snapshotRequest,
     controls,
-    statsRequested,
     changeControls: (patch) => {
       sessionRef.current?.changeControls(patch);
     },
@@ -153,7 +150,7 @@ export function usePublisher({
 function startSession(
   track: MediaStreamTrack,
   token: string,
-  { onEvent, onVideoFormat, onSnapshotRequest, onControls, onStatsRequest, readVideo }: SessionCallbacks,
+  { onEvent, onVideoFormat, onSnapshotRequest, onControls, readVideo }: SessionCallbacks,
 ): PublisherSession {
   const connection = new RTCPeerConnection({ iceServers: [] });
   const channel = connection.createDataChannel(CONTROL_CHANNEL);
@@ -172,6 +169,7 @@ function startSession(
   });
   let currentTrack: MediaStreamTrack | null = track;
   let rejectGrace: ReturnType<typeof setTimeout> | undefined;
+  let statsTimer: ReturnType<typeof setInterval> | undefined;
   let closed = false;
   let finished = false;
   let events = Promise.resolve();
@@ -202,8 +200,18 @@ function startSession(
     }
     gate.setTrack(nextTrack);
   };
+  const sendStats = () => {
+    void connection.getStats().then((report) => {
+      gate.send(statsMessage(report.values() as Iterable<Record<string, unknown>>, Date.now()));
+    });
+  };
+  const requestStats = (enabled: boolean) => {
+    clearInterval(statsTimer);
+    statsTimer = enabled ? setInterval(sendStats, STATS_INTERVAL_MS) : undefined;
+  };
   const finish = (event: CamEvent) => {
     clearTimeout(rejectGrace);
+    clearInterval(statsTimer);
     emit(event);
     finished = true;
   };
@@ -245,9 +253,7 @@ function startSession(
       return;
     }
     if (message.type === "stats_request") {
-      if (isActive()) {
-        onStatsRequest(message.enabled);
-      }
+      requestStats(isActive() && message.enabled);
       return;
     }
     if (message.type === "confirmation") {
@@ -316,6 +322,7 @@ function startSession(
     },
     close: () => {
       clearTimeout(rejectGrace);
+      clearInterval(statsTimer);
       closed = true;
       channel.close();
       connection.close();
