@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from tests.fakes import FakePeer, FakePeerFactory
-from tests.unit.test_session_manager import session_request
+from tests.unit.test_session_manager import confirm_on_both_sides, session_request
 from tests.unit.test_video_format import video_format_message
 from wcam.media.camera_format import CameraFormatControl
 from wcam.media.pipeline import FramePipeline
@@ -43,7 +43,7 @@ async def live_agent(holds_formats: bool = False) -> AsyncGenerator[Agent]:
     control.start()
     await manager.create_session(session_request(manager.open_pairing().token))
     factory.last.events.on_connected()
-    manager.confirm()
+    confirm_on_both_sides(manager, factory)
     factory.last.events.on_message(CAPABILITIES)
     factory.last.sent.clear()
     try:

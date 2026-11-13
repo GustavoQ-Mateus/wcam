@@ -38,6 +38,7 @@ class FakePeer:
         self.events = events
         self.sent: list[Mapping[str, object]] = []
         self.gate_open = False
+        self.rtp_packets_before_live = 0
         self.closed = False
         self.video: VideoStats | None = None
         self.max_bitrate_bps: int | None = None

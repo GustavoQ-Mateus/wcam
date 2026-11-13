@@ -1,7 +1,8 @@
 import io
 
 from tests.fakes import FakePeerFactory
-from wcam.cli import announce_pairing, use_utf8_output
+from tests.unit.test_session_manager import session_request
+from wcam.cli import announce_pairing, hint_confirmation, use_utf8_output
 from wcam.config import Settings
 from wcam.i18n import Messages, load_messages
 from wcam.sessions.manager import SessionManager
@@ -51,3 +52,16 @@ def test_redirected_output_gets_the_console_address_and_no_pairing_link() -> Non
     ]
     assert "#t=" not in output.getvalue()
     assert manager.status().pairing_expires_at is None
+
+
+async def test_terminal_says_where_to_confirm_once_when_the_phone_connects() -> None:
+    factory = FakePeerFactory()
+    manager = SessionManager(factory)
+    output = io.StringIO()
+    hint_confirmation(english(), manager, output)
+    await manager.create_session(session_request(manager.open_pairing().token))
+
+    factory.last.events.on_connected()
+    manager.confirm()
+
+    assert output.getvalue().splitlines() == [english().text("terminal.confirm_hint")]

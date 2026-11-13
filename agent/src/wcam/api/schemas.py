@@ -68,6 +68,11 @@ class CameraCapabilitiesBody(CamelModel):
     modes: CameraModesBody | None
 
 
+class ConfirmationsBody(CamelModel):
+    pc: bool
+    phone: bool
+
+
 class SessionBody(CamelModel):
     id: str
     state: str
@@ -75,6 +80,8 @@ class SessionBody(CamelModel):
     remote_ip: str
     started_at: str
     confirmation_code: str | None
+    confirmations: ConfirmationsBody
+    rtp_packets_before_live: int
     video: VideoBody | None
     camera_capabilities: CameraCapabilitiesBody | None
 
@@ -82,6 +89,7 @@ class SessionBody(CamelModel):
 class LastEndedBody(CamelModel):
     reason: str
     at: str
+    rtp_packets_before_live: int
 
 
 class OutputBody(CamelModel):
@@ -195,6 +203,8 @@ def session_body(session: SessionView) -> SessionBody:
         remote_ip=session.remote_ip,
         started_at=iso_utc(session.started_at),
         confirmation_code=session.confirmation_code,
+        confirmations=ConfirmationsBody(pc=session.confirmations.pc, phone=session.confirmations.phone),
+        rtp_packets_before_live=session.rtp_packets_before_live,
         video=None if session.video is None else video_body(session.video),
         camera_capabilities=camera_capabilities_body(session.camera_capabilities),
     )
@@ -253,7 +263,11 @@ def color_correction_body(correction: ColorCorrection | None) -> ColorCorrection
 
 
 def last_ended_body(last_ended: LastEnded) -> LastEndedBody:
-    return LastEndedBody(reason=last_ended.reason, at=iso_utc(last_ended.at))
+    return LastEndedBody(
+        reason=last_ended.reason,
+        at=iso_utc(last_ended.at),
+        rtp_packets_before_live=last_ended.rtp_packets_before_live,
+    )
 
 
 def create_session_response(offer: SessionOffer) -> CreateSessionResponse:

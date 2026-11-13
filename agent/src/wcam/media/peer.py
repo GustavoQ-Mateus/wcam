@@ -23,6 +23,7 @@ from wcam.media.metrics import Orientation, VideoMeter, VideoStats
 from wcam.media.pipeline import FramePipeline
 from wcam.media.pipeline import FrameSource as OutputSource
 from wcam.media.recovering_jitter_buffer import STALLED_SECONDS, RecoveringJitterBuffer
+from wcam.media.rtp_counter import RtpPacketCounter, count_video_packets
 from wcam.media.sdp_filter import keep_candidates_in_network, video_codec
 from wcam.media.video_format import DEFAULT_VIDEO_FORMAT
 from wcam.sessions.manager import EndReason, MediaPeer, PeerEvents, PeerFactory
@@ -106,6 +107,7 @@ class AiortcPeer:
         self._episode_task: asyncio.Task[None] | None = None
         self._answer_sdp = ""
         self.gate = FrameGate()
+        self._rtp_counter = RtpPacketCounter()
         self._meter = VideoMeter()
 
     @property
@@ -115,6 +117,10 @@ class AiortcPeer:
     @property
     def answer_sdp(self) -> str:
         return self._answer_sdp
+
+    @property
+    def rtp_packets_before_live(self) -> int:
+        return self._rtp_counter.before_live
 
     @property
     def video(self) -> VideoStats | None:
@@ -137,6 +143,7 @@ class AiortcPeer:
         self._connection.on("connectionstatechange", self._handle_connection_state)
         offer = RTCSessionDescription(keep_candidates_in_network(offer_sdp, self._network), "offer")
         await self._connection.setRemoteDescription(offer)
+        count_video_packets(self._connection, self._rtp_counter)
         self._jitter_buffers = install_recovering_jitter_buffers(self._connection)
         cap_video_estimate(self._connection, DEFAULT_VIDEO_FORMAT.size.max_bitrate_bps)
         await self._connection.setLocalDescription(await self._connection.createAnswer())
@@ -144,6 +151,7 @@ class AiortcPeer:
         self._answer_sdp = keep_candidates_in_network(self._connection.localDescription.sdp, self._network)
 
     def open_gate(self) -> None:
+        self._rtp_counter.stop()
         self._pipeline.start_phone()
         self.gate.open()
         self._episode_task = asyncio.get_running_loop().create_task(self._watch_episodes())

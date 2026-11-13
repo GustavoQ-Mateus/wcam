@@ -27,6 +27,14 @@ class PhoneMessage(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, strict=True, frozen=True)
 
 
+class ConfirmCodeMessage(PhoneMessage):
+    type: Literal["confirm_code"]
+
+
+class RejectCodeMessage(PhoneMessage):
+    type: Literal["reject_code"]
+
+
 class SetVideoFormatMessage(PhoneMessage):
     type: Literal["set_video_format"]
     format: VideoFormat
@@ -108,7 +116,9 @@ class ScreenshotChunkMessage(ChunkMessage):
 
 
 type AnyPhoneMessage = (
-    SetVideoFormatMessage
+    ConfirmCodeMessage
+    | RejectCodeMessage
+    | SetVideoFormatMessage
     | CameraCapabilitiesMessage
     | SnapshotBeginMessage
     | SnapshotChunkMessage
@@ -118,7 +128,9 @@ type AnyPhoneMessage = (
 
 PHONE_MESSAGE = TypeAdapter[AnyPhoneMessage](
     Annotated[
-        SetVideoFormatMessage
+        ConfirmCodeMessage
+        | RejectCodeMessage
+        | SetVideoFormatMessage
         | CameraCapabilitiesMessage
         | SnapshotBeginMessage
         | SnapshotChunkMessage

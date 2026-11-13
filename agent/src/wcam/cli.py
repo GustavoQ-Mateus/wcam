@@ -23,7 +23,7 @@ from wcam.network.lan import NoLanInterfaceError, detect_lan_interface
 from wcam.process_monitor import CpuMonitor
 from wcam.services import AgentServices
 from wcam.sessions.comparisons import ComparisonStore, CorrectionSnapshot
-from wcam.sessions.manager import SessionManager
+from wcam.sessions.manager import SessionManager, SessionState
 from wcam.virtualcam.factory import FallbackReason, SinkSelection, select_sink
 from wcam.virtualcam.media_foundation_sink import load_native_library
 from wcam.virtualcam.sink import CameraState
@@ -72,6 +72,7 @@ def start(settings: Settings, messages: Messages) -> None:
     print_banner(messages, console_url, phone_url, certificate)
     print_virtual_camera(messages, selection)
     announce_pairing(messages, manager, phone_url, console_url, sys.stdout)
+    hint_confirmation(messages, manager, sys.stdout)
     servers = create_servers(settings, lan, certificate, services)
     with stop_signals_handled(servers):
         asyncio.run(run(servers, services))
@@ -126,6 +127,19 @@ def announce_pairing(
     else:
         print(messages.text("terminal.scan_in_console", url=console_url), file=output)
     print(messages.text("terminal.stop_hint"), file=output)
+
+
+def hint_confirmation(messages: Messages, manager: SessionManager, output: TextIO) -> None:
+    hinted: set[str] = set()
+
+    def hint() -> None:
+        session = manager.status().session
+        if session is None or session.state is not SessionState.AWAITING_CONFIRMATION or session.id in hinted:
+            return
+        hinted.add(session.id)
+        print(messages.text("terminal.confirm_hint"), file=output)
+
+    manager.on_change(hint)
 
 
 def print_pairing_qr(messages: Messages, url: str, output: TextIO) -> None:
