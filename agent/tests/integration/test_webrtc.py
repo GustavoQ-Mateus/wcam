@@ -74,6 +74,7 @@ VIDEO_TIME_BASE = Fraction(1, 90000)
 NEXT_FRAME_TIMESTAMP_STEP = 3000
 UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
 SILENCE_BEFORE_CONFIRMATION_SECONDS = 0.5
+CONTROL_DEADLINE_SECONDS = 0.3
 SHORT_CONFIRMATION_TIMEOUT_SECONDS = 1.0
 CONFIRM_CODE: dict[str, object] = {"type": "confirm_code"}
 REJECT_CODE: dict[str, object] = {"type": "reject_code"}
@@ -477,6 +478,42 @@ async def test_phone_sending_video_before_live_is_counted_and_never_reaches_the_
     assert source is FrameSource.PLACEHOLDER
     assert last_frame is not None
     assert last_frame.tobytes() == black_i420(WIDTH, HEIGHT).tobytes()
+
+
+async def test_controls_reach_the_phone_and_the_phone_controls_reach_the_status_quickly(
+    settings: Settings,
+    lan: LanInterface,
+    pipeline: FramePipeline,
+) -> None:
+    manager = SessionManager(RecordingPeerFactory(lan, pipeline), output=pipeline)
+    client = phone_client_peer()
+
+    async with (
+        console_client(console_app(settings, manager, pipeline)) as console,
+        phone_client(phone_app(settings, manager)) as phone,
+    ):
+        await paired_phone(console, phone, client)
+        await confirm_on_both_sides(console, client, phone_first=False)
+        await client.next_state()
+        at_live = await client.next_message("controls")
+        started = time.monotonic()
+        await console.patch("/api/controls", json={"frozen": True})
+        frozen = await client.next_message("controls")
+        seconds_to_phone = time.monotonic() - started
+        client.send({"type": "set_controls", "cameraOff": True})
+        camera_off = await client.next_message("controls")
+        await wait_until(lambda: pipeline.source is FrameSource.CAMERA_OFF)
+        status = await current_status(console)
+        await console.delete("/api/sessions/current")
+        after_end = await current_status(console)
+    await client.connection.close()
+
+    assert at_live == {"type": "controls", "frozen": False, "cameraOff": False, "mirror": False, "facing": None}
+    assert (frozen["frozen"], camera_off["frozen"], camera_off["cameraOff"]) == (True, False, True)
+    assert seconds_to_phone < CONTROL_DEADLINE_SECONDS
+    assert status["controls"]["cameraOff"]
+    assert status["virtualCamera"]["source"] == "camera_off"
+    assert after_end["controls"] == {"frozen": False, "cameraOff": False, "mirror": False, "facing": None}
 
 
 async def test_phone_messages_reach_status_and_formats_echo_on_the_channel(

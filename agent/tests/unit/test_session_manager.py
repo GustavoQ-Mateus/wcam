@@ -121,8 +121,8 @@ async def test_pc_then_phone_confirmation_opens_the_gate_and_goes_live() -> None
     assert session is not None
     assert session.state is SessionState.LIVE
     assert factory.last.gate_open
-    assert [message["type"] for message in factory.last.sent[-2:]] == ["session_state", "video_format"]
-    assert factory.last.sent[-2] == {"type": "session_state", "state": "live"}
+    assert [message["type"] for message in factory.last.sent[-3:]] == ["session_state", "controls", "video_format"]
+    assert factory.last.sent[-3] == {"type": "session_state", "state": "live"}
 
 
 async def test_phone_then_pc_confirmation_opens_the_gate_and_goes_live() -> None:

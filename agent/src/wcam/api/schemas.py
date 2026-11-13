@@ -8,6 +8,7 @@ from wcam.media.metrics import VideoStats
 from wcam.media.pipeline import FramePipeline
 from wcam.media.quality import QualityReport
 from wcam.media.video_format import VideoFormat
+from wcam.sessions.controls import Controls, ControlsChange, Facing
 from wcam.sessions.manager import LastEnded, SessionOffer, SessionView, Status, VideoFormatState
 from wcam.sessions.phone_messages import CameraCapabilitiesMessage, CameraColorSpaceMessage, CameraModesMessage
 from wcam.virtualcam.sink import CameraState
@@ -126,6 +127,25 @@ class QualityBody(CamelModel):
     frames: int
 
 
+class ControlsBody(CamelModel):
+    frozen: bool
+    camera_off: bool
+    mirror: bool
+    facing: Facing | None
+
+
+class ControlsRequest(CamelModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=False, strict=True, extra="forbid")
+
+    frozen: bool | None = None
+    camera_off: bool | None = None
+    mirror: bool | None = None
+    facing: Facing | None = None
+
+    def to_change(self) -> ControlsChange:
+        return ControlsChange(self.frozen, self.camera_off, self.mirror, self.facing)
+
+
 class StatusResponse(CamelModel):
     pairing: PairingBody | None
     session: SessionBody | None
@@ -135,6 +155,7 @@ class StatusResponse(CamelModel):
     process: ProcessBody
     quality: QualityBody | None
     dev_tools: bool
+    controls: ControlsBody
 
 
 class VideoFormatRequest(CamelModel):
@@ -168,6 +189,16 @@ def status_response(status: Status, pipeline: FramePipeline, cpu_percent: float,
         process=ProcessBody(cpu_percent=cpu_percent),
         quality=None if quality is None else quality_body(quality),
         dev_tools=dev_tools,
+        controls=controls_body(status.controls),
+    )
+
+
+def controls_body(controls: Controls) -> ControlsBody:
+    return ControlsBody(
+        frozen=controls.frozen,
+        camera_off=controls.camera_off,
+        mirror=controls.mirror,
+        facing=controls.facing,
     )
 
 

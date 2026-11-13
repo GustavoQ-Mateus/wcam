@@ -67,7 +67,12 @@ def start(settings: Settings, messages: Messages) -> None:
     pipeline.open()
     comparisons = ComparisonStore(lambda: correction_snapshot(pipeline)) if settings.dev_tools else None
     camera = CameraFormatControl(pipeline)
-    manager = SessionManager(aiortc_peer_factory(lan.network, pipeline), comparisons=comparisons, camera=camera)
+    manager = SessionManager(
+        aiortc_peer_factory(lan.network, pipeline),
+        comparisons=comparisons,
+        camera=camera,
+        output=pipeline,
+    )
     services = AgentServices(manager, pipeline, CpuMonitor(), camera, comparisons)
     print_banner(messages, console_url, phone_url, certificate)
     print_virtual_camera(messages, selection)

@@ -23,6 +23,7 @@ from wcam.pairing.confirmation_code import confirmation_code
 from wcam.pairing.errors import PairingTokenExpiredError, PairingTokenInvalidError, PairingWindowClosedError
 from wcam.pairing.tokens import PairingTicket, PairingWindow
 from wcam.sessions.comparisons import ComparisonNotFoundError, ComparisonStore
+from wcam.sessions.controls import Controls, ControlsChange, after_session, changed_controls
 from wcam.sessions.errors import (
     InvalidOfferError,
     NoActiveSessionError,
@@ -39,6 +40,7 @@ from wcam.sessions.phone_messages import (
     RejectCodeMessage,
     ScreenshotBeginMessage,
     ScreenshotChunkMessage,
+    SetControlsMessage,
     SetVideoFormatMessage,
     SnapshotBeginMessage,
     SnapshotChunkMessage,
@@ -115,6 +117,10 @@ class FormatCamera(Protocol):
     def request(self, video_format: VideoFormat) -> None: ...
 
 
+class OutputControls(Protocol):
+    def apply_controls(self, frozen: bool, camera_off: bool, mirror: bool) -> None: ...
+
+
 type PeerFactory = Callable[[str, PeerEvents], Awaitable[MediaPeer]]
 
 
@@ -175,6 +181,7 @@ class Status:
     session: SessionView | None
     last_ended: LastEnded | None
     video_format: VideoFormatState
+    controls: Controls
 
 
 @dataclass(slots=True)
@@ -197,10 +204,12 @@ class SessionManager:
         confirmation_timeout: float = CONFIRMATION_TIMEOUT_SECONDS,
         comparisons: ComparisonStore | None = None,
         camera: FormatCamera | None = None,
+        output: OutputControls | None = None,
     ) -> None:
         self._peer_factory = peer_factory
         self._comparisons = comparisons
         self._camera = camera
+        self._output = output
         self._clock = clock
         self._confirmation_timeout = confirmation_timeout
         self._pairing = PairingWindow(clock)
@@ -213,6 +222,7 @@ class SessionManager:
         self._confirmation_timer: asyncio.Task[None] | None = None
         self._background: set[asyncio.Task[None]] = set()
         self._change_listeners: list[Callable[[], None]] = []
+        self._controls = Controls()
         if camera is not None:
             camera.on_change(self._send_video_format)
 
@@ -227,7 +237,19 @@ class SessionManager:
         self._pairing.close()
 
     def status(self) -> Status:
-        return Status(self._pairing.expires_at, self._view(), self._last_ended, self._video_format_state())
+        return Status(
+            self._pairing.expires_at,
+            self._view(),
+            self._last_ended,
+            self._video_format_state(),
+            self._controls,
+        )
+
+    def change_controls(self, change: ControlsChange) -> None:
+        session = self._session
+        if change.needs_live_session and (session is None or session.state is not SessionState.LIVE):
+            raise NoLiveSessionError
+        self._set_controls(changed_controls(self._controls, change))
 
     def set_video_format(self, video_format: VideoFormat) -> None:
         if video_format not in self._available_formats:
@@ -340,6 +362,8 @@ class SessionManager:
             self._receive_phone_image(message)
         elif isinstance(message, SetVideoFormatMessage):
             self._apply_phone_format(message.format)
+        elif isinstance(message, SetControlsMessage):
+            self._receive_phone_controls(session, message)
         else:
             logger.warning(IGNORED_PHONE_MESSAGE)
 
@@ -365,16 +389,36 @@ class SessionManager:
         session.state = SessionState.LIVE
         session.peer.open_gate()
         session.peer.send(state_message(SessionState.LIVE))
+        session.peer.send(controls_message(self._controls))
         self._send_video_format()
 
     def _receive_capabilities(self, session: Session, message: CameraCapabilitiesMessage) -> None:
         session.camera_capabilities = message
         session.peer.set_color_correction(color_correction(message.camera_color_space(), session.request.display))
         self._available_formats = available_formats(CameraLimits(message.width, message.height, message.frame_rate))
+        if message.facing_mode is not None:
+            self._set_controls(replace(self._controls, facing=message.facing_mode))
         following = format_after_capabilities(self._selected_format, self._available_formats)
         if following is not self._selected_format:
             self._select_format(following)
         self._send_video_format()
+
+    def _receive_phone_controls(self, session: Session, message: SetControlsMessage) -> None:
+        before = self._controls
+        self._set_controls(changed_controls(before, message.to_change()))
+        if self._controls == before:
+            session.peer.send(controls_message(self._controls))
+
+    def _set_controls(self, controls: Controls) -> None:
+        if controls == self._controls:
+            return
+        self._controls = controls
+        if self._output is not None:
+            self._output.apply_controls(controls.frozen, controls.camera_off, controls.mirror)
+        session = self._session
+        if session is not None and session.state is SessionState.LIVE:
+            session.peer.send(controls_message(controls))
+        self._notify_change()
 
     def _apply_phone_format(self, video_format: VideoFormat) -> None:
         if video_format not in self._available_formats:
@@ -435,6 +479,7 @@ class SessionManager:
         self._session = None
         self._cancel_confirmation_timer()
         self._last_ended = LastEnded(reason, self._clock(), session.peer.rtp_packets_before_live)
+        self._set_controls(after_session(self._controls))
         if self._comparisons is not None:
             self._comparisons.end_session()
         session.peer.send({"type": "session_state", "state": "ended", "reason": reason})
@@ -486,6 +531,16 @@ def state_message(state: SessionState) -> dict[str, str]:
 
 def confirmation_message(confirmations: Confirmations) -> dict[str, object]:
     return {"type": "confirmation", "pc": confirmations.pc, "phone": confirmations.phone}
+
+
+def controls_message(controls: Controls) -> dict[str, object]:
+    return {
+        "type": "controls",
+        "frozen": controls.frozen,
+        "cameraOff": controls.camera_off,
+        "mirror": controls.mirror,
+        "facing": controls.facing,
+    }
 
 
 def snapshot_request_message(comparison_id: str) -> dict[str, str]:

@@ -4,7 +4,14 @@ import segno
 from fastapi import APIRouter, Response, status
 
 from wcam.api.health import create_health_router
-from wcam.api.schemas import PairingResponse, StatusResponse, VideoFormatRequest, iso_utc, status_response
+from wcam.api.schemas import (
+    ControlsRequest,
+    PairingResponse,
+    StatusResponse,
+    VideoFormatRequest,
+    iso_utc,
+    status_response,
+)
 from wcam.services import AgentServices
 
 QR_ERROR_LEVEL = "m"
@@ -82,11 +89,23 @@ def create_console_router(services: AgentServices, phone_page_url: str) -> APIRo
         manager.set_video_format(body.format)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+    @router.patch(
+        "/api/controls",
+        status_code=status.HTTP_204_NO_CONTENT,
+        summary="Change the controls",
+        description="Freezes the image, turns the phone camera off or on, mirrors the image or switches the phone "
+        "camera. Any subset of the fields; freezing, the camera and switching need a live phone. The phone gets the "
+        "new controls right after.",
+    )
+    async def change_controls(body: ControlsRequest) -> Response:
+        manager.change_controls(body.to_change())
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
     @router.post(
         "/api/sessions/current/confirm",
         status_code=status.HTTP_204_NO_CONTENT,
         summary="Confirm the session",
-        description="Opens the frame gate after the user checked that both screens show the same code.",
+        description="Marks the code as confirmed on the computer. The phone goes live when it confirmed too.",
     )
     async def confirm_session() -> Response:
         manager.confirm()

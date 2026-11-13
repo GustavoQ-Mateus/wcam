@@ -195,7 +195,7 @@ class AiortcPeer:
 
     def _link_sample(self) -> LinkSample | None:
         frame_age = self._pipeline.phone_frame_age()
-        if frame_age is None:
+        if frame_age is None or self._pipeline.camera_off:
             return None
         return LinkSample(
             at=asyncio.get_running_loop().time(),

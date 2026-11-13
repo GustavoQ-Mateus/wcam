@@ -6,6 +6,7 @@ from enum import StrEnum
 
 import numpy as np
 from av import VideoFrame
+from av.video.plane import VideoPlane
 from av.video.reformatter import ColorRange as DeclaredRange
 
 from wcam.media.color_correction import ColorCorrection, ColorTables, CorrectionState, correction_tables
@@ -15,7 +16,7 @@ from wcam.media.color_range import (
     declared_matrix,
     declared_range,
 )
-from wcam.media.placeholder import black_i420
+from wcam.media.placeholder import black_i420, camera_off_i420
 from wcam.media.quality import QualityMeter, QualityReport
 from wcam.media.video_format import DEFAULT_VIDEO_FORMAT
 from wcam.virtualcam.sink import AnnouncedFormat, CameraState, I420Frame, VirtualCameraSink, frame_size
@@ -34,11 +35,15 @@ DEFAULT_OUTPUT = AnnouncedFormat(
     running=False,
 )
 QUALITY_WORKER_NAME = "wcam-quality"
+ALL_COLUMNS = slice(None)
+MIRRORED_COLUMNS = slice(None, None, -1)
 
 
 class FrameSource(StrEnum):
     PHONE = "phone"
     FROZEN = "frozen"
+    HELD = "held"
+    CAMERA_OFF = "camera_off"
     PLACEHOLDER = "placeholder"
 
 
@@ -70,6 +75,11 @@ class FramePipeline:
         self.frames_scaled = 0
         self.color_range = ColorRange.UNSPECIFIED
         self.color_matrix = UNSPECIFIED_MATRIX
+        self.frozen = False
+        self.camera_off = False
+        self.mirror = False
+        self._last_sent: I420Frame | None = None
+        self._camera_off_frame: I420Frame | None = None
 
     @property
     def quality_report(self) -> QualityReport | None:
@@ -107,6 +117,13 @@ class FramePipeline:
         self._last_phone = None
         self.color_correction = None
 
+    def apply_controls(self, frozen: bool, camera_off: bool, mirror: bool) -> None:
+        if self.camera_off and not camera_off and self._phone_active:
+            self._last_phone_at = self._clock()
+        self.frozen = frozen
+        self.camera_off = camera_off
+        self.mirror = mirror
+
     def color_tables(self) -> ColorTables | None:
         return correction_tables(self.color_correction, self.color_range)
 
@@ -139,16 +156,31 @@ class FramePipeline:
         elif self._last_phone_at is None or now - self._last_phone_at > FREEZE_SECONDS:
             self._last_phone = None
         output = self._last_phone if self._phone_active and fits(self._last_phone, placeholder) else None
-        self.source = self._source_of(output, now)
+        self.source, sent = self._chosen_frame(output, now, placeholder)
+        self._last_sent = sent
         if self.sink.status.state is CameraState.ACTIVE:
-            self.sink.send(placeholder if output is None else output)
-        if output is not None and frame is not None:
+            self.sink.send(sent)
+        if output is not None and sent is output and frame is not None:
             self._measure(now, output)
 
     def _change_format(self, width: int, height: int, fps: int) -> bool:
         accepted = self.sink.request_format(width, height, fps)
         self.follow(self.sink.announced_format())
         return accepted
+
+    def _chosen_frame(
+        self, output: I420Frame | None, now: float, placeholder: I420Frame
+    ) -> tuple[FrameSource, I420Frame]:
+        if self.camera_off:
+            return FrameSource.CAMERA_OFF, self._camera_off_like(placeholder)
+        if self.frozen and self._last_sent is not None and fits(self._last_sent, placeholder):
+            return FrameSource.HELD, self._last_sent
+        return self._source_of(output, now), placeholder if output is None else output
+
+    def _camera_off_like(self, placeholder: I420Frame) -> I420Frame:
+        if self._camera_off_frame is None or not fits(self._camera_off_frame, placeholder):
+            self._camera_off_frame = camera_off_i420(*frame_size(placeholder))
+        return self._camera_off_frame
 
     def _source_of(self, output: I420Frame | None, now: float) -> FrameSource:
         if output is None:
@@ -204,7 +236,7 @@ class FramePipeline:
         return canvas
 
     def _converted(self, frame: VideoFrame, width: int, height: int) -> I420Frame:
-        return i420_array(frame, width, height, self.color_range, self.color_tables())
+        return i420_array(frame, width, height, self.color_range, self.color_tables(), mirror=self.mirror)
 
 
 def i420_array(
@@ -213,10 +245,12 @@ def i420_array(
     height: int,
     color_range: ColorRange,
     tables: ColorTables | None = None,
+    *,
+    mirror: bool = False,
 ) -> I420Frame:
     source = reformatted(frame, width, height, color_range)
-    if tables is not None:
-        return translated_i420(source, tables)
+    if tables is not None or mirror:
+        return copied_i420(source, tables, mirror=mirror)
     array: I420Frame = np.ascontiguousarray(source.to_ndarray(), dtype=np.uint8)
     return array
 
@@ -235,17 +269,30 @@ def reformatted(frame: VideoFrame, width: int, height: int, color_range: ColorRa
     )
 
 
-def translated_i420(frame: VideoFrame, tables: ColorTables) -> I420Frame:
-    luma_table, chroma_table = tables
+def copied_i420(frame: VideoFrame, tables: ColorTables | None, *, mirror: bool) -> I420Frame:
     output = np.empty(frame.width * frame.height * 3 // 2, dtype=np.uint8)
+    columns = MIRRORED_COLUMNS if mirror else ALL_COLUMNS
     offset = 0
-    # bytes.translate reads a 256 entry table in C, about five times faster here than numpy.take.
-    for plane, table in zip(frame.planes, (luma_table, chroma_table, chroma_table), strict=True):
+    for plane, table in zip(frame.planes, plane_tables(tables), strict=True):
         size = plane.width * plane.height
-        rows = np.frombuffer(bytes(plane).translate(table), dtype=np.uint8).reshape(-1, plane.line_size)
-        output[offset : offset + size].reshape(plane.height, plane.width)[:] = rows[: plane.height, : plane.width]
+        rows = plane_rows(plane, table)[: plane.height, : plane.width]
+        output[offset : offset + size].reshape(plane.height, plane.width)[:] = rows[:, columns]
         offset += size
     return output.reshape(frame.height * 3 // 2, frame.width)
+
+
+def plane_tables(tables: ColorTables | None) -> tuple[bytes | None, bytes | None, bytes | None]:
+    if tables is None:
+        return None, None, None
+    luma_table, chroma_table = tables
+    return luma_table, chroma_table, chroma_table
+
+
+def plane_rows(plane: VideoPlane, table: bytes | None) -> I420Frame:
+    # bytes.translate reads a 256 entry table in C, about five times faster here than numpy.take.
+    data = memoryview(plane) if table is None else bytes(plane).translate(table)
+    rows: I420Frame = np.frombuffer(data, dtype=np.uint8).reshape(-1, plane.line_size)
+    return rows
 
 
 def fits(frame: I420Frame | None, placeholder: I420Frame) -> bool:

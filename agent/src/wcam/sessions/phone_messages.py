@@ -19,6 +19,7 @@ from pydantic.alias_generators import to_camel
 from wcam.media.color_correction import CameraColorSpace
 from wcam.media.color_difference import RgbSpace
 from wcam.media.video_format import VideoFormat
+from wcam.sessions.controls import ControlsChange, Facing
 
 SNAPSHOT_CHUNK_BYTES = 45_000
 
@@ -33,6 +34,17 @@ class ConfirmCodeMessage(PhoneMessage):
 
 class RejectCodeMessage(PhoneMessage):
     type: Literal["reject_code"]
+
+
+class SetControlsMessage(PhoneMessage):
+    type: Literal["set_controls"]
+    frozen: bool | None = None
+    camera_off: bool | None = None
+    mirror: bool | None = None
+    facing: Facing | None = None
+
+    def to_change(self) -> ControlsChange:
+        return ControlsChange(self.frozen, self.camera_off, self.mirror, self.facing)
 
 
 class SetVideoFormatMessage(PhoneMessage):
@@ -118,6 +130,7 @@ class ScreenshotChunkMessage(ChunkMessage):
 type AnyPhoneMessage = (
     ConfirmCodeMessage
     | RejectCodeMessage
+    | SetControlsMessage
     | SetVideoFormatMessage
     | CameraCapabilitiesMessage
     | SnapshotBeginMessage
@@ -130,6 +143,7 @@ PHONE_MESSAGE = TypeAdapter[AnyPhoneMessage](
     Annotated[
         ConfirmCodeMessage
         | RejectCodeMessage
+        | SetControlsMessage
         | SetVideoFormatMessage
         | CameraCapabilitiesMessage
         | SnapshotBeginMessage

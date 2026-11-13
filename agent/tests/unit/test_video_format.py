@@ -181,7 +181,7 @@ async def test_capabilities_offer_the_formats_that_fit_and_tell_the_phone() -> N
     factory.last.events.on_message(json.dumps(CAPABILITIES))
 
     assert manager.status().video_format.available == tuple(VideoFormat)
-    assert factory.last.sent == [video_format_message("1080p30", ALL_FORMATS)]
+    assert factory.last.sent[-1] == video_format_message("1080p30", ALL_FORMATS)
 
 
 async def test_console_change_limits_the_bitrate_and_tells_the_phone() -> None:
