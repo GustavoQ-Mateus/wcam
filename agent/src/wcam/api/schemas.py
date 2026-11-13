@@ -162,6 +162,14 @@ class VideoFormatRequest(CamelModel):
     format: VideoFormat
 
 
+class PreviewRequest(CamelModel):
+    sdp: str
+
+
+class PreviewResponse(CamelModel):
+    sdp: str
+
+
 class CreateSessionRequest(CamelModel):
     token: str
     sdp: str

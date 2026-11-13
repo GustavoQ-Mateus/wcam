@@ -83,6 +83,14 @@ class FramePipeline:
         self._source_listeners: list[Callable[[], None]] = []
 
     @property
+    def last_sent(self) -> I420Frame | None:
+        return self._last_sent
+
+    @property
+    def placeholder(self) -> I420Frame:
+        return self._placeholder
+
+    @property
     def quality_report(self) -> QualityReport | None:
         return None if self.quality is None else self.quality.report
 

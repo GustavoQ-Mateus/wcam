@@ -9,12 +9,15 @@ from wcam.api.health import create_health_router
 from wcam.api.schemas import (
     ControlsRequest,
     PairingResponse,
+    PreviewRequest,
+    PreviewResponse,
     StatusResponse,
     VideoFormatRequest,
     iso_utc,
     status_response,
 )
 from wcam.services import AgentServices
+from wcam.sessions.errors import InvalidOfferError
 
 QR_ERROR_LEVEL = "m"
 QR_DARK = "#000"
@@ -118,6 +121,29 @@ def create_console_router(services: AgentServices, phone_page_url: str) -> APIRo
     )
     async def change_controls(body: ControlsRequest) -> Response:
         manager.change_controls(body.to_change())
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @router.post(
+        "/api/preview",
+        status_code=status.HTTP_201_CREATED,
+        summary="Open the console preview",
+        description="Answers a WebRTC offer from the console with a video of what the apps receive, reduced to "
+        "960x540 at up to 30 fps, over loopback only. A new preview closes the previous one.",
+    )
+    async def open_preview(body: PreviewRequest) -> PreviewResponse:
+        try:
+            return PreviewResponse(sdp=await services.preview.open(body.sdp))
+        except ValueError as error:
+            raise InvalidOfferError from error
+
+    @router.delete(
+        "/api/preview",
+        status_code=status.HTTP_204_NO_CONTENT,
+        summary="Close the console preview",
+        description="Closes the preview connection, if any, and stops reducing and encoding frames for it.",
+    )
+    async def close_preview() -> Response:
+        await services.preview.close()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @router.post(

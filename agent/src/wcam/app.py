@@ -110,6 +110,7 @@ async def run(servers: Sequence[uvicorn.Server], services: AgentServices) -> Non
         await serve(servers)
     finally:
         await services.manager.shutdown()
+        await services.preview.shutdown()
         if services.comparisons is not None:
             await services.comparisons.close()
         await services.camera.close()
