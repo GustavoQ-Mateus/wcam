@@ -2,14 +2,14 @@ import asyncio
 import logging
 import secrets
 from collections.abc import Awaitable, Callable, Coroutine, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Protocol
 
 from wcam.clock import Clock, utc_now
 from wcam.media.color_correction import ColorCorrection, DisplayConvention, color_correction, default_correction
-from wcam.media.metrics import VideoStats
+from wcam.media.metrics import ReceiveStats, VideoStats
 from wcam.media.sdp_filter import is_publishable_offer, sha256_fingerprint
 from wcam.media.video_format import (
     DEFAULT_VIDEO_FORMAT,
@@ -23,6 +23,7 @@ from wcam.pairing.confirmation_code import confirmation_code
 from wcam.pairing.errors import PairingTokenExpiredError, PairingTokenInvalidError, PairingWindowClosedError
 from wcam.pairing.tokens import PairingTicket, PairingWindow
 from wcam.sessions.comparisons import ComparisonNotFoundError, ComparisonStore
+from wcam.sessions.controls import Controls, ControlsChange, after_session, changed_controls
 from wcam.sessions.errors import (
     InvalidOfferError,
     NoActiveSessionError,
@@ -33,12 +34,17 @@ from wcam.sessions.errors import (
     UnavailableVideoFormatError,
 )
 from wcam.sessions.phone_messages import (
+    AnyPhoneMessage,
     CameraCapabilitiesMessage,
+    ConfirmCodeMessage,
+    RejectCodeMessage,
     ScreenshotBeginMessage,
     ScreenshotChunkMessage,
+    SetControlsMessage,
     SetVideoFormatMessage,
     SnapshotBeginMessage,
     SnapshotChunkMessage,
+    StatsMessage,
     parse_phone_message,
 )
 
@@ -46,12 +52,14 @@ CONFIRMATION_TIMEOUT_SECONDS = 120.0
 ID_BYTES = 16
 COUNTED_FAILURES = (PairingTokenInvalidError, PairingTokenExpiredError, PairingWindowClosedError)
 IGNORED_PHONE_MESSAGE = "Ignored a phone message outside the contract"
-FORMAT_BEFORE_LIVE = "Ignored a video format change from a phone that is not live yet"
+MESSAGE_BEFORE_LIVE = "Ignored a phone message sent before both sides confirmed the code"
+CONFIRMATION_AFTER_LIVE = "Ignored a code confirmation from a phone that is already live"
 UNAVAILABLE_FORMAT_FROM_PHONE = "Ignored a video format the phone camera does not offer"
 PHONE_IMAGE_WITHOUT_DEV_TOOLS = "Ignored a phone image because development tools are off"
 
 type PhoneImageMessage = SnapshotBeginMessage | SnapshotChunkMessage | ScreenshotBeginMessage | ScreenshotChunkMessage
 PHONE_IMAGE_MESSAGES = (SnapshotBeginMessage, SnapshotChunkMessage, ScreenshotBeginMessage, ScreenshotChunkMessage)
+CONFIRMATION_MESSAGES = (ConfirmCodeMessage, RejectCodeMessage)
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +92,12 @@ class MediaPeer(Protocol):
     @property
     def video(self) -> VideoStats | None: ...
 
+    @property
+    def rtp_packets_before_live(self) -> int: ...
+
     def open_gate(self) -> None: ...
+
+    async def receive_stats(self) -> ReceiveStats | None: ...
 
     def limit_bitrate(self, max_bitrate_bps: int) -> None: ...
 
@@ -107,7 +120,12 @@ class FormatCamera(Protocol):
     def request(self, video_format: VideoFormat) -> None: ...
 
 
+class OutputControls(Protocol):
+    def apply_controls(self, frozen: bool, camera_off: bool, mirror: bool) -> None: ...
+
+
 type PeerFactory = Callable[[str, PeerEvents], Awaitable[MediaPeer]]
+type EventListener = Callable[[str, Mapping[str, object]], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +145,12 @@ class SessionOffer:
 
 
 @dataclass(frozen=True, slots=True)
+class Confirmations:
+    pc: bool
+    phone: bool
+
+
+@dataclass(frozen=True, slots=True)
 class SessionView:
     id: str
     state: SessionState
@@ -134,6 +158,9 @@ class SessionView:
     remote_ip: str
     started_at: datetime
     confirmation_code: str | None
+    confirmations: Confirmations
+    rtp_packets_before_live: int
+    live_since: datetime | None
     video: VideoStats | None
     camera_capabilities: CameraCapabilitiesMessage | None
 
@@ -142,6 +169,7 @@ class SessionView:
 class LastEnded:
     reason: EndReason
     at: datetime
+    rtp_packets_before_live: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,6 +186,7 @@ class Status:
     session: SessionView | None
     last_ended: LastEnded | None
     video_format: VideoFormatState
+    controls: Controls
 
 
 @dataclass(slots=True)
@@ -168,6 +197,8 @@ class Session:
     confirmation_code: str
     peer: MediaPeer
     state: SessionState = SessionState.CONNECTING
+    confirmations: Confirmations = Confirmations(pc=False, phone=False)
+    live_since: datetime | None = None
     camera_capabilities: CameraCapabilitiesMessage | None = None
 
 
@@ -179,10 +210,12 @@ class SessionManager:
         confirmation_timeout: float = CONFIRMATION_TIMEOUT_SECONDS,
         comparisons: ComparisonStore | None = None,
         camera: FormatCamera | None = None,
+        output: OutputControls | None = None,
     ) -> None:
         self._peer_factory = peer_factory
         self._comparisons = comparisons
         self._camera = camera
+        self._output = output
         self._clock = clock
         self._confirmation_timeout = confirmation_timeout
         self._pairing = PairingWindow(clock)
@@ -194,18 +227,62 @@ class SessionManager:
         self._available_formats = available_formats(None)
         self._confirmation_timer: asyncio.Task[None] | None = None
         self._background: set[asyncio.Task[None]] = set()
+        self._change_listeners: list[Callable[[], None]] = []
+        self._controls = Controls()
+        self._event_listeners: list[EventListener] = []
+        self._stats_wanted = False
+        self._phone_stats: dict[str, object] | None = None
         if camera is not None:
             camera.on_change(self._send_video_format)
 
+    def on_change(self, listener: Callable[[], None]) -> None:
+        self._change_listeners.append(listener)
+
+    @property
+    def phone_stats(self) -> dict[str, object] | None:
+        return self._phone_stats
+
+    def on_event(self, listener: EventListener) -> None:
+        self._event_listeners.append(listener)
+
+    def want_phone_stats(self, wanted: bool) -> None:
+        if wanted == self._stats_wanted:
+            return
+        self._stats_wanted = wanted
+        session = self._session
+        if session is not None and session.state is SessionState.LIVE:
+            session.peer.send(stats_request_message(wanted))
+
+    async def receive_stats(self) -> ReceiveStats | None:
+        session = self._session
+        if session is None or session.state is not SessionState.LIVE:
+            return None
+        return await session.peer.receive_stats()
+
     def open_pairing(self) -> PairingTicket:
         self._ensure_idle()
-        return self._pairing.open()
+        ticket = self._pairing.open()
+        self._notify_change()
+        return ticket
 
     def close_pairing(self) -> None:
         self._pairing.close()
+        self._notify_change()
 
     def status(self) -> Status:
-        return Status(self._pairing.expires_at, self._view(), self._last_ended, self._video_format_state())
+        return Status(
+            self._pairing.expires_at,
+            self._view(),
+            self._last_ended,
+            self._video_format_state(),
+            self._controls,
+        )
+
+    def change_controls(self, change: ControlsChange) -> None:
+        session = self._session
+        if change.needs_live_session and (session is None or session.state is not SessionState.LIVE):
+            raise NoLiveSessionError
+        self._set_controls(changed_controls(self._controls, change))
 
     def set_video_format(self, video_format: VideoFormat) -> None:
         if video_format not in self._available_formats:
@@ -239,10 +316,7 @@ class SessionManager:
 
     def confirm(self) -> None:
         session = self._awaiting_session()
-        self._cancel_confirmation_timer()
-        session.state = SessionState.LIVE
-        session.peer.open_gate()
-        session.peer.send(state_message(SessionState.LIVE))
+        self._record_confirmation(session, replace(session.confirmations, pc=True))
 
     async def reject(self) -> None:
         await self._end(self._awaiting_session(), EndReason.REJECTED)
@@ -289,6 +363,8 @@ class SessionManager:
         session = Session(secrets.token_hex(ID_BYTES), request, self._clock(), code, peer)
         sessions.append(session)
         self._session = session
+        self._record_state(SessionState.CONNECTING)
+        self._notify_change()
         return SessionOffer(session.id, peer.answer_sdp, nonce)
 
     def _handle_connected(self, sessions: list[Session]) -> None:
@@ -297,8 +373,10 @@ class SessionManager:
             return
         session.state = SessionState.AWAITING_CONFIRMATION
         session.peer.send(state_message(SessionState.AWAITING_CONFIRMATION))
-        self._send_video_format()
+        session.peer.send(confirmation_message(session.confirmations))
         self._confirmation_timer = asyncio.get_running_loop().create_task(self._expire_confirmation(session))
+        self._record_state(SessionState.AWAITING_CONFIRMATION)
+        self._notify_change()
 
     def _handle_lost(self, sessions: list[Session], reason: EndReason) -> None:
         session = self._current(sessions)
@@ -310,28 +388,93 @@ class SessionManager:
         if session is None:
             return
         message = parse_phone_message(data)
-        if isinstance(message, CameraCapabilitiesMessage):
+        if session.state is not SessionState.LIVE:
+            self._handle_message_before_live(session, message)
+        elif isinstance(message, CONFIRMATION_MESSAGES):
+            logger.warning(CONFIRMATION_AFTER_LIVE)
+        elif isinstance(message, CameraCapabilitiesMessage):
             self._receive_capabilities(session, message)
         elif isinstance(message, PHONE_IMAGE_MESSAGES):
             self._receive_phone_image(message)
         elif isinstance(message, SetVideoFormatMessage):
-            self._apply_phone_format(session, message.format)
+            self._apply_phone_format(message.format)
+        elif isinstance(message, SetControlsMessage):
+            self._receive_phone_controls(session, message)
+        elif isinstance(message, StatsMessage):
+            self._phone_stats = message.without_type()
         else:
             logger.warning(IGNORED_PHONE_MESSAGE)
+
+    def _handle_message_before_live(self, session: Session, message: AnyPhoneMessage | None) -> None:
+        if isinstance(message, ConfirmCodeMessage) and session.state is SessionState.AWAITING_CONFIRMATION:
+            self._record_confirmation(session, replace(session.confirmations, phone=True))
+        elif isinstance(message, RejectCodeMessage):
+            self._run_in_background(self._end(session, EndReason.REJECTED))
+        else:
+            logger.warning(MESSAGE_BEFORE_LIVE)
+
+    def _record_confirmation(self, session: Session, confirmations: Confirmations) -> None:
+        if confirmations == session.confirmations:
+            return
+        session.confirmations = confirmations
+        if confirmations.pc and confirmations.phone:
+            self._go_live(session)
+        else:
+            session.peer.send(confirmation_message(confirmations))
+        self._notify_change()
+
+    def _go_live(self, session: Session) -> None:
+        self._cancel_confirmation_timer()
+        session.state = SessionState.LIVE
+        session.live_since = self._clock()
+        session.peer.open_gate()
+        session.peer.send(state_message(SessionState.LIVE))
+        session.peer.send(controls_message(self._controls))
+        self._send_video_format()
+        if self._stats_wanted:
+            session.peer.send(stats_request_message(True))
+        self._record_state(SessionState.LIVE)
 
     def _receive_capabilities(self, session: Session, message: CameraCapabilitiesMessage) -> None:
         session.camera_capabilities = message
         session.peer.set_color_correction(color_correction(message.camera_color_space(), session.request.display))
         self._available_formats = available_formats(CameraLimits(message.width, message.height, message.frame_rate))
+        self._record_event(
+            "camera_capabilities",
+            {
+                "facingMode": message.facing_mode,
+                "width": message.width,
+                "height": message.height,
+                "frameRate": message.frame_rate,
+            },
+        )
+        if message.facing_mode is not None:
+            self._set_controls(replace(self._controls, facing=message.facing_mode))
         following = format_after_capabilities(self._selected_format, self._available_formats)
         if following is not self._selected_format:
             self._select_format(following)
         self._send_video_format()
+        self._notify_change()
 
-    def _apply_phone_format(self, session: Session, video_format: VideoFormat) -> None:
-        if session.state is not SessionState.LIVE:
-            logger.warning(FORMAT_BEFORE_LIVE)
+    def _receive_phone_controls(self, session: Session, message: SetControlsMessage) -> None:
+        before = self._controls
+        self._set_controls(changed_controls(before, message.to_change()))
+        if self._controls == before:
+            session.peer.send(controls_message(self._controls))
+
+    def _set_controls(self, controls: Controls) -> None:
+        if controls == self._controls:
             return
+        self._record_event("controls", changed_fields(self._controls, controls))
+        self._controls = controls
+        if self._output is not None:
+            self._output.apply_controls(controls.frozen, controls.camera_off, controls.mirror)
+        session = self._session
+        if session is not None and session.state is SessionState.LIVE:
+            session.peer.send(controls_message(controls))
+        self._notify_change()
+
+    def _apply_phone_format(self, video_format: VideoFormat) -> None:
         if video_format not in self._available_formats:
             logger.warning(UNAVAILABLE_FORMAT_FROM_PHONE)
             self._send_video_format()
@@ -340,6 +483,8 @@ class SessionManager:
 
     def _select_format(self, video_format: VideoFormat) -> None:
         self._selected_format = video_format
+        self._record_event("video_format", {"format": video_format})
+        self._notify_change()
         if self._camera is None:
             self._send_video_format()
             return
@@ -355,7 +500,8 @@ class SessionManager:
             return
         phone_format = self._phone_format()
         session.peer.limit_bitrate(phone_format.size.max_bitrate_bps)
-        session.peer.send(video_format_message(phone_format, self._available_formats))
+        if session.state is SessionState.LIVE:
+            session.peer.send(video_format_message(phone_format, self._available_formats))
 
     def _video_format_state(self) -> VideoFormatState:
         pending = self._camera is not None and self._camera.pending
@@ -388,7 +534,11 @@ class SessionManager:
             return
         self._session = None
         self._cancel_confirmation_timer()
-        self._last_ended = LastEnded(reason, self._clock())
+        self._last_ended = LastEnded(reason, self._clock(), session.peer.rtp_packets_before_live)
+        self._set_controls(after_session(self._controls))
+        self._phone_stats = None
+        self._record_event("session_state", {"state": "ended", "reason": reason})
+        self._notify_change()
         if self._comparisons is not None:
             self._comparisons.end_session()
         session.peer.send({"type": "session_state", "state": "ended", "reason": reason})
@@ -405,6 +555,17 @@ class SessionManager:
         self._confirmation_timer = None
         if timer is not None and timer is not asyncio.current_task():
             timer.cancel()
+
+    def _record_state(self, state: SessionState) -> None:
+        self._record_event("session_state", {"state": state, "reason": None})
+
+    def _record_event(self, kind: str, data: Mapping[str, object]) -> None:
+        for listener in self._event_listeners:
+            listener(kind, data)
+
+    def _notify_change(self) -> None:
+        for listener in self._change_listeners:
+            listener()
 
     def _run_in_background(self, work: Coroutine[Any, Any, None]) -> None:
         task = asyncio.get_running_loop().create_task(work)
@@ -423,6 +584,9 @@ class SessionManager:
             session.request.remote_ip,
             session.started_at,
             code,
+            session.confirmations,
+            session.peer.rtp_packets_before_live,
+            session.live_since,
             session.peer.video,
             session.camera_capabilities,
         )
@@ -430,6 +594,29 @@ class SessionManager:
 
 def state_message(state: SessionState) -> dict[str, str]:
     return {"type": "session_state", "state": state}
+
+
+def confirmation_message(confirmations: Confirmations) -> dict[str, object]:
+    return {"type": "confirmation", "pc": confirmations.pc, "phone": confirmations.phone}
+
+
+def controls_message(controls: Controls) -> dict[str, object]:
+    return {
+        "type": "controls",
+        "frozen": controls.frozen,
+        "cameraOff": controls.camera_off,
+        "mirror": controls.mirror,
+        "facing": controls.facing,
+    }
+
+
+def stats_request_message(enabled: bool) -> dict[str, object]:
+    return {"type": "stats_request", "enabled": enabled}
+
+
+def changed_fields(before: Controls, after: Controls) -> dict[str, object]:
+    previous = controls_message(before)
+    return {name: value for name, value in controls_message(after).items() if previous[name] != value}
 
 
 def snapshot_request_message(comparison_id: str) -> dict[str, str]:

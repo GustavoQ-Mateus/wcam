@@ -93,7 +93,14 @@ class NativeCameraLibrary:
         result: int = self._format_get(ctypes.byref(state))
         if result < FIRST_FAILURE_HRESULT:
             return None
-        return AnnouncedFormat(state.width, state.height, state.fps, bool(state.pending), bool(state.running))
+        return AnnouncedFormat(
+            state.width,
+            state.height,
+            state.fps,
+            bool(state.pending),
+            bool(state.running),
+            state.streaming_apps,
+        )
 
 
 class IncompleteCameraLibrary:

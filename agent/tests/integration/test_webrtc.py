@@ -15,7 +15,14 @@ from typing import Any
 import httpx
 import numpy as np
 import pytest
-from aiortc import RTCConfiguration, RTCDataChannel, RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
+from aiortc import (
+    RTCConfiguration,
+    RTCDataChannel,
+    RTCPeerConnection,
+    RTCRtpSender,
+    RTCSessionDescription,
+    VideoStreamTrack,
+)
 from aiortc.codecs import depayload, get_decoder, get_encoder
 from aiortc.rate import RemoteBitrateEstimator
 from aiortc.rtcrtpparameters import RTCRtpCodecParameters
@@ -37,6 +44,7 @@ from wcam.media.peer import (
     video_jitter_buffer,
 )
 from wcam.media.pipeline import FramePipeline, FrameSource
+from wcam.media.placeholder import black_i420
 from wcam.media.sdp_filter import candidate_addresses, sha256_fingerprint
 from wcam.media.video_format import VideoFormat
 from wcam.network.certificates import load_or_create_certificate
@@ -65,6 +73,11 @@ VP8 = RTCRtpCodecParameters(mimeType="video/VP8", clockRate=90000, payloadType=V
 VIDEO_TIME_BASE = Fraction(1, 90000)
 NEXT_FRAME_TIMESTAMP_STEP = 3000
 UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
+SILENCE_BEFORE_CONFIRMATION_SECONDS = 0.5
+CONTROL_DEADLINE_SECONDS = 0.3
+SHORT_CONFIRMATION_TIMEOUT_SECONDS = 1.0
+CONFIRM_CODE: dict[str, object] = {"type": "confirm_code"}
+REJECT_CODE: dict[str, object] = {"type": "reject_code"}
 PHONE_CAPABILITIES: dict[str, object] = {
     "type": "camera_capabilities",
     "width": 3840,
@@ -115,7 +128,11 @@ class RecordingPeerFactory:
 class PhoneClient:
     connection: RTCPeerConnection
     channel: RTCDataChannel
+    sender: RTCRtpSender
     messages: defaultdict[str, asyncio.Queue[dict[str, object]]]
+
+    def start_camera(self, track: VideoStreamTrack | None = None) -> None:
+        self.sender.replaceTrack(track or SyntheticVideo())
 
     async def offer(self) -> str:
         await self.connection.setLocalDescription(await self.connection.createOffer())
@@ -136,8 +153,10 @@ class FlowResult:
     token: str
     answer_sdp: str
     codes_match: bool
+    confirmations: list[object]
     received_before_confirmation: int
-    released_before_confirmation: int
+    rtp_packets_at_live: int
+    rtp_packets_after_end: int
     video_before_confirmation: object
     states: list[object]
     video_after_confirmation: dict[str, Any]
@@ -179,8 +198,34 @@ def phone_client_peer(track: VideoStreamTrack | None = None) -> PhoneClient:
         messages[message["type"]].put_nowait(message)
 
     channel.on("message", receive)
-    connection.addTrack(track or SyntheticVideo())
-    return PhoneClient(connection, channel, messages)
+    sender = connection.addTransceiver("video", direction="sendonly").sender
+    if track is not None:
+        sender.replaceTrack(track)
+    return PhoneClient(connection, channel, sender, messages)
+
+
+async def paired_phone(console: httpx.AsyncClient, phone: httpx.AsyncClient, client: PhoneClient) -> dict[str, Any]:
+    token = (await console.post("/api/pairing")).json()["url"].split("#t=")[1]
+    created: dict[str, Any] = (
+        await phone.post("/api/sessions", json={"token": token, "sdp": await client.offer()})
+    ).json()
+    created["token"] = token
+    await client.connection.setRemoteDescription(RTCSessionDescription(created["sdp"], "answer"))
+    assert (await client.next_state())["state"] == "awaiting_confirmation"
+    return created
+
+
+async def confirm_on_both_sides(console: httpx.AsyncClient, client: PhoneClient, *, phone_first: bool) -> list[object]:
+    confirmations: list[object] = [await client.next_message("confirmation")]
+    if phone_first:
+        client.send(CONFIRM_CODE)
+        confirmations.append(await client.next_message("confirmation"))
+        await console.post("/api/sessions/current/confirm")
+    else:
+        await console.post("/api/sessions/current/confirm")
+        confirmations.append(await client.next_message("confirmation"))
+        client.send(CONFIRM_CODE)
+    return confirmations
 
 
 async def wait_until(condition: Callable[[], bool]) -> None:
@@ -200,27 +245,28 @@ async def run_pairing_flow(
     phone: httpx.AsyncClient,
     factory: RecordingPeerFactory,
     pipeline: FramePipeline,
+    *,
+    phone_first: bool = False,
 ) -> FlowResult:
     client = phone_client_peer()
     try:
-        token = (await console.post("/api/pairing")).json()["url"].split("#t=")[1]
-        offer_sdp = await client.offer()
-        created = (await phone.post("/api/sessions", json={"token": token, "sdp": offer_sdp})).json()
-        await client.connection.setRemoteDescription(RTCSessionDescription(created["sdp"], "answer"))
-        states = [(await client.next_state())["state"]]
+        created = await paired_phone(console, phone, client)
+        states: list[object] = ["awaiting_confirmation"]
         status = await current_status(console)
         own_code = confirmation_code(
             created["confirmationNonce"],
-            sha256_fingerprint(offer_sdp) or "",
+            sha256_fingerprint(client.connection.localDescription.sdp) or "",
             sha256_fingerprint(created["sdp"]) or "",
         )
+        await asyncio.sleep(SILENCE_BEFORE_CONFIRMATION_SECONDS)
         gate = factory.peers[0].gate
-        await wait_until(lambda: gate.received > 0)
-        received, released = gate.received, gate.released
+        received = gate.received
         video_before = (await current_status(console))["session"]["video"]
         source_before = pipeline.source
-        await console.post("/api/sessions/current/confirm")
+        confirmations = await confirm_on_both_sides(console, client, phone_first=phone_first)
         states.append((await client.next_state())["state"])
+        rtp_packets_at_live = (await current_status(console))["session"]["rtpPacketsBeforeLive"]
+        client.start_camera()
         video = await wait_for_video(console)
         await wait_until(lambda: pipeline.source is FrameSource.PHONE)
         sink = pipeline.sink
@@ -230,12 +276,15 @@ async def run_pairing_flow(
         await wait_until(lambda: pipeline.source is FrameSource.PLACEHOLDER)
         seconds_to_placeholder = time.monotonic() - disconnected_at
         states.append((await client.next_state())["state"])
+        last_ended = (await current_status(console))["lastEnded"]
         return FlowResult(
-            token,
+            created["token"],
             created["sdp"],
             own_code == status["session"]["confirmationCode"],
+            confirmations,
             received,
-            released,
+            rtp_packets_at_live,
+            last_ended["rtpPacketsBeforeLive"],
             video_before,
             states,
             video,
@@ -256,7 +305,7 @@ async def wait_for_video(console: httpx.AsyncClient) -> dict[str, Any]:
     return video
 
 
-async def test_aiortc_phone_goes_live_only_after_confirmation(
+async def test_aiortc_phone_goes_live_after_pc_then_phone_confirm_without_video_before(
     settings: Settings,
     lan: LanInterface,
     pipeline: FramePipeline,
@@ -271,8 +320,11 @@ async def test_aiortc_phone_goes_live_only_after_confirmation(
         result = await run_pairing_flow(console, phone, factory, pipeline)
 
     assert result.codes_match
-    assert result.received_before_confirmation > 0
-    assert result.released_before_confirmation == 0
+    assert result.confirmations == [
+        {"type": "confirmation", "pc": False, "phone": False},
+        {"type": "confirmation", "pc": True, "phone": False},
+    ]
+    assert (result.received_before_confirmation, result.rtp_packets_at_live, result.rtp_packets_after_end) == (0, 0, 0)
     assert result.video_before_confirmation is None
     assert result.states == ["awaiting_confirmation", "live", "ended"]
     assert (result.video_after_confirmation["width"], result.video_after_confirmation["height"]) == (WIDTH, HEIGHT)
@@ -289,6 +341,181 @@ async def test_aiortc_phone_goes_live_only_after_confirmation(
     assert result.seconds_to_placeholder < PLACEHOLDER_DEADLINE_SECONDS
 
 
+async def test_aiortc_phone_goes_live_after_phone_then_pc_confirm_without_video_before(
+    settings: Settings,
+    lan: LanInterface,
+    pipeline: FramePipeline,
+) -> None:
+    factory = RecordingPeerFactory(lan, pipeline)
+    manager = SessionManager(factory)
+
+    async with (
+        console_client(console_app(settings, manager, pipeline)) as console,
+        phone_client(phone_app(settings, manager)) as phone,
+    ):
+        result = await run_pairing_flow(console, phone, factory, pipeline, phone_first=True)
+
+    assert result.confirmations == [
+        {"type": "confirmation", "pc": False, "phone": False},
+        {"type": "confirmation", "pc": False, "phone": True},
+    ]
+    assert result.states == ["awaiting_confirmation", "live", "ended"]
+    assert (result.received_before_confirmation, result.rtp_packets_at_live, result.rtp_packets_after_end) == (0, 0, 0)
+    assert result.live_frame_shape == I420_SHAPE
+
+
+async def test_session_confirmed_only_on_the_pc_times_out_without_video(
+    settings: Settings,
+    lan: LanInterface,
+    pipeline: FramePipeline,
+) -> None:
+    manager = SessionManager(
+        RecordingPeerFactory(lan, pipeline), confirmation_timeout=SHORT_CONFIRMATION_TIMEOUT_SECONDS
+    )
+    client = phone_client_peer()
+
+    async with (
+        console_client(console_app(settings, manager, pipeline)) as console,
+        phone_client(phone_app(settings, manager)) as phone,
+    ):
+        await paired_phone(console, phone, client)
+        await console.post("/api/sessions/current/confirm")
+        await client.next_message("confirmation")
+        waiting = (await current_status(console))["session"]
+        ended = await client.next_state()
+        status = await current_status(console)
+    await client.connection.close()
+
+    assert waiting["confirmations"] == {"pc": True, "phone": False}
+    assert waiting["rtpPacketsBeforeLive"] == 0
+    assert ended == {"type": "session_state", "state": "ended", "reason": "confirmation_timeout"}
+    assert status["session"] is None
+    assert status["lastEnded"]["rtpPacketsBeforeLive"] == 0
+    assert pipeline.source is FrameSource.PLACEHOLDER
+
+
+async def test_reject_code_from_the_phone_ends_as_rejected_without_video(
+    settings: Settings,
+    lan: LanInterface,
+    pipeline: FramePipeline,
+) -> None:
+    manager = SessionManager(RecordingPeerFactory(lan, pipeline))
+    client = phone_client_peer()
+
+    async with (
+        console_client(console_app(settings, manager, pipeline)) as console,
+        phone_client(phone_app(settings, manager)) as phone,
+    ):
+        await paired_phone(console, phone, client)
+        client.send(REJECT_CODE)
+        ended = await client.next_state()
+        status = await current_status(console)
+    await client.connection.close()
+
+    assert ended == {"type": "session_state", "state": "ended", "reason": "rejected"}
+    assert status["lastEnded"]["reason"] == "rejected"
+    assert status["lastEnded"]["rtpPacketsBeforeLive"] == 0
+
+
+async def test_control_messages_before_live_are_ignored(
+    settings: Settings,
+    lan: LanInterface,
+    pipeline: FramePipeline,
+) -> None:
+    manager = SessionManager(RecordingPeerFactory(lan, pipeline))
+    client = phone_client_peer()
+
+    async with (
+        console_client(console_app(settings, manager, pipeline)) as console,
+        phone_client(phone_app(settings, manager)) as phone,
+    ):
+        await paired_phone(console, phone, client)
+        client.send(PHONE_CAPABILITIES)
+        client.send({"type": "set_video_format", "format": "720p30"})
+        await confirm_on_both_sides(console, client, phone_first=False)
+        await client.next_state()
+        first_format = await client.next_message("video_format")
+        status = await current_status(console)
+        await console.delete("/api/sessions/current")
+    await client.connection.close()
+
+    assert client.messages["video_format"].empty()
+    assert first_format["available"] == ["1080p30"]
+    assert status["session"]["cameraCapabilities"] is None
+    assert status["videoFormat"]["selected"] == "1080p30"
+
+
+async def test_phone_sending_video_before_live_is_counted_and_never_reaches_the_camera(
+    settings: Settings,
+    lan: LanInterface,
+    pipeline: FramePipeline,
+    sink: FakeSink,
+) -> None:
+    factory = RecordingPeerFactory(lan, pipeline)
+    manager = SessionManager(factory)
+    client = phone_client_peer(SyntheticVideo())
+
+    async with (
+        console_client(console_app(settings, manager, pipeline)) as console,
+        phone_client(phone_app(settings, manager)) as phone,
+    ):
+        await paired_phone(console, phone, client)
+        gate = factory.peers[0].gate
+        await wait_until(lambda: gate.received > 0)
+        counted = (await current_status(console))["session"]["rtpPacketsBeforeLive"]
+        await console.post("/api/sessions/current/confirm")
+        await client.next_message("confirmation")
+        released, source = gate.released, pipeline.source
+        last_frame = sink.last_frame
+        client.send(REJECT_CODE)
+        await client.next_state()
+        last_ended = (await current_status(console))["lastEnded"]
+    await client.connection.close()
+
+    assert counted > 0
+    assert last_ended["rtpPacketsBeforeLive"] >= counted
+    assert released == 0
+    assert source is FrameSource.PLACEHOLDER
+    assert last_frame is not None
+    assert last_frame.tobytes() == black_i420(WIDTH, HEIGHT).tobytes()
+
+
+async def test_controls_reach_the_phone_and_the_phone_controls_reach_the_status_quickly(
+    settings: Settings,
+    lan: LanInterface,
+    pipeline: FramePipeline,
+) -> None:
+    manager = SessionManager(RecordingPeerFactory(lan, pipeline), output=pipeline)
+    client = phone_client_peer()
+
+    async with (
+        console_client(console_app(settings, manager, pipeline)) as console,
+        phone_client(phone_app(settings, manager)) as phone,
+    ):
+        await paired_phone(console, phone, client)
+        await confirm_on_both_sides(console, client, phone_first=False)
+        await client.next_state()
+        at_live = await client.next_message("controls")
+        started = time.monotonic()
+        await console.patch("/api/controls", json={"frozen": True})
+        frozen = await client.next_message("controls")
+        seconds_to_phone = time.monotonic() - started
+        client.send({"type": "set_controls", "cameraOff": True})
+        camera_off = await client.next_message("controls")
+        await wait_until(lambda: pipeline.source is FrameSource.CAMERA_OFF)
+        status = await current_status(console)
+        await console.delete("/api/sessions/current")
+        after_end = await current_status(console)
+    await client.connection.close()
+
+    assert at_live == {"type": "controls", "frozen": False, "cameraOff": False, "mirror": False, "facing": None}
+    assert (frozen["frozen"], camera_off["frozen"], camera_off["cameraOff"]) == (True, False, True)
+    assert seconds_to_phone < CONTROL_DEADLINE_SECONDS
+    assert status["controls"]["cameraOff"]
+    assert status["virtualCamera"]["source"] == "camera_off"
+    assert after_end["controls"] == {"frozen": False, "cameraOff": False, "mirror": False, "facing": None}
+
+
 async def test_phone_messages_reach_status_and_formats_echo_on_the_channel(
     settings: Settings,
     lan: LanInterface,
@@ -301,15 +528,12 @@ async def test_phone_messages_reach_status_and_formats_echo_on_the_channel(
         console_client(console_app(settings, manager, pipeline)) as console,
         phone_client(phone_app(settings, manager)) as phone,
     ):
-        token = (await console.post("/api/pairing")).json()["url"].split("#t=")[1]
-        created = (await phone.post("/api/sessions", json={"token": token, "sdp": await client.offer()})).json()
-        await client.connection.setRemoteDescription(RTCSessionDescription(created["sdp"], "answer"))
+        await paired_phone(console, phone, client)
+        await confirm_on_both_sides(console, client, phone_first=False)
         await client.next_state()
         first_format = await client.next_message("video_format")
         client.send(PHONE_CAPABILITIES)
         offered = await client.next_message("video_format")
-        await console.post("/api/sessions/current/confirm")
-        await client.next_state()
         client.send({"type": "set_video_format", "format": "720p60"})
         phone_change = await client.next_message("video_format")
         await console.put("/api/video-format", json={"format": "2160p30"})

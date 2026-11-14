@@ -12,22 +12,25 @@ from aiortc.clock import current_ms
 from aiortc.mediastreams import MediaStreamError
 from aiortc.rate import AimdRateControl, BandwidthUsage, RemoteBitrateEstimator
 from aiortc.rtcrtpreceiver import RTCRtpReceiver
-from aiortc.stats import RTCTransportStats
+from aiortc.stats import RTCInboundRtpStreamStats, RTCTransportStats
 from av import VideoFrame
 
 from wcam.media.color_correction import ColorCorrection
 from wcam.media.episodes import EpisodeTracker, LinkSample, write_episode
 from wcam.media.frame_gate import FrameGate
 from wcam.media.h264_level import declare_h264_level_5_1
-from wcam.media.metrics import Orientation, VideoMeter, VideoStats
+from wcam.media.metrics import Orientation, ReceiveStats, VideoMeter, VideoStats
 from wcam.media.pipeline import FramePipeline
 from wcam.media.pipeline import FrameSource as OutputSource
 from wcam.media.recovering_jitter_buffer import STALLED_SECONDS, RecoveringJitterBuffer
+from wcam.media.rtp_counter import RtpPacketCounter, count_video_packets
 from wcam.media.sdp_filter import keep_candidates_in_network, video_codec
 from wcam.media.video_format import DEFAULT_VIDEO_FORMAT
 from wcam.sessions.manager import EndReason, MediaPeer, PeerEvents, PeerFactory
 
 CONTROL_CHANNEL = "control"
+MILLISECONDS_PER_SECOND = 1000
+VIDEO_CLOCK_RATE = 90_000
 CLOSE_FLUSH_SECONDS = 0.2
 EPISODE_SAMPLE_SECONDS = 0.1
 VIDEO_JITTER_BUFFER_PACKETS = 2048
@@ -101,11 +104,13 @@ class AiortcPeer:
         self._events = events
         self._channel: RTCDataChannel | None = None
         self._frame_task: asyncio.Task[None] | None = None
+        self._receiver: RTCRtpReceiver | None = None
         self._jitter_buffers: list[RecoveringJitterBuffer] = []
         self._episodes = EpisodeTracker(write_episode)
         self._episode_task: asyncio.Task[None] | None = None
         self._answer_sdp = ""
         self.gate = FrameGate()
+        self._rtp_counter = RtpPacketCounter()
         self._meter = VideoMeter()
 
     @property
@@ -115,6 +120,10 @@ class AiortcPeer:
     @property
     def answer_sdp(self) -> str:
         return self._answer_sdp
+
+    @property
+    def rtp_packets_before_live(self) -> int:
+        return self._rtp_counter.before_live
 
     @property
     def video(self) -> VideoStats | None:
@@ -137,6 +146,7 @@ class AiortcPeer:
         self._connection.on("connectionstatechange", self._handle_connection_state)
         offer = RTCSessionDescription(keep_candidates_in_network(offer_sdp, self._network), "offer")
         await self._connection.setRemoteDescription(offer)
+        count_video_packets(self._connection, self._rtp_counter)
         self._jitter_buffers = install_recovering_jitter_buffers(self._connection)
         cap_video_estimate(self._connection, DEFAULT_VIDEO_FORMAT.size.max_bitrate_bps)
         await self._connection.setLocalDescription(await self._connection.createAnswer())
@@ -144,9 +154,19 @@ class AiortcPeer:
         self._answer_sdp = keep_candidates_in_network(self._connection.localDescription.sdp, self._network)
 
     def open_gate(self) -> None:
+        self._rtp_counter.stop()
         self._pipeline.start_phone()
         self.gate.open()
         self._episode_task = asyncio.get_running_loop().create_task(self._watch_episodes())
+
+    async def receive_stats(self) -> ReceiveStats | None:
+        if self._receiver is None:
+            return None
+        report = cast(dict[str, object], await self._receiver.getStats())
+        for stats in report.values():
+            if isinstance(stats, RTCInboundRtpStreamStats):
+                return ReceiveStats(stats.packetsLost, stats.jitter * MILLISECONDS_PER_SECOND / VIDEO_CLOCK_RATE)
+        return None
 
     def limit_bitrate(self, max_bitrate_bps: int) -> None:
         cap_video_estimate(self._connection, max_bitrate_bps)
@@ -187,7 +207,7 @@ class AiortcPeer:
 
     def _link_sample(self) -> LinkSample | None:
         frame_age = self._pipeline.phone_frame_age()
-        if frame_age is None:
+        if frame_age is None or self._pipeline.camera_off:
             return None
         return LinkSample(
             at=asyncio.get_running_loop().time(),
@@ -210,6 +230,7 @@ class AiortcPeer:
         if track.kind != "video" or self._frame_task is not None:
             return
         receiver = next(receiver for receiver in self._connection.getReceivers() if receiver.track is track)
+        self._receiver = receiver
         self._frame_task = asyncio.get_running_loop().create_task(self._consume_frames(track, receiver))
 
     def _handle_connection_state(self) -> None:

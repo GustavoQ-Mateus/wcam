@@ -8,8 +8,10 @@ from wcam.media.metrics import VideoStats
 from wcam.media.pipeline import FramePipeline
 from wcam.media.quality import QualityReport
 from wcam.media.video_format import VideoFormat
+from wcam.sessions.controls import Controls, ControlsChange, Facing
 from wcam.sessions.manager import LastEnded, SessionOffer, SessionView, Status, VideoFormatState
 from wcam.sessions.phone_messages import CameraCapabilitiesMessage, CameraColorSpaceMessage, CameraModesMessage
+from wcam.virtualcam.sink import CameraState
 
 
 class CamelModel(BaseModel):
@@ -68,6 +70,11 @@ class CameraCapabilitiesBody(CamelModel):
     modes: CameraModesBody | None
 
 
+class ConfirmationsBody(CamelModel):
+    pc: bool
+    phone: bool
+
+
 class SessionBody(CamelModel):
     id: str
     state: str
@@ -75,6 +82,8 @@ class SessionBody(CamelModel):
     remote_ip: str
     started_at: str
     confirmation_code: str | None
+    confirmations: ConfirmationsBody
+    rtp_packets_before_live: int
     video: VideoBody | None
     camera_capabilities: CameraCapabilitiesBody | None
 
@@ -82,6 +91,7 @@ class SessionBody(CamelModel):
 class LastEndedBody(CamelModel):
     reason: str
     at: str
+    rtp_packets_before_live: int
 
 
 class OutputBody(CamelModel):
@@ -97,6 +107,7 @@ class VirtualCameraBody(CamelModel):
     fallback_reason: str | None
     output: OutputBody
     source: str
+    streaming_apps: int | None
 
 
 class VideoFormatBody(CamelModel):
@@ -116,6 +127,25 @@ class QualityBody(CamelModel):
     frames: int
 
 
+class ControlsBody(CamelModel):
+    frozen: bool
+    camera_off: bool
+    mirror: bool
+    facing: Facing | None
+
+
+class ControlsRequest(CamelModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=False, strict=True, extra="forbid")
+
+    frozen: bool | None = None
+    camera_off: bool | None = None
+    mirror: bool | None = None
+    facing: Facing | None = None
+
+    def to_change(self) -> ControlsChange:
+        return ControlsChange(self.frozen, self.camera_off, self.mirror, self.facing)
+
+
 class StatusResponse(CamelModel):
     pairing: PairingBody | None
     session: SessionBody | None
@@ -125,10 +155,19 @@ class StatusResponse(CamelModel):
     process: ProcessBody
     quality: QualityBody | None
     dev_tools: bool
+    controls: ControlsBody
 
 
 class VideoFormatRequest(CamelModel):
     format: VideoFormat
+
+
+class PreviewRequest(CamelModel):
+    sdp: str
+
+
+class PreviewResponse(CamelModel):
+    sdp: str
 
 
 class CreateSessionRequest(CamelModel):
@@ -158,6 +197,16 @@ def status_response(status: Status, pipeline: FramePipeline, cpu_percent: float,
         process=ProcessBody(cpu_percent=cpu_percent),
         quality=None if quality is None else quality_body(quality),
         dev_tools=dev_tools,
+        controls=controls_body(status.controls),
+    )
+
+
+def controls_body(controls: Controls) -> ControlsBody:
+    return ControlsBody(
+        frozen=controls.frozen,
+        camera_off=controls.camera_off,
+        mirror=controls.mirror,
+        facing=controls.facing,
     )
 
 
@@ -180,6 +229,7 @@ def virtual_camera_body(pipeline: FramePipeline, camera_format: VideoFormat) -> 
         fallback_reason=pipeline.fallback_reason,
         output=OutputBody(width=size.width, height=size.height, fps=size.fps),
         source=pipeline.source,
+        streaming_apps=pipeline.output.streaming_apps if sink_status.state is CameraState.ACTIVE else None,
     )
 
 
@@ -195,6 +245,8 @@ def session_body(session: SessionView) -> SessionBody:
         remote_ip=session.remote_ip,
         started_at=iso_utc(session.started_at),
         confirmation_code=session.confirmation_code,
+        confirmations=ConfirmationsBody(pc=session.confirmations.pc, phone=session.confirmations.phone),
+        rtp_packets_before_live=session.rtp_packets_before_live,
         video=None if session.video is None else video_body(session.video),
         camera_capabilities=camera_capabilities_body(session.camera_capabilities),
     )
@@ -253,7 +305,11 @@ def color_correction_body(correction: ColorCorrection | None) -> ColorCorrection
 
 
 def last_ended_body(last_ended: LastEnded) -> LastEndedBody:
-    return LastEndedBody(reason=last_ended.reason, at=iso_utc(last_ended.at))
+    return LastEndedBody(
+        reason=last_ended.reason,
+        at=iso_utc(last_ended.at),
+        rtp_packets_before_live=last_ended.rtp_packets_before_live,
+    )
 
 
 def create_session_response(offer: SessionOffer) -> CreateSessionResponse:

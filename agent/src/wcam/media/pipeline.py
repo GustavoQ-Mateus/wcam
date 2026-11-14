@@ -6,8 +6,10 @@ from enum import StrEnum
 
 import numpy as np
 from av import VideoFrame
+from av.video.plane import VideoPlane
 from av.video.reformatter import ColorRange as DeclaredRange
 
+from wcam.diagnostics.stage_times import Stage, StageTimes
 from wcam.media.color_correction import ColorCorrection, ColorTables, CorrectionState, correction_tables
 from wcam.media.color_range import (
     UNSPECIFIED_MATRIX,
@@ -15,7 +17,7 @@ from wcam.media.color_range import (
     declared_matrix,
     declared_range,
 )
-from wcam.media.placeholder import black_i420
+from wcam.media.placeholder import black_i420, camera_off_i420
 from wcam.media.quality import QualityMeter, QualityReport
 from wcam.media.video_format import DEFAULT_VIDEO_FORMAT
 from wcam.virtualcam.sink import AnnouncedFormat, CameraState, I420Frame, VirtualCameraSink, frame_size
@@ -34,11 +36,16 @@ DEFAULT_OUTPUT = AnnouncedFormat(
     running=False,
 )
 QUALITY_WORKER_NAME = "wcam-quality"
+MILLISECONDS_PER_SECOND = 1000
+ALL_COLUMNS = slice(None)
+MIRRORED_COLUMNS = slice(None, None, -1)
 
 
 class FrameSource(StrEnum):
     PHONE = "phone"
     FROZEN = "frozen"
+    HELD = "held"
+    CAMERA_OFF = "camera_off"
     PLACEHOLDER = "placeholder"
 
 
@@ -57,7 +64,7 @@ class FramePipeline:
         self._clock = clock
         self.output = DEFAULT_OUTPUT
         self._placeholder = black_i420(DEFAULT_OUTPUT.width, DEFAULT_OUTPUT.height)
-        self._pending: asyncio.Queue[VideoFrame] = asyncio.Queue(maxsize=1)
+        self._pending: asyncio.Queue[tuple[VideoFrame, float]] = asyncio.Queue(maxsize=1)
         self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=WORKER_NAME)
         self._quality_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=QUALITY_WORKER_NAME)
         self._measuring: Future[None] | None = None
@@ -70,6 +77,23 @@ class FramePipeline:
         self.frames_scaled = 0
         self.color_range = ColorRange.UNSPECIFIED
         self.color_matrix = UNSPECIFIED_MATRIX
+        self.frozen = False
+        self.camera_off = False
+        self.mirror = False
+        self._last_sent: I420Frame | None = None
+        self._camera_off_frame: I420Frame | None = None
+        self._source_listeners: list[Callable[[], None]] = []
+        self.stage_times = StageTimes()
+        self.frames_delivered = 0
+        self.frames_dropped = 0
+
+    @property
+    def last_sent(self) -> I420Frame | None:
+        return self._last_sent
+
+    @property
+    def placeholder(self) -> I420Frame:
+        return self._placeholder
 
     @property
     def quality_report(self) -> QualityReport | None:
@@ -92,6 +116,8 @@ class FramePipeline:
 
     def start_phone(self) -> None:
         self.frames_scaled = 0
+        self.frames_delivered = 0
+        self.frames_dropped = 0
         self.color_range = ColorRange.UNSPECIFIED
         self.color_matrix = UNSPECIFIED_MATRIX
         self._last_phone = None
@@ -107,6 +133,16 @@ class FramePipeline:
         self._last_phone = None
         self.color_correction = None
 
+    def on_source_change(self, listener: Callable[[], None]) -> None:
+        self._source_listeners.append(listener)
+
+    def apply_controls(self, frozen: bool, camera_off: bool, mirror: bool) -> None:
+        if self.camera_off and not camera_off and self._phone_active:
+            self._last_phone_at = self._clock()
+        self.frozen = frozen
+        self.camera_off = camera_off
+        self.mirror = mirror
+
     def color_tables(self) -> ColorTables | None:
         return correction_tables(self.color_correction, self.color_range)
 
@@ -118,37 +154,69 @@ class FramePipeline:
     def submit(self, frame: VideoFrame) -> None:
         if self._pending.full():
             self._pending.get_nowait()
-        self._pending.put_nowait(frame)
+            self.frames_dropped += 1
+        self._pending.put_nowait((frame, time.perf_counter()))
 
     async def run(self) -> None:
         loop = asyncio.get_running_loop()
         try:
             while True:
-                frame = await self._next_frame()
-                await loop.run_in_executor(self._worker, self.deliver, frame)
+                frame, submitted_at = await self._next_frame()
+                await loop.run_in_executor(self._worker, self.deliver, frame, submitted_at)
         finally:
             self._worker.shutdown(wait=True)
             self._quality_worker.shutdown(wait=True)
             self.sink.close()
 
-    def deliver(self, frame: VideoFrame | None) -> None:
+    def deliver(self, frame: VideoFrame | None, submitted_at: float | None = None) -> None:
         now = self._clock()
         placeholder = self._placeholder
         if frame is not None:
+            started = time.perf_counter()
             self._accept_phone_frame(frame, now, placeholder)
+            self.stage_times.record(Stage.COLOR, elapsed_since(started))
         elif self._last_phone_at is None or now - self._last_phone_at > FREEZE_SECONDS:
             self._last_phone = None
         output = self._last_phone if self._phone_active and fits(self._last_phone, placeholder) else None
-        self.source = self._source_of(output, now)
+        source, sent = self._chosen_frame(output, now, placeholder)
+        self._report_source(source)
+        self._last_sent = sent
         if self.sink.status.state is CameraState.ACTIVE:
-            self.sink.send(placeholder if output is None else output)
-        if output is not None and frame is not None:
-            self._measure(now, output)
+            sending = time.perf_counter()
+            self.sink.send(sent)
+            self.stage_times.record(Stage.DELIVER, elapsed_since(sending))
+        if output is None or sent is not output or frame is None:
+            return
+        self.frames_delivered += 1
+        if submitted_at is not None:
+            self.stage_times.record(Stage.TOTAL, elapsed_since(submitted_at))
+        self._measure(now, output)
 
     def _change_format(self, width: int, height: int, fps: int) -> bool:
         accepted = self.sink.request_format(width, height, fps)
         self.follow(self.sink.announced_format())
         return accepted
+
+    def _chosen_frame(
+        self, output: I420Frame | None, now: float, placeholder: I420Frame
+    ) -> tuple[FrameSource, I420Frame]:
+        if self.camera_off:
+            return FrameSource.CAMERA_OFF, self._camera_off_like(placeholder)
+        if self.frozen and self._last_sent is not None and fits(self._last_sent, placeholder):
+            return FrameSource.HELD, self._last_sent
+        return self._source_of(output, now), placeholder if output is None else output
+
+    def _report_source(self, source: FrameSource) -> None:
+        if source is self.source:
+            return
+        self.source = source
+        for listener in self._source_listeners:
+            listener()
+
+    def _camera_off_like(self, placeholder: I420Frame) -> I420Frame:
+        if self._camera_off_frame is None or not fits(self._camera_off_frame, placeholder):
+            self._camera_off_frame = camera_off_i420(*frame_size(placeholder))
+        return self._camera_off_frame
 
     def _source_of(self, output: I420Frame | None, now: float) -> FrameSource:
         if output is None:
@@ -175,11 +243,11 @@ class FramePipeline:
         tables = self.color_tables() if state is CorrectionState.APPLIED else None
         self._quality_worker.submit(quality.restart, now, None if tables is None else tables[0])
 
-    async def _next_frame(self) -> VideoFrame | None:
+    async def _next_frame(self) -> tuple[VideoFrame | None, float | None]:
         try:
             return await asyncio.wait_for(self._pending.get(), 1 / self.output.fps)
         except TimeoutError:
-            return None
+            return None, None
 
     def _accept_phone_frame(self, frame: VideoFrame, now: float, placeholder: I420Frame) -> None:
         self.color_range = declared_range(frame)
@@ -204,7 +272,7 @@ class FramePipeline:
         return canvas
 
     def _converted(self, frame: VideoFrame, width: int, height: int) -> I420Frame:
-        return i420_array(frame, width, height, self.color_range, self.color_tables())
+        return i420_array(frame, width, height, self.color_range, self.color_tables(), mirror=self.mirror)
 
 
 def i420_array(
@@ -213,10 +281,12 @@ def i420_array(
     height: int,
     color_range: ColorRange,
     tables: ColorTables | None = None,
+    *,
+    mirror: bool = False,
 ) -> I420Frame:
     source = reformatted(frame, width, height, color_range)
-    if tables is not None:
-        return translated_i420(source, tables)
+    if tables is not None or mirror:
+        return copied_i420(source, tables, mirror=mirror)
     array: I420Frame = np.ascontiguousarray(source.to_ndarray(), dtype=np.uint8)
     return array
 
@@ -235,17 +305,34 @@ def reformatted(frame: VideoFrame, width: int, height: int, color_range: ColorRa
     )
 
 
-def translated_i420(frame: VideoFrame, tables: ColorTables) -> I420Frame:
-    luma_table, chroma_table = tables
+def copied_i420(frame: VideoFrame, tables: ColorTables | None, *, mirror: bool) -> I420Frame:
     output = np.empty(frame.width * frame.height * 3 // 2, dtype=np.uint8)
+    columns = MIRRORED_COLUMNS if mirror else ALL_COLUMNS
     offset = 0
-    # bytes.translate reads a 256 entry table in C, about five times faster here than numpy.take.
-    for plane, table in zip(frame.planes, (luma_table, chroma_table, chroma_table), strict=True):
+    for plane, table in zip(frame.planes, plane_tables(tables), strict=True):
         size = plane.width * plane.height
-        rows = np.frombuffer(bytes(plane).translate(table), dtype=np.uint8).reshape(-1, plane.line_size)
-        output[offset : offset + size].reshape(plane.height, plane.width)[:] = rows[: plane.height, : plane.width]
+        rows = plane_rows(plane, table)[: plane.height, : plane.width]
+        output[offset : offset + size].reshape(plane.height, plane.width)[:] = rows[:, columns]
         offset += size
     return output.reshape(frame.height * 3 // 2, frame.width)
+
+
+def plane_tables(tables: ColorTables | None) -> tuple[bytes | None, bytes | None, bytes | None]:
+    if tables is None:
+        return None, None, None
+    luma_table, chroma_table = tables
+    return luma_table, chroma_table, chroma_table
+
+
+def plane_rows(plane: VideoPlane, table: bytes | None) -> I420Frame:
+    # bytes.translate reads a 256 entry table in C, about five times faster here than numpy.take.
+    data = memoryview(plane) if table is None else bytes(plane).translate(table)
+    rows: I420Frame = np.frombuffer(data, dtype=np.uint8).reshape(-1, plane.line_size)
+    return rows
+
+
+def elapsed_since(started: float) -> float:
+    return (time.perf_counter() - started) * MILLISECONDS_PER_SECOND
 
 
 def fits(frame: I420Frame | None, placeholder: I420Frame) -> bool:

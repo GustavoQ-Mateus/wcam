@@ -8,7 +8,7 @@ from av import VideoFrame
 from tests.conftest import console_app, console_client
 from tests.fakes import FakePeerFactory
 from tests.unit.test_pipeline import live_pipeline, random_i420
-from tests.unit.test_session_manager import connected_manager, session_request
+from tests.unit.test_session_manager import confirm_on_both_sides, connected_manager, session_request
 from wcam.config import Settings
 from wcam.media.color_correction import (
     HDR_LEFT_UNCORRECTED,
@@ -203,6 +203,7 @@ async def test_each_camera_capabilities_reapplies_the_correction() -> None:
     manager = SessionManager(factory)
     await manager.create_session(apple_request(manager))
     factory.last.events.on_connected()
+    confirm_on_both_sides(manager, factory)
     rear = {**IPHONE_CAPABILITIES, "facingMode": "environment"}
 
     for capabilities in (IPHONE_CAPABILITIES, rear):
@@ -237,6 +238,7 @@ def test_stopping_the_phone_drops_the_correction() -> None:
 async def test_status_reports_the_color_correction_and_the_declared_color_space(settings: Settings) -> None:
     factory = FakePeerFactory()
     manager = await connected_manager(factory)
+    confirm_on_both_sides(manager, factory)
     factory.last.events.on_message(json.dumps(IPHONE_CAPABILITIES))
     correction = color_correction(IPHONE_COLOR_SPACE, DisplayConvention.APPLE)
     factory.last.video = VideoStats(1920, 1080, 30.0, 9800, color_correction=correction)
