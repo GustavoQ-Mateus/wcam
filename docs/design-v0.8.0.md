@@ -60,7 +60,7 @@ Detector mecânico em `web/src/console`, `web/src/dev`, `web/src/cam` e `web/src
 | 1 | Acessibilidade | 3 | Gráficos têm `role="img"` e rótulo, mas não há tabela equivalente na página (só o CSV), e o tooltip só responde ao ponteiro, não ao teclado |
 | 2 | Desempenho | 4 | Só `transform` e `opacity` animam; a prévia fecha a conexão quando desligada |
 | 3 | Temas | 4 | Tudo em tokens; um tema escuro só, por decisão do planejamento |
-| 4 | Responsivo | 3 | Console e `/dev` empilham em tela estreita; `/dev` estreito não foi visto renderizado (a rota dava 404 no agente na hora da captura) |
+| 4 | Responsivo | 3 | Console e `/dev` empilham em tela estreita; `/dev` em 390 px não foi capturado |
 | 5 | Integridade | 4 | Nenhum padrão genérico; o caminho da imagem e as marcas de forma vêm do produto |
 | **Total** | | **18/20** | Excelente, com as duas lacunas acima |
 

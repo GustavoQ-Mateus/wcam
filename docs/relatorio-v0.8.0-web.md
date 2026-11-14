@@ -44,7 +44,9 @@ Desvios aceitos pelo orquestrador (registrados na spec, "Decisões registradas")
 - Gráficos em SVG próprio, sem biblioteca: quadros por segundo, orçamento do quadro (empilhado, com a linha do orçamento), taxa recebida (com o teto do formato) e rede (ida e volta, jitter, marcas de perda). Eventos viram marcas verticais. Hover com linha e tooltip.
 - Janela de 30, 60 ou 120 s, Pausar gráficos (congela o que é mostrado; a coleta continua) e Exportar CSV.
 - Celular: `stats` a cada 1 s enquanto `stats_request` estiver ligado, montado em `data/phone-stats.ts` (Vitest). Campo ausente vai `null`, bloco ausente vai `null`.
-- e2e `dev.spec.ts`: pendente do agente servir `/dev` no console (pedido feito à sessão agent).
+- e2e `dev.spec.ts`: a página abre ao vivo, mostra números com estado, pausa os gráficos e exporta CSV com cabeçalho e linhas.
+- O agente manda cada etapa de `stages` como `null` enquanto ela não tem amostra na janela (por exemplo `decode` antes do primeiro quadro). O contrato só prevê `stages` inteiro `null`. A primeira versão quebrava o render nesse caso; corrigido no commit 497df69, com teste.
+- Com menos amostras que a janela, as séries ficam à direita, no tempo real da janela, e as marcas de evento e de perda usam o mesmo tempo (497df69). Antes, 7 s de dados se espalhavam pela largura dos 60 s.
 
 ## 5. Textos (`locales/`)
 
@@ -65,9 +67,17 @@ Nenhum termo proibido da spec §6 em valores fora de `dev.*` (checagem local; o 
 | 3 CA-3 | Estados vistos em capturas do Chromium; a validação visual é do usuário |
 | 4 Controles | Console e celular abaixo de 300 ms no e2e; o indicador de câmera do iPhone e a troca de câmera no Meet não foram verificados |
 | 5 Prévia | Mostra a imagem com 960 de largura e fecha ao desligar (e2e); a CPU é medida pela sessão agent (ADR 0015) |
-| 6 `/dev` | Página pronta; e2e pendente da rota no agente; dados reais do iPhone não verificados |
-| 9 CA-2 | SSIM 0,984 (mínimo 0,983, 39 quadros) com a prévia ligada e Espelhar desligado |
-| 10 Verificação | `npm run build`, `npm run lint`, `npm test` limpos; versão 0.8.0 em `web/package.json`; e2e completo no estado final: ver abaixo |
+| 6 `/dev` | Todos os painéis da §4.1 renderizados com a câmera falsa; Pausar e CSV no e2e; dados reais do iPhone não verificados |
+| 9 CA-2 | SSIM 0,9839 (mínimo 0,9831, 30 quadros, 1920 × 1080 a 29,7 fps) com a prévia ligada e Espelhar desligado, no estado final |
+| 10 Verificação | Ver "Verificação final"; o fluxo real no iPhone fica para a bateria com o usuário |
+
+## Verificação final
+
+Estado: `feature/console-web` em 720fe9b, com `origin/feature/console` até f749305 (já com o PR #28 do agente).
+
+- `npm run build` sem avisos, `npm run lint` limpo e `npm test` com 149 testes em 21 arquivos.
+- `npm run test:e2e` completo pelo compose (sem portas no host; e2e no namespace de rede do agente): **30 passaram, 0 falharam** (projetos `chromium` e `quality`). O teste do tempo limite da confirmação leva 2,0 min.
+- Na primeira rodada falharam dois: o `/dev` (etapa `null`, acima) e a leitura de `source` `held` logo depois de congelar, que agora espera o quadro seguinte (720fe9b).
 
 ## 7. Infra e incidentes
 
@@ -78,4 +88,4 @@ Nenhum termo proibido da spec §6 em valores fora de `dev.*` (checagem local; o 
 ## 8. Não verificado
 
 - Nada foi visto num celular real: confirmação no Safari, controles e indicador de câmera, `stats` com os campos do Safari, layout do `/cam` com a coluna nova.
-- `/dev` renderizado (a rota ainda dava 404 no agente na hora da captura).
+- Nenhum dado real do iPhone no `/dev` (campos do Safari em `stats`).
