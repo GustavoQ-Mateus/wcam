@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -17,6 +18,7 @@ from wcam.media.color_range import (
     declared_matrix,
     declared_range,
 )
+from wcam.media.episodes import FrameGap
 from wcam.media.placeholder import black_i420, camera_off_i420
 from wcam.media.quality import QualityMeter, QualityReport
 from wcam.media.video_format import DEFAULT_VIDEO_FORMAT
@@ -86,6 +88,8 @@ class FramePipeline:
         self.stage_times = StageTimes()
         self.frames_delivered = 0
         self.frames_dropped = 0
+        self._gap_lock = threading.Lock()
+        self._longest_gap: FrameGap | None = None
 
     @property
     def last_sent(self) -> I420Frame | None:
@@ -150,6 +154,11 @@ class FramePipeline:
         if not self._phone_active or self._last_phone_at is None:
             return None
         return self._clock() - self._last_phone_at
+
+    def take_longest_gap(self) -> FrameGap | None:
+        with self._gap_lock:
+            gap, self._longest_gap = self._longest_gap, None
+        return gap
 
     def submit(self, frame: VideoFrame) -> None:
         if self._pending.full():
@@ -261,7 +270,16 @@ class FramePipeline:
             self._last_phone = self._converted(frame, output_width, output_height)
         else:
             return
+        self._record_gap(now)
         self._last_phone_at = now
+
+    def _record_gap(self, now: float) -> None:
+        if self._last_phone_at is None:
+            return
+        gap = FrameGap(now - self._last_phone_at, now)
+        with self._gap_lock:
+            if self._longest_gap is None or gap.seconds > self._longest_gap.seconds:
+                self._longest_gap = gap
 
     def _pillarboxed(self, frame: VideoFrame, placeholder: I420Frame) -> I420Frame:
         _, output_height = frame_size(placeholder)

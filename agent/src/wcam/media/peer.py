@@ -216,6 +216,7 @@ class AiortcPeer:
             rtp_bytes=sum(buffer.received_bytes for buffer in self._jitter_buffers),
             keyframe_requests=sum(buffer.keyframe_requests for buffer in self._jitter_buffers),
             stalls=sum(buffer.stalls for buffer in self._jitter_buffers),
+            closed_gap=self._pipeline.take_longest_gap(),
         )
 
     def _handle_channel(self, channel: RTCDataChannel) -> None:
