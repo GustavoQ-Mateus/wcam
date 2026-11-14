@@ -66,6 +66,22 @@ async def test_phone_server_does_not_serve_console_page(settings: Settings) -> N
     assert response.json()["error"]["code"] == "not_found"
 
 
+async def test_console_server_serves_the_developer_page(settings: Settings) -> None:
+    async with console_client(console_app(settings)) as client:
+        page = await client.get("/dev")
+        root = await client.get("/")
+
+    assert page.status_code == 200
+    assert page.text == root.text
+
+
+async def test_phone_server_does_not_serve_the_developer_page(settings: Settings) -> None:
+    async with phone_client(phone_app(settings)) as client:
+        response = await client.get("/dev")
+
+    assert response.status_code == 404
+
+
 async def test_console_server_does_not_serve_phone_page(settings: Settings) -> None:
     async with console_client(console_app(settings)) as client:
         response = await client.get("/cam")

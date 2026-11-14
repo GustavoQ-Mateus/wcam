@@ -375,7 +375,7 @@ def test_native_library_reads_the_format_state_structure() -> None:
     }
     library = NativeCameraLibrary(cast(ctypes.CDLL, type("Dll", (), exports)()))
 
-    assert library.get_format() == AnnouncedFormat(1280, 720, 30, pending=True, running=True)
+    assert library.get_format() == AnnouncedFormat(1280, 720, 30, pending=True, running=True, streaming_apps=2)
 
 
 def test_refused_first_format_makes_the_camera_unavailable_with_error() -> None:

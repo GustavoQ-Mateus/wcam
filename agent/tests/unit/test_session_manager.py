@@ -1,4 +1,6 @@
 import asyncio
+import json
+import logging
 
 import pytest
 
@@ -13,7 +15,10 @@ from wcam.sessions.errors import (
     TooManyAttemptsError,
 )
 from wcam.sessions.manager import (
+    CONFIRMATION_AFTER_LIVE,
     CONFIRMATION_TIMEOUT_SECONDS,
+    MESSAGE_BEFORE_LIVE,
+    Confirmations,
     EndReason,
     SessionManager,
     SessionRequest,
@@ -22,6 +27,8 @@ from wcam.sessions.manager import (
 
 PHONE_IP = "192.168.0.23"
 SHORT_TIMEOUT = 0.01
+CONFIRM_CODE = json.dumps({"type": "confirm_code"})
+REJECT_CODE = json.dumps({"type": "reject_code"})
 
 
 def session_request(token: str, offer_sdp: str = OFFER_SDP) -> SessionRequest:
@@ -36,6 +43,11 @@ async def connected_manager(
     await manager.create_session(session_request(manager.open_pairing().token))
     factory.last.events.on_connected()
     return manager
+
+
+def confirm_on_both_sides(manager: SessionManager, factory: FakePeerFactory) -> None:
+    manager.confirm()
+    factory.last.events.on_message(CONFIRM_CODE)
 
 
 async def test_session_starts_connecting_without_code() -> None:
@@ -61,31 +73,142 @@ async def test_connected_session_awaits_confirmation_with_contract_code() -> Non
     assert session.confirmation_code == confirmation_code(
         offer.confirmation_nonce, PHONE_FINGERPRINT, AGENT_FINGERPRINT
     )
+    assert session.confirmations == Confirmations(pc=False, phone=False)
     assert factory.last.sent == [
         {"type": "session_state", "state": "awaiting_confirmation"},
-        {
-            "type": "video_format",
-            "format": "1080p30",
-            "width": 1920,
-            "height": 1080,
-            "fps": 30,
-            "maxBitrate": 10_000_000,
-            "available": ["1080p30"],
-        },
+        {"type": "confirmation", "pc": False, "phone": False},
     ]
 
 
-async def test_confirm_opens_gate_and_goes_live() -> None:
+async def test_pc_confirmation_alone_keeps_the_gate_closed_and_tells_the_phone() -> None:
     factory = FakePeerFactory()
     manager = await connected_manager(factory)
+    factory.last.sent.clear()
 
     manager.confirm()
 
     session = manager.status().session
     assert session is not None
+    assert session.state is SessionState.AWAITING_CONFIRMATION
+    assert session.confirmations == Confirmations(pc=True, phone=False)
+    assert not factory.last.gate_open
+    assert factory.last.sent == [{"type": "confirmation", "pc": True, "phone": False}]
+
+
+async def test_phone_confirmation_alone_keeps_the_gate_closed_and_tells_the_phone() -> None:
+    factory = FakePeerFactory()
+    manager = await connected_manager(factory)
+    factory.last.sent.clear()
+
+    factory.last.events.on_message(CONFIRM_CODE)
+
+    session = manager.status().session
+    assert session is not None
+    assert session.state is SessionState.AWAITING_CONFIRMATION
+    assert session.confirmations == Confirmations(pc=False, phone=True)
+    assert not factory.last.gate_open
+    assert factory.last.sent == [{"type": "confirmation", "pc": False, "phone": True}]
+
+
+async def test_pc_then_phone_confirmation_opens_the_gate_and_goes_live() -> None:
+    factory = FakePeerFactory()
+    manager = await connected_manager(factory)
+
+    manager.confirm()
+    factory.last.events.on_message(CONFIRM_CODE)
+
+    session = manager.status().session
+    assert session is not None
     assert session.state is SessionState.LIVE
     assert factory.last.gate_open
-    assert factory.last.sent[-1] == {"type": "session_state", "state": "live"}
+    assert [message["type"] for message in factory.last.sent[-3:]] == ["session_state", "controls", "video_format"]
+    assert factory.last.sent[-3] == {"type": "session_state", "state": "live"}
+
+
+async def test_phone_then_pc_confirmation_opens_the_gate_and_goes_live() -> None:
+    factory = FakePeerFactory()
+    manager = await connected_manager(factory)
+
+    factory.last.events.on_message(CONFIRM_CODE)
+    manager.confirm()
+
+    session = manager.status().session
+    assert session is not None
+    assert session.state is SessionState.LIVE
+    assert session.confirmations == Confirmations(pc=True, phone=True)
+    assert factory.last.gate_open
+
+
+async def test_repeated_pc_confirmation_changes_nothing() -> None:
+    factory = FakePeerFactory()
+    manager = await connected_manager(factory)
+    manager.confirm()
+    factory.last.sent.clear()
+
+    manager.confirm()
+
+    assert factory.last.sent == []
+
+
+async def test_reject_code_from_the_phone_ends_the_session_as_rejected() -> None:
+    factory = FakePeerFactory()
+    manager = await connected_manager(factory)
+
+    factory.last.events.on_message(REJECT_CODE)
+    await asyncio.sleep(0)
+
+    status = manager.status()
+    assert status.session is None
+    assert status.last_ended is not None
+    assert status.last_ended.reason is EndReason.REJECTED
+    assert factory.last.sent[-1] == {"type": "session_state", "state": "ended", "reason": "rejected"}
+    assert factory.last.closed
+
+
+async def test_message_before_live_is_ignored_and_logged(caplog: pytest.LogCaptureFixture) -> None:
+    factory = FakePeerFactory()
+    manager = await connected_manager(factory)
+    manager.confirm()
+    factory.last.sent.clear()
+
+    with caplog.at_level(logging.WARNING):
+        factory.last.events.on_message(json.dumps({"type": "set_video_format", "format": "720p60"}))
+
+    session = manager.status().session
+    assert session is not None
+    assert session.state is SessionState.AWAITING_CONFIRMATION
+    assert MESSAGE_BEFORE_LIVE in caplog.text
+    assert factory.last.sent == []
+
+
+async def test_confirm_code_after_live_is_ignored_and_logged(caplog: pytest.LogCaptureFixture) -> None:
+    factory = FakePeerFactory()
+    manager = await connected_manager(factory)
+    confirm_on_both_sides(manager, factory)
+    factory.last.sent.clear()
+
+    with caplog.at_level(logging.WARNING):
+        factory.last.events.on_message(REJECT_CODE)
+    await asyncio.sleep(0)
+
+    assert manager.status().session is not None
+    assert CONFIRMATION_AFTER_LIVE in caplog.text
+    assert factory.last.sent == []
+
+
+async def test_rtp_packets_before_live_reach_the_session_and_the_last_ended() -> None:
+    factory = FakePeerFactory()
+    manager = await connected_manager(factory)
+    factory.last.rtp_packets_before_live = 7
+
+    session = manager.status().session
+    await manager.disconnect()
+
+    last_ended = manager.status().last_ended
+    assert session is not None
+    assert session.rtp_packets_before_live == 7
+    assert last_ended is not None
+    assert last_ended.rtp_packets_before_live == 7
 
 
 async def test_confirm_without_awaiting_session_is_rejected() -> None:
@@ -126,12 +249,39 @@ async def test_awaiting_confirmation_times_out_after_two_minutes() -> None:
 
 
 async def test_confirmed_session_does_not_time_out() -> None:
-    manager = await connected_manager(FakePeerFactory(), confirmation_timeout=SHORT_TIMEOUT)
+    factory = FakePeerFactory()
+    manager = await connected_manager(factory, confirmation_timeout=SHORT_TIMEOUT)
+
+    confirm_on_both_sides(manager, factory)
+    await asyncio.sleep(SHORT_TIMEOUT * 5)
+
+    assert manager.status().session is not None
+
+
+async def test_session_confirmed_only_on_the_pc_times_out() -> None:
+    factory = FakePeerFactory()
+    manager = await connected_manager(factory, confirmation_timeout=SHORT_TIMEOUT)
 
     manager.confirm()
     await asyncio.sleep(SHORT_TIMEOUT * 5)
 
-    assert manager.status().session is not None
+    last_ended = manager.status().last_ended
+    assert manager.status().session is None
+    assert last_ended is not None
+    assert last_ended.reason is EndReason.CONFIRMATION_TIMEOUT
+
+
+async def test_session_confirmed_only_on_the_phone_times_out() -> None:
+    factory = FakePeerFactory()
+    manager = await connected_manager(factory, confirmation_timeout=SHORT_TIMEOUT)
+
+    factory.last.events.on_message(CONFIRM_CODE)
+    await asyncio.sleep(SHORT_TIMEOUT * 5)
+
+    last_ended = manager.status().last_ended
+    assert manager.status().session is None
+    assert last_ended is not None
+    assert last_ended.reason is EndReason.CONFIRMATION_TIMEOUT
 
 
 async def test_reject_ends_session_and_requires_new_pairing() -> None:
