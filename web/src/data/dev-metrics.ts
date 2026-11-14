@@ -34,7 +34,12 @@ export interface DevMetrics {
   } | null;
   received: { fps: number; bitrateKbps: number; packetsLost: number; jitterMs: number } | null;
   delivered: { fps: number; frames: number; dropped: number } | null;
-  stages: { decode: StageTimes; color: StageTimes; deliver: StageTimes; total: StageTimes } | null;
+  stages: {
+    decode: StageTimes | null;
+    color: StageTimes | null;
+    deliver: StageTimes | null;
+    total: StageTimes | null;
+  } | null;
   frameTimesMs: number[] | null;
   budgetMs: number;
   ceilingKbps: number;
@@ -122,7 +127,7 @@ export function bitrateMbps(metrics: DevMetrics): number | null {
 
 export function healthStrip(metrics: DevMetrics, formatFps: number, packetsLostInWindow: number | null): HealthStrip {
   const fps = metrics.delivered?.fps ?? null;
-  const p95 = metrics.stages?.total.p95 ?? null;
+  const p95 = metrics.stages?.total?.p95 ?? null;
   const roundTrip = roundTripMs(metrics);
   return {
     fpsDelivered: measured(fps, (value) => value >= formatFps * FPS_HEALTHY_SHARE),
@@ -237,14 +242,14 @@ function csvRow(sample: DevMetrics): (string | number | null)[] {
     delivered?.fps ?? null,
     delivered?.frames ?? null,
     delivered?.dropped ?? null,
-    stages?.decode.median ?? null,
-    stages?.decode.p95 ?? null,
-    stages?.color.median ?? null,
-    stages?.color.p95 ?? null,
-    stages?.deliver.median ?? null,
-    stages?.deliver.p95 ?? null,
-    stages?.total.median ?? null,
-    stages?.total.p95 ?? null,
+    stages?.decode?.median ?? null,
+    stages?.decode?.p95 ?? null,
+    stages?.color?.median ?? null,
+    stages?.color?.p95 ?? null,
+    stages?.deliver?.median ?? null,
+    stages?.deliver?.p95 ?? null,
+    stages?.total?.median ?? null,
+    stages?.total?.p95 ?? null,
     sample.process.cpuPercent,
     sample.phone?.outbound?.framesPerSecond ?? null,
     roundTripMs(sample),

@@ -49,7 +49,7 @@ export function HealthTiles({ metrics, samples, formatFps, lost }: HealthTilesPr
       labelKey: "dev.processing_p95",
       value: strip.processingP95,
       text: (value) => t("dev.milliseconds", { value: value.toFixed(ONE_DECIMAL) }),
-      history: samples.map((sample) => sample.stages?.total.p95 ?? null),
+      history: samples.map((sample) => sample.stages?.total?.p95 ?? null),
     },
     {
       labelKey: "dev.packets_lost",

@@ -48,7 +48,7 @@ export default function DevPage() {
   const samples = paused ?? live.samples;
   const shown = lastSeconds(samples, windowSeconds);
   const latest = shown[shown.length - 1];
-  const charts = devCharts(shown, live.events);
+  const charts = devCharts(shown, live.events, windowSeconds);
   const status = consoleData.status;
   const mode = status ? consoleMode(status) : null;
   const badge = status ? stateBadge(status) : null;
@@ -175,7 +175,9 @@ export default function DevPage() {
           format={ms}
           startLabel={ago}
           endLabel={
-            latest?.stages ? t("dev.headroom", { value: ms(latest.budgetMs - latest.stages.total.p95) }) : t("dev.now")
+            latest?.stages?.total
+              ? t("dev.headroom", { value: ms(latest.budgetMs - latest.stages.total.p95) })
+              : t("dev.now")
           }
         />
         <LineChart
