@@ -1,0 +1,72 @@
+.view {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-12);
+  padding: var(--space-8) 0;
+}
+
+.qrFrame {
+  display: flex;
+  width: calc(var(--qr-size) + var(--space-6) * 2);
+  max-width: 100%;
+  aspect-ratio: 1;
+  padding: var(--space-6);
+  background: var(--ink);
+
+  &[data-empty="true"] {
+    background: var(--surface);
+  }
+}
+
+.qr {
+  width: 100%;
+  height: 100%;
+}
+
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: var(--console-intro);
+}
+
+.title {
+  font-size: var(--text-headline);
+  font-weight: var(--weight-strong);
+  line-height: var(--line-tight);
+  letter-spacing: var(--tracking-title);
+  text-wrap: balance;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-left: var(--space-5);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.countdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.track {
+  height: var(--progress-height);
+  background: var(--raised);
+}
+
+.fill {
+  height: 100%;
+  background: var(--ink);
+  transform-origin: left;
+  transition: transform var(--duration-state) linear;
+}

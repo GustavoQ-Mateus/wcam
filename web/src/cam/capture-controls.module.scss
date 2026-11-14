@@ -1,12 +1,11 @@
 .rail {
   position: absolute;
   z-index: 2;
-  top: 50%;
+  top: calc(var(--margin-top) + var(--tally-height) + var(--space-3));
   right: var(--margin-right);
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  transform: translateY(-50%);
+  gap: var(--space-3);
   transition: opacity var(--duration-state) var(--ease-out);
 
   @starting-style {
@@ -27,4 +26,12 @@
   left: 50%;
   flex-direction: row;
   transform: translateX(-50%);
+}
+
+@media (max-height: 26rem) {
+  .rail {
+    --control-size: var(--control-size-compact);
+
+    gap: var(--space-2);
+  }
 }

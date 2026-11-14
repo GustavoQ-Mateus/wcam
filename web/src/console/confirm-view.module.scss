@@ -1,0 +1,84 @@
+.view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-6);
+  padding: var(--space-8) 0;
+  text-align: center;
+}
+
+.device {
+  color: var(--muted);
+}
+
+.title {
+  max-width: var(--measure);
+  font-size: var(--text-title);
+  font-weight: var(--weight-strong);
+  line-height: var(--line-tight);
+  letter-spacing: var(--tracking-title);
+  text-wrap: balance;
+}
+
+.code {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--code-group-gap);
+}
+
+.group {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--code-cell-width);
+  height: var(--code-cell-height);
+  background: var(--surface);
+  font-size: var(--text-code-console);
+  font-weight: var(--weight-strong);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.sides {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-8);
+  list-style: none;
+}
+
+.side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sideState {
+  color: var(--muted);
+
+  [data-done="true"] > & {
+    color: var(--data);
+  }
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+}
+
+.hint {
+  max-width: var(--measure);
+  color: var(--faint);
+  font-size: var(--text-meta);
+  text-wrap: pretty;
+}

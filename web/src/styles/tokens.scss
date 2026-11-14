@@ -2,6 +2,7 @@
   --ground: #000000;
   --surface: #111111;
   --raised: #2a2a2a;
+  --raised-hover: #353535;
   --rule: #1a1a1a;
   --divider: #222222;
   --grid: #2b2b2b;
@@ -37,7 +38,9 @@
   --weight-strong: 600;
   --tracking-title: -0.01em;
   --text-code: clamp(3.5rem, 24dvh, 6rem);
-  --text-code-console: 3rem;
+  --text-code-console: 4rem;
+  --text-headline: 2.25rem;
+  --text-label: 0.75rem;
   --tracking-code: 0.04em;
 
   --space-1: 0.25rem;
@@ -59,10 +62,21 @@
   --margin-left: max(var(--space-5), env(safe-area-inset-left));
   --hit-min: 44px;
   --control-size: 56px;
+  --control-size-compact: 48px;
   --button-height: 52px;
   --radius-pill: 999px;
   --radius-box: 0.5rem;
-  --qr-size: 15rem;
+  --qr-size: 18rem;
+  --console-max: 90rem;
+  --console-aside: 22rem;
+  --console-intro: 28rem;
+  --code-cell-width: 5.5rem;
+  --code-cell-height: 7rem;
+  --code-group-gap: var(--space-6);
+  --progress-height: 4px;
+  --mark-size: 0.625rem;
+  --badge-height: 2rem;
+  --radius-label: 0.25rem;
   --tally-height: 2rem;
   --picker-width: 18rem;
   --portrait-notice-room: 3.5rem;

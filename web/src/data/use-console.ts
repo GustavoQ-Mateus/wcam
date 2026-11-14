@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import {
   ApiError,
+  changeControls,
   changeVideoFormat,
   confirmSession,
   disconnectSession,
-  fetchStatus,
   openPairing,
   rejectSession,
 } from "./api-client";
-import type { PairingWindow, Status } from "./contract";
+import type { ControlsPatch, PairingWindow, Status } from "./contract";
 import type { VideoFormat } from "./video-format";
 
 export interface ConsoleData {
@@ -21,9 +21,12 @@ export interface ConsoleData {
   reject: () => void;
   disconnect: () => void;
   chooseVideoFormat: (format: VideoFormat) => void;
+  changeControls: (patch: ControlsPatch) => void;
 }
 
-const POLL_INTERVAL_MS = 250;
+const EVENTS_PATH = "/api/events";
+const STATUS_EVENT = "status";
+const NETWORK_ERROR_CODE = "network_error";
 const UNKNOWN_ERROR_CODE = "unknown";
 
 export function useConsole(): ConsoleData {
@@ -33,25 +36,17 @@ export function useConsole(): ConsoleData {
   const [errorCode, setErrorCode] = useState<string | null>(null);
 
   useEffect(() => {
-    const controller = new AbortController();
-    const load = () => {
-      fetchStatus(controller.signal).then(
-        (next) => {
-          setStatus(next);
-          setReceivedAt(Date.now());
-        },
-        (error: unknown) => {
-          if (!controller.signal.aborted) {
-            setErrorCode(errorCodeOf(error));
-          }
-        },
-      );
-    };
-    load();
-    const timer = window.setInterval(load, POLL_INTERVAL_MS);
+    const events = new EventSource(EVENTS_PATH);
+    events.addEventListener(STATUS_EVENT, (event) => {
+      setStatus(JSON.parse(event.data as string) as Status);
+      setReceivedAt(Date.now());
+      setErrorCode((current) => (current === NETWORK_ERROR_CODE ? null : current));
+    });
+    events.addEventListener("error", () => {
+      setErrorCode(NETWORK_ERROR_CODE);
+    });
     return () => {
-      controller.abort();
-      window.clearInterval(timer);
+      events.close();
     };
   }, []);
 
@@ -87,6 +82,9 @@ export function useConsole(): ConsoleData {
     },
     chooseVideoFormat: (format) => {
       run(() => changeVideoFormat({ format }));
+    },
+    changeControls: (patch) => {
+      run(() => changeControls(patch));
     },
   };
 }

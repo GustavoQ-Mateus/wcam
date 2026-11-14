@@ -1,4 +1,5 @@
 import type { CameraCapabilitiesMessage } from "./camera-capabilities";
+import type { Facing } from "./cam-state";
 import type { VideoFormat } from "./video-format";
 
 export type Surface = "console" | "phone";
@@ -52,6 +53,8 @@ export interface Session {
   remoteIp: string;
   startedAt: string;
   confirmationCode: string | null;
+  confirmations: { pc: boolean; phone: boolean };
+  rtpPacketsBeforeLive: number;
   video: Video | null;
   cameraCapabilities: Omit<CameraCapabilitiesMessage, "type"> | null;
 }
@@ -63,8 +66,18 @@ export interface VirtualCamera {
   backend: "media_foundation" | "obs" | "fake";
   reason: VirtualCameraUnavailableReason | null;
   output: { width: number; height: number; fps: number };
-  source: "phone" | "frozen" | "placeholder";
+  source: "phone" | "frozen" | "held" | "camera_off" | "placeholder";
+  streamingApps: number | null;
 }
+
+export interface Controls {
+  frozen: boolean;
+  cameraOff: boolean;
+  mirror: boolean;
+  facing: Facing | null;
+}
+
+export type ControlsPatch = Partial<Omit<Controls, "facing">> & { facing?: Facing };
 
 export interface Quality {
   ssim: number | null;
@@ -75,12 +88,13 @@ export interface Quality {
 export interface Status {
   pairing: { expiresAt: string } | null;
   session: Session | null;
-  lastEnded: { reason: EndReason; at: string } | null;
+  lastEnded: { reason: EndReason; at: string; rtpPacketsBeforeLive: number } | null;
   virtualCamera: VirtualCamera;
   videoFormat: VideoFormatStatus;
   process: { cpuPercent: number };
   quality: Quality | null;
   devTools: boolean;
+  controls: Controls;
 }
 
 export interface VideoFormatStatus {
@@ -131,6 +145,9 @@ export type ControlMessage =
   | { type: "session_state"; state: "awaiting_confirmation" }
   | { type: "session_state"; state: "live" }
   | { type: "session_state"; state: "ended"; reason: string }
+  | { type: "confirmation"; pc: boolean; phone: boolean }
+  | ({ type: "controls" } & Controls)
+  | { type: "stats_request"; enabled: boolean }
   | {
       type: "video_format";
       format: VideoFormat;

@@ -1,0 +1,62 @@
+.mark {
+  --mark-color: var(--muted);
+
+  flex: none;
+  position: relative;
+  width: var(--mark-size);
+  height: var(--mark-size);
+  color: var(--mark-color);
+
+  &[data-tone="live"] {
+    --mark-color: var(--data);
+  }
+
+  &[data-tone="still"] {
+    --mark-color: var(--data-2);
+  }
+
+  &[data-tone="warning"] {
+    --mark-color: var(--warning);
+  }
+
+  &[data-tone="negative"] {
+    --mark-color: var(--negative);
+  }
+
+  &[data-shape="ring"] {
+    border: var(--indicator-stroke) solid currentColor;
+    border-radius: 50%;
+  }
+
+  &[data-shape="dot"] {
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  &[data-shape="square"] {
+    background: currentColor;
+  }
+
+  &[data-shape="bars"]::before,
+  &[data-shape="bars"]::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 35%;
+    background: currentColor;
+  }
+
+  &[data-shape="bars"]::before {
+    left: 0;
+  }
+
+  &[data-shape="bars"]::after {
+    right: 0;
+  }
+
+  &[data-shape="triangle"] {
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+    background: currentColor;
+  }
+}

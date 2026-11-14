@@ -1,16 +1,16 @@
 import type {
   Comparison,
+  ControlsPatch,
   CreateSessionRequest,
   CreateSessionResponse,
   ErrorBody,
-  Health,
   PairingWindow,
   Status,
   VideoFormatRequest,
 } from "./contract";
 
 export interface RequestOptions {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   png?: Blob;
   signal?: AbortSignal;
@@ -21,6 +21,7 @@ const UNKNOWN_ERROR_CODE = "unknown";
 const NETWORK_ERROR_STATUS = 0;
 const PNG_TYPE = "image/png";
 const COMPARISONS_PATH = "/api/dev/comparisons";
+const PREVIEW_PATH = "/api/preview";
 
 export class ApiError extends Error {
   readonly code: string;
@@ -32,10 +33,6 @@ export class ApiError extends Error {
     this.code = code;
     this.status = status;
   }
-}
-
-export function fetchHealth(signal?: AbortSignal): Promise<Health> {
-  return requestJson<Health>("/api/health", signal ? { signal } : {});
 }
 
 export function createSession(request: CreateSessionRequest): Promise<CreateSessionResponse> {
@@ -64,6 +61,18 @@ export function disconnectSession(): Promise<null> {
 
 export function changeVideoFormat(request: VideoFormatRequest): Promise<null> {
   return requestJson<null>("/api/video-format", { method: "PUT", body: request });
+}
+
+export function changeControls(patch: ControlsPatch): Promise<null> {
+  return requestJson<null>("/api/controls", { method: "PATCH", body: patch });
+}
+
+export function openPreview(sdp: string): Promise<{ sdp: string }> {
+  return requestJson<{ sdp: string }>(PREVIEW_PATH, { method: "POST", body: { sdp } });
+}
+
+export function closePreview(): Promise<null> {
+  return requestJson<null>(PREVIEW_PATH, { method: "DELETE" });
 }
 
 export function createComparison(): Promise<{ id: string }> {

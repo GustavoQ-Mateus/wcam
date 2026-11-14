@@ -1,11 +1,16 @@
 import type { CameraCapabilitiesMessage } from "./camera-capabilities";
-import type { ControlMessage } from "./contract";
+import type { ControlMessage, ControlsPatch } from "./contract";
 import { availableFormats, isVideoFormat, type VideoFormat } from "./video-format";
 
 const SESSION_STATE_TYPE = "session_state";
 const VIDEO_FORMAT_TYPE = "video_format";
 const SET_VIDEO_FORMAT_TYPE = "set_video_format";
 const SNAPSHOT_REQUEST_TYPE = "snapshot_request";
+const CONFIRMATION_TYPE = "confirmation";
+const CONTROLS_TYPE = "controls";
+const SET_CONTROLS_TYPE = "set_controls";
+const STATS_REQUEST_TYPE = "stats_request";
+const FACINGS: ReadonlySet<unknown> = new Set(["user", "environment"]);
 
 export function parseControlMessage(data: unknown): ControlMessage | null {
   if (typeof data !== "string") {
@@ -24,11 +29,24 @@ export function parseControlMessage(data: unknown): ControlMessage | null {
   if (message.type === SNAPSHOT_REQUEST_TYPE) {
     return parseSnapshotRequest(message);
   }
+  if (message.type === CONFIRMATION_TYPE) {
+    return parseConfirmation(message as Record<string, unknown>);
+  }
+  if (message.type === CONTROLS_TYPE) {
+    return parseControls(message as Record<string, unknown>);
+  }
+  if (message.type === STATS_REQUEST_TYPE) {
+    return parseStatsRequest(message as Record<string, unknown>);
+  }
   return null;
 }
 
 export function setVideoFormatMessage(format: VideoFormat): string {
   return JSON.stringify({ type: SET_VIDEO_FORMAT_TYPE, format });
+}
+
+export function setControlsMessage(patch: ControlsPatch): string {
+  return JSON.stringify({ type: SET_CONTROLS_TYPE, ...patch });
 }
 
 export function cameraCapabilitiesData(message: CameraCapabilitiesMessage): string {
@@ -53,6 +71,27 @@ function parseVideoFormat(message: Record<string, unknown>): ControlMessage | nu
 
 function isNumber(...values: unknown[]): boolean {
   return values.every((value) => typeof value === "number" && Number.isFinite(value));
+}
+
+function parseControls({ frozen, cameraOff, mirror, facing }: Record<string, unknown>): ControlMessage | null {
+  if (typeof frozen !== "boolean" || typeof cameraOff !== "boolean" || typeof mirror !== "boolean") {
+    return null;
+  }
+  if (facing !== null && !FACINGS.has(facing)) {
+    return null;
+  }
+  return { type: CONTROLS_TYPE, frozen, cameraOff, mirror, facing: facing as "user" | "environment" | null };
+}
+
+function parseStatsRequest({ enabled }: Record<string, unknown>): ControlMessage | null {
+  return typeof enabled === "boolean" ? { type: STATS_REQUEST_TYPE, enabled } : null;
+}
+
+function parseConfirmation({ pc, phone }: Record<string, unknown>): ControlMessage | null {
+  if (typeof pc !== "boolean" || typeof phone !== "boolean") {
+    return null;
+  }
+  return { type: CONFIRMATION_TYPE, pc, phone };
 }
 
 function parseSnapshotRequest(message: object): ControlMessage | null {
