@@ -216,7 +216,7 @@ Evento `metrics`, a cada 1 s:
 - `session` é `null` sem sessão; `received`, `delivered`, `stages` e `frameTimesMs` vêm `null` fora de `live`.
 - `received`: medido pelo agente na faixa recebida, janela de 1 s. `packetsLost` é o total da janela; `jitterMs`, o do receptor RTP.
 - `delivered`: quadros entregues à câmera virtual na janela (`fps`) e totais da sessão (`frames`, e `dropped` para descartes da fila).
-- `stages`: mediana e p95 em ms dos quadros da janela; `color` inclui retrato e espelho; `total` vai do quadro decodificado à entrega. `frameTimesMs`: todos os `total` da janela, para o histograma.
+- `stages`: mediana e p95 em ms dos quadros da janela; cada etapa vem `null` enquanto não tiver amostra na janela (por exemplo, `decode` antes do primeiro quadro); `color` inclui retrato e espelho; `total` vai do quadro decodificado à entrega. `frameTimesMs`: todos os `total` da janela, para o histograma.
 - `budgetMs` é 1000 / fps do formato anunciado; `ceilingKbps`, a taxa máxima do formato.
 - `virtualCamera.pendingFormat`: chave do formato pedido enquanto `videoFormat.pending`, senão `null`; `streamingApps` vem de `WcamFormatGet` (`null` em outros backends).
 - `phone`: o último `stats` do celular, sem o `type`, ou `null`.
