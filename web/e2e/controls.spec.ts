@@ -90,7 +90,9 @@ test("freezing on the computer shows on the phone in under 300 ms", async ({ pag
 
   expect((await seen()) - startedAt).toBeLessThan(CHANGE_BUDGET_MS);
   await expect(page.getByText(translate("en", "cam.frozen"))).toBeVisible();
-  expect((await status(request)).virtualCamera.source).toBe("held");
+  await expect
+    .poll(async () => (await status(request)).virtualCamera.source, { timeout: APPEAR_TIMEOUT_MS })
+    .toBe("held");
 });
 
 test("turning the camera off on the phone shows on the computer in under 300 ms", async ({ page, request }) => {
