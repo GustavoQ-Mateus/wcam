@@ -83,6 +83,10 @@ Branch: `feature/console-agent`, PR para `feature/console`. Spec: `docs/specs/sp
 
 - `tests/unit/test_interface_language.py` lê `locales/en.json` e `locales/pt-BR.json` e falha se um valor (não a chave) tiver, como palavra inteira e sem diferenciar maiúsculas, agente, servidor, sessão, token, pareamento, requisição ou interface, os plurais e os equivalentes em inglês. Exceções: chaves `dev.*` e `terminal.fingerprint`. Passa com os textos atuais da integração.
 
+## Episódios entre duas amostras (PR #31)
+
+- O `episodes.log` perdia travamentos curtos. O rastreador lia a idade do quadro a cada 100 ms, e a recuperação começa com 0,5 s sem progresso. Assim, um travamento pouco acima de 0,5 s podia começar e terminar entre duas amostras. Isso valia também em uso real, desde a v0.6.0. Agora o pipeline guarda o maior intervalo entre quadros desde a última amostra, e o rastreador o registra quando passa de 0,5 s. Quedas de fps curtas e raras, como as do 2160p na reunião, passam a aparecer no `episodes.log` e no `/dev`.
+
 ## Verificação
 
 - `uv run ruff check`, `uv run ruff format --check`, `uv run pyright` (strict): limpos no estado final (`4da13f3` mais este relatório).
