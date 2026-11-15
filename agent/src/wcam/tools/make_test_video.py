@@ -21,7 +21,10 @@ BAR_LUMA = 180
 MARKER_SHARE = 4
 BAR_SHARE = 16
 MARKER_CHROMA = 60
-USAGE = "usage: python -m wcam.tools.make_test_video <output.mp4>"
+PORTRAIT_ARGUMENT = "portrait"
+PORTRAIT_SECONDS = 4.0
+PORTRAIT_ROTATION = -90
+USAGE = f"usage: python -m wcam.tools.make_test_video <output.mp4> [{PORTRAIT_ARGUMENT}]"
 
 
 class EncodingStream(Protocol):
@@ -77,9 +80,13 @@ def write_test_video(
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
+    arguments = sys.argv[1:]
+    if len(arguments) == 1:
+        write_test_video(Path(arguments[0]))
+    elif arguments[1:] == [PORTRAIT_ARGUMENT]:
+        write_test_video(Path(arguments[0]), seconds=PORTRAIT_SECONDS, rotation=PORTRAIT_ROTATION)
+    else:
         sys.exit(USAGE)
-    write_test_video(Path(sys.argv[1]))
 
 
 if __name__ == "__main__":
