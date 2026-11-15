@@ -1,0 +1,71 @@
+.viewport {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--surface);
+  overscroll-behavior-x: contain;
+}
+
+.content {
+  position: relative;
+  min-width: 100%;
+}
+
+.track {
+  position: relative;
+  height: var(--timeline-track);
+  margin-bottom: var(--space-2);
+
+  &[data-instant="true"] > * {
+    transition: none;
+  }
+}
+
+.empty {
+  display: grid;
+  place-items: center;
+  height: calc(var(--ruler-height) + var(--timeline-track) + var(--space-2));
+  margin: var(--space-2);
+  border: 1px dashed var(--data-3);
+  color: var(--muted);
+  font-size: var(--text-meta);
+
+  &[data-dragging="true"] {
+    border-color: var(--ink);
+    background: var(--raised);
+    color: var(--ink);
+  }
+}
+
+.dropMarker {
+  position: absolute;
+  top: calc(var(--space-1) * -1);
+  bottom: calc(var(--space-1) * -1);
+  left: calc(var(--clip-gap) * -1);
+  z-index: 2;
+  width: var(--focus-width);
+  background: var(--ink);
+  pointer-events: none;
+}
+
+.playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--playhead-width) / -2);
+  z-index: 3;
+  width: var(--playhead-width);
+  background: var(--ink);
+  pointer-events: none;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: calc((var(--playhead-head) - var(--playhead-width)) / -2);
+    width: var(--playhead-head);
+    height: var(--playhead-head);
+    border-radius: var(--radius-label);
+    background: var(--ink);
+  }
+}

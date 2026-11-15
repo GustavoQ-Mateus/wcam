@@ -1,37 +1,43 @@
-import { useEffect, useRef, useState } from "react";
-import { uploadVideo, type VideoUpload } from "../media/video-upload";
-import { ApiError, changeVideoSource, removeVideoFile, seekVideo } from "./api-client";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { createUploadQueue, type UploadItem } from "../media/upload-queue";
+import { ApiError, changeTimeline, changeVideoSource, removeVideo, seekVideo } from "./api-client";
+import type { TimelineClip } from "./contract";
+import { sameClips } from "./timeline";
 
 export interface VideoSourceActions {
-  uploadFraction: number | null;
+  uploads: readonly UploadItem[];
   errorCode: string | null;
-  choose: (file: File) => void;
+  clips: readonly TimelineClip[];
+  addFiles: (files: readonly File[]) => void;
+  dismissUpload: (id: string) => void;
   use: () => void;
-  backToPhone: () => void;
-  remove: () => void;
+  backToCamera: () => void;
+  remove: (videoId: string) => void;
   seek: (seconds: number) => void;
+  changeClips: (clips: TimelineClip[]) => void;
 }
 
 const UNKNOWN_ERROR_CODE = "unknown";
-const ABORTED_CODE = "aborted";
+const DRAFT_GRACE_MS = 1000;
 
-export function useVideoSource(): VideoSourceActions {
-  const [uploadFraction, setUploadFraction] = useState<number | null>(null);
+export function useVideoSource(serverClips: readonly TimelineClip[]): VideoSourceActions {
+  const [queue] = useState(() => createUploadQueue());
+  const uploads = useSyncExternalStore(queue.subscribe, queue.items);
   const [errorCode, setErrorCode] = useState<string | null>(null);
-  const uploadRef = useRef<VideoUpload | null>(null);
+  const [draft, setDraft] = useState<TimelineClip[] | null>(null);
 
   useEffect(
     () => () => {
-      uploadRef.current?.abort();
+      queue.stop();
     },
-    [],
+    [queue],
   );
+  if (draft && sameClips(draft, serverClips)) {
+    setDraft(null);
+  }
 
   const fail = (error: unknown) => {
-    const code = error instanceof ApiError ? error.code : UNKNOWN_ERROR_CODE;
-    if (code !== ABORTED_CODE) {
-      setErrorCode(code);
-    }
+    setErrorCode(error instanceof ApiError ? error.code : UNKNOWN_ERROR_CODE);
   };
   const run = (action: () => Promise<unknown>) => {
     setErrorCode(null);
@@ -39,32 +45,36 @@ export function useVideoSource(): VideoSourceActions {
   };
 
   return {
-    uploadFraction,
+    uploads,
     errorCode,
-    choose: (file) => {
-      uploadRef.current?.abort();
-      setErrorCode(null);
-      setUploadFraction(0);
-      const upload = uploadVideo(file, setUploadFraction);
-      uploadRef.current = upload;
-      upload.done.catch(fail).finally(() => {
-        if (uploadRef.current === upload) {
-          uploadRef.current = null;
-          setUploadFraction(null);
-        }
-      });
-    },
+    clips: draft ?? serverClips,
+    addFiles: queue.add,
+    dismissUpload: queue.dismiss,
     use: () => {
       run(() => changeVideoSource(true));
     },
-    backToPhone: () => {
+    backToCamera: () => {
       run(() => changeVideoSource(false));
     },
-    remove: () => {
-      run(removeVideoFile);
+    remove: (videoId) => {
+      run(() => removeVideo(videoId));
     },
     seek: (seconds) => {
       run(() => seekVideo(seconds));
+    },
+    changeClips: (clips) => {
+      setErrorCode(null);
+      setDraft(clips);
+      changeTimeline(clips)
+        .catch((error: unknown) => {
+          fail(error);
+          setDraft(null);
+        })
+        .finally(() => {
+          window.setTimeout(() => {
+            setDraft((current) => (current === clips ? null : current));
+          }, DRAFT_GRACE_MS);
+        });
     },
   };
 }

@@ -44,18 +44,13 @@ const UNAVAILABLE_KEYS: Readonly<Record<VirtualCameraUnavailableReason, MessageK
 const LIVE_MODES: ReadonlySet<ConsoleMode> = new Set(["live", "frozen", "camera_off", "lost"]);
 
 export function consoleMode(status: Status): ConsoleMode {
-  const { session, controls, virtualCamera, videoSource } = status;
+  const { controls, virtualCamera, videoSource } = status;
   if (videoSource.active) {
     return controls.frozen ? "frozen" : "video";
   }
-  if (session === null) {
-    return "waiting";
-  }
-  if (session.state === "connecting") {
-    return "connecting";
-  }
-  if (session.state === "awaiting_confirmation") {
-    return "confirming";
+  const flowMode = phoneFlowMode(status);
+  if (flowMode) {
+    return flowMode;
   }
   if (controls.cameraOff) {
     return "camera_off";
@@ -64,6 +59,16 @@ export function consoleMode(status: Status): ConsoleMode {
     return "frozen";
   }
   return virtualCamera.source === "frozen" ? "lost" : "live";
+}
+
+export function phoneFlowMode({ session }: Status): ConsoleMode | null {
+  if (session === null) {
+    return "waiting";
+  }
+  if (session.state === "connecting") {
+    return "connecting";
+  }
+  return session.state === "awaiting_confirmation" ? "confirming" : null;
 }
 
 export function isLiveMode(mode: ConsoleMode): boolean {

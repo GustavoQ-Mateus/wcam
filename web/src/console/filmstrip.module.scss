@@ -1,0 +1,13 @@
+.strip {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+  background: var(--raised);
+  pointer-events: none;
+}
+
+.thumb {
+  flex: none;
+  height: 100%;
+  background-repeat: no-repeat;
+}

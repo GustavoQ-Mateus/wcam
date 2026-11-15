@@ -259,15 +259,11 @@
   "errors.video_source_active": "WCam is showing a video. Go back to the camera to use this.",
   "errors.video_source_inactive": "Use the video before picking a point in it.",
   "cam.ended_video_source": "The computer is now showing a video on the camera.",
-  "console.video_title": "Video",
   "console.video_choose": "Choose video",
   "console.video_drop": "Or drop a video here",
   "console.video_uploading": "Sending {percent}%",
   "console.video_remove": "Remove video",
-  "console.video_replace": "Replace video",
-  "console.video_duration": "Length {duration}",
   "console.video_not_live": "The camera is showing the video, not the phone.",
-  "console.video_timeline": "Position in the video",
   "console.video_position": "{position} of {duration}",
   "errors.video_library_full": "There are already 20 videos saved. Remove one to send another.",
   "errors.video_not_found": "This video is no longer saved.",
@@ -289,5 +285,9 @@
   "console.timeline_clip": "Clip {index} of {count}: {name}, {duration}",
   "console.timeline_trim_start": "Trim the start of clip {index}",
   "console.timeline_trim_end": "Trim the end of clip {index}",
-  "console.timeline_playhead": "Timeline position"
+  "console.timeline_playhead": "Timeline position",
+  "console.video_queued": "Waiting to send",
+  "console.video_keep": "Keep",
+  "console.video_dismiss": "Dismiss",
+  "console.video_phone_camera_off": "The phone camera is off while the video plays."
 }
