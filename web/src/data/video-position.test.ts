@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { clampedSeek, formatClock, positionFraction, steppedSeek, videoPosition } from "./video-position";
+import {
+  clampedSeek,
+  formatClock,
+  formatPreciseClock,
+  positionFraction,
+  steppedSeek,
+  videoPosition,
+} from "./video-position";
 
 const DURATION = 10;
 const SAMPLE = { seconds: 4, receivedAt: 1_000 };
@@ -47,5 +54,9 @@ describe("video position", () => {
 
   it("clock shows minutes and seconds, and hours only for long videos", () => {
     expect([formatClock(0), formatClock(65.9), formatClock(3_725)]).toEqual(["0:00", "1:05", "1:02:05"]);
+  });
+
+  it("precise clock shows tenths of a second for trimming", () => {
+    expect(formatPreciseClock(83.47)).toBe("1:23.4");
   });
 });

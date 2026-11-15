@@ -9,6 +9,7 @@ const MILLISECONDS_PER_SECOND = 1000;
 const SECONDS_PER_MINUTE = 60;
 const SECONDS_PER_HOUR = 3600;
 const END_MARGIN_SECONDS = 0.001;
+const TENTHS_PER_SECOND = 10;
 
 export function videoPosition(sample: PositionSample, now: number, running: boolean, duration: number): number {
   if (!running || duration <= 0) {
@@ -40,4 +41,9 @@ export function formatClock(seconds: number): string {
     return `${String(minutes)}:${paddedSeconds}`;
   }
   return `${String(hours)}:${String(minutes).padStart(2, "0")}:${paddedSeconds}`;
+}
+
+export function formatPreciseClock(seconds: number): string {
+  const tenths = Math.floor(Math.max(0, seconds) * TENTHS_PER_SECOND);
+  return `${formatClock(tenths / TENTHS_PER_SECOND)}.${String(tenths % TENTHS_PER_SECOND)}`;
 }
