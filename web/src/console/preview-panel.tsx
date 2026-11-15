@@ -11,8 +11,6 @@ interface PreviewPanelProps {
   attachPreview: (video: HTMLVideoElement | null) => void;
   previewState: PreviewState;
   frozenSince: string | null;
-  onUnfreeze: () => void;
-  onCameraOn: () => void;
   onShowPreviewAgain: () => void;
 }
 
@@ -22,8 +20,6 @@ export function PreviewPanel({
   attachPreview,
   previewState,
   frozenSince,
-  onUnfreeze,
-  onCameraOn,
   onShowPreviewAgain,
 }: PreviewPanelProps) {
   const cameraOff = mode === "camera_off";
@@ -48,9 +44,6 @@ export function PreviewPanel({
       {cameraOff && (
         <div className={styles.center}>
           <p className={styles.centerTitle}>{t("state.camera_off")}</p>
-          <ConsoleButton variant="primary" onClick={onCameraOn}>
-            {t("controls.camera_on")}
-          </ConsoleButton>
         </div>
       )}
       {mode === "frozen" && (
@@ -59,9 +52,6 @@ export function PreviewPanel({
             <StatusMark shape="square" tone="still" />
             {frozenSince ? t("console.frozen_since", { time: frozenSince }) : t("state.frozen")}
           </p>
-          <ConsoleButton variant="primary" onClick={onUnfreeze}>
-            {t("controls.unfreeze")}
-          </ConsoleButton>
         </div>
       )}
       {mode === "lost" && (
