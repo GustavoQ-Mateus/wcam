@@ -62,14 +62,15 @@ Spec: `docs/specs/spec-v0.9.0.md` (revisão 2) · Handoff: `docs/handoff-v0.9.0-
   - `video-position` (relógio em décimos).
   - `control-message` (`video_source` e `set_video_source`).
   - `console-view` (QR e confirmação com o vídeo ativo).
-- e2e num worktree temporário com `feature/video-web` e `origin/feature/video-agent` (71e75ab), no compose sem portas no host:
+- e2e final num worktree temporário com `feature/video-web` e `origin/feature/video-agent` (c0d9f43), no compose sem portas no host: **33 de 33 passaram**, com SSIM do CA-2 de 0,9836 (mínimo 0,9830, 30 quadros) com o vídeo desativado.
+- Primeira rodada, com o agent em 71e75ab:
   - `video-source.spec.ts` passou (15 s). Com o celular falso em `live`, ele:
     - envia os dois vídeos de teste e confere os metadados do deitado (1280 × 720, h264, 6 s) e do em pé (720 × 1280);
     - adiciona os dois, corta o primeiro pela borda com o mouse, inverte a ordem arrastando, divide pela régua e exclui pelo teclado, conferindo a linha do tempo do agente a cada passo;
     - usa o vídeo: `virtualCamera.source` `video`, mesma sessão em `live` e o celular com "O computador está mostrando um vídeo";
     - pausa, pula pela régua (posição do agente em até 0,5 s) e continua;
     - volta à câmera pelo celular (vídeo inativo, mesma sessão, fonte `phone`, pílula Ao vivo), usa de novo e volta pelo console.
-  - SSIM do CA-2 com o vídeo desativado: 0,9837 (mínimo 0,9820, 30 quadros). `light-quality` também passou.
+  - SSIM do CA-2 com o vídeo desativado: 0,9837 (mínimo 0,9820, 30 quadros); `light-quality` também passou.
   - Conjunto completo: 30 passaram e 1 falhou, `comparison.spec.ts:20` (a captura de tela do celular não chega ao painel; o console mostra "Sinal perdido").
   - A/B desse teste com `--repeat-each=4`, o mesmo web e só a pasta `agent` trocada: com o agent a43f781 (revisão 1), 2 de 4 falharam; com o 71e75ab (revisão 2), também 2 de 4. A falha não vem do web nem do agent da revisão 2. O mesmo par já tinha passado 33/33 no fechamento da revisão 1, e a máquina estava carregada (CPU entre 60% e 90%, com o WCam do usuário, a VM do WSL e outros apps), então é instabilidade do teste sob carga.
 - Detector do `impeccable`: nenhum achado nos arquivos alterados.
@@ -84,7 +85,7 @@ Spec: `docs/specs/spec-v0.9.0.md` (revisão 2) · Handoff: `docs/handoff-v0.9.0-
 | 5 Editor | Adicionar, ordenar arrastando, cortar pela borda, dividir, excluir e pular pela régua, com mouse e teclado, verificados no e2e. Pausar para a posição: verificado. Mudança no Meet em até 1 s: não verificado |
 | 9 Interface refeita | Sem controle repetido; direção das skills em `docs/design-v0.9.0.md`. Falta a conferência do usuário |
 | 10 Arquivo que não é vídeo | Texto de `errors.video_unsupported` na linha do envio (teste da fila); apagar do disco é do agent |
-| 11 CA-2 | SSIM 0,9837 |
+| 11 CA-2 | SSIM 0,9836 no e2e final |
 | 12 Verificação | Build, lint, Vitest e e2e acima; `version` 0.9.0 em `web/package.json` |
 
 ## 8. Textos
@@ -104,4 +105,3 @@ Spec: `docs/specs/spec-v0.9.0.md` (revisão 2) · Handoff: `docs/handoff-v0.9.0-
 - Arrastar arquivos do Windows para a biblioteca e para a faixa: o e2e usa o seletor de arquivo; arrastar da biblioteca para a faixa também não está no e2e (o botão Adicionar está).
 - O visual foi conferido por esta sessão em capturas do Chromium do compose, com dados simulados (editor vazio, inativo com seleção, ativo, ativo com zoom, congelado, sem celular, 390 px, confirmação de remover, cortando e arrastando). O usuário não viu.
 - `review-animations` não pôde ser chamado por esta sessão (só roda por pedido do usuário).
-- A falha do `comparison.spec.ts`, que depende da correção na sessão agent.
