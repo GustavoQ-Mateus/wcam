@@ -1,6 +1,6 @@
 # Spec v0.8.0, Console
 
-Status: Aprovada (2026-11-12)
+Status: Entregue (2026-11-15)
 Branch de integração: `feature/console`
 Sessões: `agent`, `web`
 Referências: `docs/planejamento.md` §4 (segurança), §5.1 a §5.7 (interface), §6 (roteiro da 0.8.0); ADR 0010 (código de confirmação); spec v0.7.0 e changelog (achados); protótipo aprovado pelo usuário em 2026-11-12: https://claude.ai/artifact/4j5uK8opMCjxa2iy1p1F8b
@@ -182,6 +182,10 @@ Chaves novas em `locales/en.json` e `locales/pt-BR.json` no mesmo commit, na bra
 
 - 2026-11-12, e2e da prévia: o serviço `e2e` do compose roda com `network_mode: "service:agent"`, porque a prévia só aceita candidatos de loopback (contrato) e, em containers separados, não conecta. Os endereços `E2E_*` não mudam.
 
+- 2026-11-15, spike `zoom` (§0, CA 1): sai da v0.8.0. O zoom foi para a v0.10.0 e a medição fica fora do fluxo do app, então ela vai para a spec do zoom. O CA 1 fica como não aplicável nesta versão.
+
+- 2026-11-15, prévia parada (§2.3): o agente aceita uma prévia por vez, e uma segunda janela do console ou do `/dev` toma a prévia da primeira em silêncio. Na bateria, isso deixou a área preta com o rótulo aceso no Opera do usuário. O rótulo só aparece com quadro recebido. Se a conexão falha ou nenhum quadro chega em 5 s, o console mostra que a prévia parou, com um botão para mostrar de novo, sem renegociar sozinho para não disputar com a outra janela. O contrato não muda. Depois da correção (PR #42), a prévia ainda parava no Opera GX do usuário. Ela voltou quando o usuário redefiniu as permissões do site no navegador; a causa foi local, não do código.
+
 ## Critérios de aceitação
 
 1. Spike `zoom` registrado no relatório web, com a tabela por câmera do iPhone do usuário.
@@ -194,3 +198,28 @@ Chaves novas em `locales/en.json` e `locales/pt-BR.json` no mesmo commit, na bra
 8. Linguagem: teste da §6 passa; nenhum termo proibido fora de Detalhes e de `/dev`.
 9. CA-2 mantido: SSIM de pelo menos 0,98 no e2e com prévia ligada e com Espelhar desligado.
 10. Verificação completa do CLAUDE.md, `npm run test:e2e` e fluxo real no iPhone; `version` 0.8.0 em `agent/pyproject.toml` e `web/package.json`.
+
+## Changelog
+
+### 0.8.0, 2026-11-15
+
+Entregue pelas sessões `agent` (`feature/console-agent`) e `web` (`feature/console-web`), integradas em `feature/console` (PRs #28 a #32 e #42). Relatórios em `docs/relatorio-v0.8.0-agent.md` e `docs/relatorio-v0.8.0-web.md`. Bateria do usuário no iPhone e no Opera GX em 2026-11-15, pelo fluxo normal do QR.
+
+| CA | Resultado | Evidência |
+|---|---|---|
+| 1 | Não aplicável | Spike `zoom` movido para a spec do zoom (v0.10.0), Decisões registradas. |
+| 2 | Verificado | Testes de integração e e2e da §1.3, incluindo o falso computador e o tempo limite, com `rtpPacketsBeforeLive` 0. No iPhone, confirmação nas duas ordens e É diferente encerrando, sem vídeo antes de É igual nos dois lados. |
+| 3 | Verificado | QR no console, console e `/cam` com desenhos próprios, estados da §2.1 vistos pelo usuário. |
+| 4 | Verificado | e2e com cada controle no outro lado em menos de 300 ms. Usuário com o Meet aberto: Congelar imagem, Desligar câmera (indicador do iPhone apaga), Trocar câmera e Espelhar pelo console, pelo celular e pela bandeja. |
+| 5 | Verificado | ADR 0015 com a CPU (1080p +3,1 pontos; 2160p +6,8 com pulo de pixels). e2e: prévia com imagem e fechada ao desligar; segunda janela toma a prévia e a primeira mostra que parou (PR #42). No Opera GX do usuário, a prévia voltou depois de redefinir as permissões do site. |
+| 6 | Verificado | `/dev` com dados reais do iPhone, Pausar gráficos e Exportar CSV usados pelo usuário; teste de que sem assinante a coleta não roda. |
+| 7 | Verificado | Bandeja verificada pelo usuário: estados, menu e Sair. |
+| 8 | Verificado | Teste pytest de termos proibidos nos dois arquivos de `locales/`. |
+| 9 | Verificado | e2e no CI do PR #42 com prévia ligada e Espelhar desligado: SSIM 0,9837 (mínimo 0,9829). |
+| 10 | Verificado, CI no PR | Estado final de `feature/console` (60ce3ae, `origin/main` contida): pytest 432 passados e 2 pulados (Ubuntu), 433 e 1 (Windows); web build, lint e Vitest 158; e2e 32 de 32; vcam build e testes; CodeQL. Versão 0.8.0 em `agent/pyproject.toml` e `web/package.json`. |
+
+Achados registrados:
+- O `/dev` mostrou a queda de fps relatada numa reunião: em 1080p30 o total p95 ficou acima de 33,3 ms em 46 de 104 s, com picos de cor até 126 ms e de entrega até 195 ms, e fps entregue de 17 a 19 com o celular mandando 30, CPU do processo entre 14% e 32%. Investigação em versão futura, a pedido do usuário.
+- O indicador "Processamento p95" do `/dev` usa metade do orçamento do quadro e fica em atenção o tempo todo em 1080p neste PC; rever o limite junto com a investigação acima.
+- Pedidos do usuário para as próximas versões: gráficos e ícones por biblioteca com o mesmo estilo (spec v0.9.0 §2.1) e prévia em qualidade total na janela WebView2 (planejamento §6, 1.0.0).
+- WCam em segundo plano não recebe Ctrl+C por `GenerateConsoleCtrlEvent`; encerrar pela bandeja (Sair) é o caminho limpo.
