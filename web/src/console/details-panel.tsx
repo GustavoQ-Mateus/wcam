@@ -1,5 +1,5 @@
 import { cpuPercentValue } from "../data/console-format";
-import type { Status } from "../data/contract";
+import type { Status, VideoFile } from "../data/contract";
 import { formatName } from "../data/format-name";
 import type { MessageKey } from "../data/i18n";
 import { t } from "../data/language";
@@ -36,7 +36,22 @@ export function DetailsPanel({ status }: DetailsPanelProps) {
   );
 }
 
-function detailRows({ session, videoFormat, process }: Status): DetailRow[] {
+function detailRows(status: Status): DetailRow[] {
+  const { videoFormat, process } = status;
+  return [
+    ...sourceRows(status),
+    { labelKey: "console.detail_camera_format", value: formatName(videoFormat.camera) },
+    {
+      labelKey: "console.detail_cpu",
+      value: t("console.detail_percent", { percent: cpuPercentValue(process.cpuPercent) }),
+    },
+  ];
+}
+
+function sourceRows({ session, videoSource }: Status): DetailRow[] {
+  if (videoSource.active && videoSource.file) {
+    return videoFileRows(videoSource.file);
+  }
   const video = session?.video ?? null;
   return [
     { labelKey: "console.detail_resolution", value: video && `${String(video.width)} × ${String(video.height)}` },
@@ -50,10 +65,13 @@ function detailRows({ session, videoFormat, process }: Status): DetailRow[] {
         }),
     },
     { labelKey: "console.detail_codec", value: video && video.codec },
-    { labelKey: "console.detail_camera_format", value: formatName(videoFormat.camera) },
-    {
-      labelKey: "console.detail_cpu",
-      value: t("console.detail_percent", { percent: cpuPercentValue(process.cpuPercent) }),
-    },
+  ];
+}
+
+function videoFileRows(file: VideoFile): DetailRow[] {
+  return [
+    { labelKey: "console.detail_resolution", value: `${String(file.width)} × ${String(file.height)}` },
+    { labelKey: "console.detail_fps", value: file.fps.toFixed(FPS_DECIMALS) },
+    { labelKey: "console.detail_codec", value: file.codec },
   ];
 }
