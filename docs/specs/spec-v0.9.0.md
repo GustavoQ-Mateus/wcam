@@ -107,6 +107,11 @@ Chaves novas em `locales/` na integração antes do código: área Vídeo do con
 - Web: Vitest no módulo de envio (progresso e erros) e na posição da linha do tempo (avanço pelo relógio, correção pelo agente, parada com Congelar).
 - e2e: enviar um vídeo pelo console, ativar, ver `virtualCamera.source` `video` e a prévia com imagem; arrastar a linha do tempo e ver `positionSeconds` no ponto escolhido; desativar volta ao QR.
 
+## Decisões registradas
+
+- 2026-11-15, gráficos (§2.2, CA 8 e 9): o `uPlot` não reduziu a CPU do navegador no `/dev` (renderizador 9,97% com SVG contra 15,14% com `uPlot`, prévia ligada; GPU dobrou com canvas; JS do `/dev` de 84,2 para 106,7 KB gzip). Pela regra da §2.2, ele não entra e os gráficos continuam em SVG próprio, sem mudança visual.
+- 2026-11-15, ícones (§2.2, CA 9): o `lucide-react` fica. A condição de CPU vale para a troca dos gráficos, já que o `/dev` não tem ícones; a troca dos ícones é pedido do usuário e cumpre o limite de JS (`/` de 88,9 para 90,2 KB gzip). O usuário confere o desenho novo dos ícones na bateria.
+
 ## Fora do escopo
 
 - HDR com mapeamento de tom, corte ou escolha de trecho, miniaturas na linha do tempo, lista de vídeos, velocidade, áudio.
