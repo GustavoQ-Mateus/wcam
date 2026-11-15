@@ -70,7 +70,8 @@ Spec: `docs/specs/spec-v0.9.0.md` (revisão 2) · Handoff: `docs/handoff-v0.9.0-
     - pausa, pula pela régua (posição do agente em até 0,5 s) e continua;
     - volta à câmera pelo celular (vídeo inativo, mesma sessão, fonte `phone`, pílula Ao vivo), usa de novo e volta pelo console.
   - SSIM do CA-2 com o vídeo desativado: 0,9837 (mínimo 0,9820, 30 quadros). `light-quality` também passou.
-  - Conjunto completo: 30 passaram e 1 falhou, `comparison.spec.ts:20` (a captura de tela do celular não chega ao painel; o console mostra "Sinal perdido"). A mesma falha acontece em `origin/feature/video-agent` sozinha, com o web da revisão 1, então não vem do web; já foi passada à sessão agent.
+  - Conjunto completo: 30 passaram e 1 falhou, `comparison.spec.ts:20` (a captura de tela do celular não chega ao painel; o console mostra "Sinal perdido").
+  - A/B desse teste com `--repeat-each=4`, o mesmo web e só a pasta `agent` trocada: com o agent a43f781 (revisão 1), 2 de 4 falharam; com o 71e75ab (revisão 2), também 2 de 4. A falha não vem do web nem do agent da revisão 2. O mesmo par já tinha passado 33/33 no fechamento da revisão 1, e a máquina estava carregada (CPU entre 60% e 90%, com o WCam do usuário, a VM do WSL e outros apps), então é instabilidade do teste sob carga.
 - Detector do `impeccable`: nenhum achado nos arquivos alterados.
 
 ## 7. Critérios de aceitação que a sessão web toca
