@@ -1,7 +1,8 @@
 import io
+from urllib.parse import unquote
 
 import segno
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import StreamingResponse
 
 from wcam.api.events import developer_events, event_stream, repeated_events
@@ -12,17 +13,25 @@ from wcam.api.schemas import (
     PreviewRequest,
     PreviewResponse,
     StatusResponse,
+    VideoFileBody,
     VideoFormatRequest,
+    VideoPositionRequest,
+    VideoSourceRequest,
     iso_utc,
     status_response,
+    video_file_body,
 )
 from wcam.services import AgentServices
 from wcam.sessions.errors import InvalidOfferError
+from wcam.video.errors import MissingVideoNameError, VideoTooLargeError
+from wcam.video.store import MAX_VIDEO_BYTES
 
 QR_ERROR_LEVEL = "m"
 QR_DARK = "#000"
 QR_LIGHT = "#fff"
 PAIRING_FRAGMENT = "#t="
+FILE_NAME_HEADER = "x-file-name"
+LENGTH_HEADER = "content-length"
 
 
 def pairing_url(phone_page_url: str, token: str) -> str:
@@ -43,13 +52,22 @@ def qr_svg(url: str) -> str:
     return document.getvalue().decode("utf-8")
 
 
+def declared_length(request: Request) -> int:
+    length = request.headers.get(LENGTH_HEADER, "")
+    return int(length) if length.isdigit() else 0
+
+
 def create_console_router(services: AgentServices, phone_page_url: str) -> APIRouter:
     manager = services.manager
     router = APIRouter()
 
     def current_status() -> StatusResponse:
         return status_response(
-            manager.status(), services.pipeline, services.cpu.percent, services.comparisons is not None
+            manager.status(),
+            services.pipeline,
+            services.cpu.percent,
+            services.comparisons is not None,
+            services.video.view(),
         )
 
     def status_json() -> str:
@@ -186,6 +204,57 @@ def create_console_router(services: AgentServices, phone_page_url: str) -> APIRo
     )
     async def disconnect_session() -> Response:
         await manager.disconnect()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @router.put(
+        "/api/video-source/file",
+        status_code=status.HTTP_201_CREATED,
+        summary="Store a video for the camera",
+        description="Receives the video as the raw request body, with its original name URL encoded in the "
+        "X-File-Name header, writes it to disk in parts and checks that its first frame decodes. Replaces the stored "
+        "video, turning it off first. Up to 20 GB.",
+    )
+    async def store_video(request: Request) -> VideoFileBody:
+        name = unquote(request.headers.get(FILE_NAME_HEADER, "")).strip()
+        if not name:
+            raise MissingVideoNameError
+        if declared_length(request) > MAX_VIDEO_BYTES:
+            raise VideoTooLargeError
+        return video_file_body(await services.video.save(request.stream(), name))
+
+    @router.delete(
+        "/api/video-source/file",
+        status_code=status.HTTP_204_NO_CONTENT,
+        summary="Remove the stored video",
+        description="Turns the video off, if it is on, and deletes it from disk.",
+    )
+    async def remove_video() -> Response:
+        await services.video.remove()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @router.put(
+        "/api/video-source",
+        status_code=status.HTTP_204_NO_CONTENT,
+        summary="Turn the video on or off",
+        description="On, the camera shows the stored video in a loop, the phone is disconnected and the pairing "
+        "window stays closed. Off, the camera waits for a phone again.",
+    )
+    async def use_video(body: VideoSourceRequest) -> Response:
+        if body.active:
+            await services.video.activate()
+        else:
+            await services.video.deactivate()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @router.put(
+        "/api/video-source/position",
+        status_code=status.HTTP_204_NO_CONTENT,
+        summary="Jump to a point of the video",
+        description="Moves the video to the given second, from the keyframe before it. The camera repeats the last "
+        "frame until the new point is decoded.",
+    )
+    async def jump_in_video(body: VideoPositionRequest) -> Response:
+        services.video.seek(body.seconds)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return router

@@ -47,6 +47,7 @@ from wcam.sessions.phone_messages import (
     StatsMessage,
     parse_phone_message,
 )
+from wcam.video.errors import VideoSourceActiveError
 
 CONFIRMATION_TIMEOUT_SECONDS = 120.0
 ID_BYTES = 16
@@ -76,6 +77,7 @@ class EndReason(StrEnum):
     DISCONNECTED_BY_PHONE = "disconnected_by_phone"
     CONNECTION_FAILED = "connection_failed"
     CONFIRMATION_TIMEOUT = "confirmation_timeout"
+    VIDEO_SOURCE = "video_source"
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,6 +233,7 @@ class SessionManager:
         self._controls = Controls()
         self._event_listeners: list[EventListener] = []
         self._stats_wanted = False
+        self._video_source_active = False
         self._phone_stats: dict[str, object] | None = None
         if camera is not None:
             camera.on_change(self._send_video_format)
@@ -260,6 +263,8 @@ class SessionManager:
         return await session.peer.receive_stats()
 
     def open_pairing(self) -> PairingTicket:
+        if self._video_source_active:
+            raise VideoSourceActiveError
         self._ensure_idle()
         ticket = self._pairing.open()
         self._notify_change()
@@ -280,9 +285,22 @@ class SessionManager:
 
     def change_controls(self, change: ControlsChange) -> None:
         session = self._session
-        if change.needs_live_session and (session is None or session.state is not SessionState.LIVE):
+        live = session is not None and session.state is SessionState.LIVE
+        if change.needs_live_session(self._video_source_active) and not live:
             raise NoLiveSessionError
         self._set_controls(changed_controls(self._controls, change))
+
+    async def start_video_source(self) -> None:
+        self._video_source_active = True
+        self._pairing.close()
+        if self._session is not None:
+            await self._end(self._session, EndReason.VIDEO_SOURCE)
+        self._notify_change()
+
+    def stop_video_source(self) -> None:
+        self._video_source_active = False
+        self._set_controls(after_session(self._controls))
+        self._notify_change()
 
     def set_video_format(self, video_format: VideoFormat) -> None:
         if video_format not in self._available_formats:
