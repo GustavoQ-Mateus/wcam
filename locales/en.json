@@ -140,6 +140,8 @@
   "console.confirmation_done": "Confirmed",
   "console.frozen_since": "Frozen since {time}",
   "console.preview_hidden": "Preview off. Apps keep receiving the image.",
+  "console.preview_stopped": "The preview stopped. It may be open in another window.",
+  "console.preview_show_again": "Show preview",
   "console.phone_title": "Phone",
   "console.orientation_landscape": "Landscape",
   "console.orientation_portrait": "Portrait",

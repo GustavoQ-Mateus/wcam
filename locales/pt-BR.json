@@ -140,6 +140,8 @@
   "console.confirmation_done": "Confirmado",
   "console.frozen_since": "Congelada desde {time}",
   "console.preview_hidden": "Prévia desligada. Os apps continuam recebendo a imagem.",
+  "console.preview_stopped": "A prévia parou. Ela pode estar aberta em outra janela.",
+  "console.preview_show_again": "Mostrar prévia",
   "console.phone_title": "Celular",
   "console.orientation_landscape": "Deitado",
   "console.orientation_portrait": "Em pé",

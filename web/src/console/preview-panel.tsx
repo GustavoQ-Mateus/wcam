@@ -1,5 +1,6 @@
 import type { ConsoleMode } from "../data/console-view";
 import { t } from "../data/language";
+import type { PreviewState } from "../data/preview-state";
 import { ConsoleButton } from "./console-button";
 import styles from "./preview-panel.module.scss";
 import { StatusMark } from "./status-mark";
@@ -8,32 +9,42 @@ interface PreviewPanelProps {
   mode: ConsoleMode;
   previewOn: boolean;
   attachPreview: (video: HTMLVideoElement | null) => void;
-  previewShowing: boolean;
+  previewState: PreviewState;
   frozenSince: string | null;
   onUnfreeze: () => void;
   onCameraOn: () => void;
+  onShowPreviewAgain: () => void;
 }
 
 export function PreviewPanel({
   mode,
   previewOn,
   attachPreview,
-  previewShowing,
+  previewState,
   frozenSince,
   onUnfreeze,
   onCameraOn,
+  onShowPreviewAgain,
 }: PreviewPanelProps) {
   const cameraOff = mode === "camera_off";
-  const showVideo = previewOn && !cameraOff;
+  const previewStopped = previewOn && previewState === "stopped";
   return (
     <div className={styles.frame} data-mode={mode}>
-      {showVideo && (
-        <>
-          <video ref={attachPreview} className={styles.video} autoPlay muted playsInline />
-          {previewShowing && <span className={styles.label}>{t("console.preview_label")}</span>}
-        </>
+      {previewOn && !previewStopped && (
+        <video ref={attachPreview} className={styles.video} hidden={cameraOff} autoPlay muted playsInline />
+      )}
+      {previewState === "showing" && previewOn && !cameraOff && (
+        <span className={styles.label}>{t("console.preview_label")}</span>
       )}
       {!previewOn && !cameraOff && <p className={styles.center}>{t("console.preview_hidden")}</p>}
+      {previewStopped && !cameraOff && (
+        <div className={styles.center}>
+          <p>{t("console.preview_stopped")}</p>
+          <ConsoleButton variant="primary" onClick={onShowPreviewAgain}>
+            {t("console.preview_show_again")}
+          </ConsoleButton>
+        </div>
+      )}
       {cameraOff && (
         <div className={styles.center}>
           <p className={styles.centerTitle}>{t("state.camera_off")}</p>

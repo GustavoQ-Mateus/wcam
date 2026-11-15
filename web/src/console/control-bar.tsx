@@ -8,6 +8,7 @@ interface ControlBarProps {
   controls: Controls;
   facing: Facing | null;
   previewOn: boolean;
+  previewStopped: boolean;
   onChange: (patch: ControlsPatch) => void;
   onTogglePreview: () => void;
   onDisconnect: () => void;
@@ -18,6 +19,7 @@ export function ControlBar({
   controls,
   facing,
   previewOn,
+  previewStopped,
   onChange,
   onTogglePreview,
   onDisconnect,
@@ -66,9 +68,11 @@ export function ControlBar({
       >
         {t("controls.mirror")}
       </button>
-      <button type="button" className={styles.control} onClick={onTogglePreview}>
-        {t(previewOn ? "controls.preview_off" : "controls.preview_on")}
-      </button>
+      {!previewStopped && (
+        <button type="button" className={styles.control} onClick={onTogglePreview}>
+          {t(previewOn ? "controls.preview_off" : "controls.preview_on")}
+        </button>
+      )}
       {onCompare && (
         <button type="button" className={styles.control} onClick={onCompare}>
           {t("console.dev_compare")}
