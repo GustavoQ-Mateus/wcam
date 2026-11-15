@@ -1,6 +1,6 @@
 # 0016. Vídeo enviado pelo usuário como origem própria da câmera
 
-Status: Aceita
+Status: Aceita, substituída em parte pela ADR 0017 (a sessão do celular não termina mais ao ativar)
 Data: 2026-11-15
 
 ## Contexto

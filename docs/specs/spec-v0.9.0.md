@@ -1,132 +1,173 @@
 # Spec v0.9.0, Vídeo como câmera
 
-Status: Aprovada (2026-11-15)
+Status: Aprovada (revisão 2, 2026-11-15; a revisão 1 foi aprovada no mesmo dia e substituída depois da bateria)
 Branch de integração: `feature/video`
 Sessões: `agent`, `web`
-Referências: `docs/planejamento.md` §1 (CA-1, CA-2), §5.4 (controles); spec v0.8.0 (console, prévia, bandeja); ADR 0011 (câmera nativa); ADR 0015 (prévia). Pedido do usuário em 2026-11-13.
+Referências: `docs/planejamento.md` §1 (CA-1, CA-2, CA-4), §5.4 (controles); spec v0.8.0 (console, prévia, bandeja); ADR 0011 (câmera nativa); ADR 0015 (prévia); ADR 0016 (vídeo como origem, substituída em parte pela ADR 0017). Pedido do usuário em 2026-11-13.
 
 ## Objetivo
 
-O usuário envia um vídeo pelo console, e a câmera WCam passa a mostrar esse vídeo em repetição, do começo ao fim e de novo, até ele desativar. Para os apps (Meet, Teams, Zoom, Discord, OBS, app Câmera do Windows) continua sendo a mesma câmera nativa "WCam".
+Com o celular conectado, o usuário monta no console uma linha do tempo com um ou mais vídeos, como num editor de vídeo simples, e a câmera WCam passa a mostrar essa linha do tempo em repetição, no lugar da câmera do celular, até ele voltar à câmera. Para os apps (Meet, Teams, Zoom, Discord, OBS, app Câmera do Windows) continua sendo a mesma câmera nativa "WCam".
 
 Decisões do usuário (2026-11-13):
-- Qualquer vídeo que o PC consiga abrir, sem tratamento especial de HDR nem de formato nesta versão. Melhorias ficam para depois.
-- Com o vídeo ativo, o celular não é usado: a conexão com o celular termina e o QR code não é oferecido até o vídeo ser desativado. O vídeo chega ao PC por qualquer meio (cabo, nuvem, mensageiro), não pelo `/cam`.
-- A câmera continua no formato escolhido (decisão do orquestrador, aceita pelo usuário): o vídeo é ajustado a ele. Trocar o formato da câmera exigiria o app reabrir a câmera no meio da reunião.
+- Qualquer vídeo que o PC consiga abrir, sem tratamento especial de HDR nem de formato nesta versão.
+- O vídeo chega ao PC por qualquer meio (cabo, nuvem, mensageiro), não pelo `/cam`.
+- A câmera continua no formato escolhido (decisão do orquestrador, aceita pelo usuário): o vídeo é ajustado a ele.
 
-Decisão do usuário na aprovação (2026-11-15): o vídeo tem uma linha do tempo no console (§1.4 e §2.1).
+Decisões do usuário na bateria (2026-11-15), que mudam a revisão 1:
+- Linha do tempo de editor, no estilo do Clipchamp: vários vídeos, cortar o começo e o fim de cada trecho, dividir, arrastar para mudar a ordem. Entra nesta versão.
+- Escolher e usar vídeo só com o celular conectado, por segurança. Usar vídeo desliga a câmera do celular sem desconectar; voltar à câmera religa a câmera do mesmo celular, sem novo QR.
+- Se o celular desconectar com o vídeo rodando, o vídeo continua. Para voltar à câmera do celular, lê o QR de novo.
+- A interface da revisão 1 ficou feia (botão Descongelar repetido sobre a prévia e na barra; área Vídeo solta abaixo do QR). Refazer.
+- O vídeo travou na câmera e na prévia, e em 4K apareceram linhas verdes e azuis. Bugs da revisão 1, corrigidos nesta versão (§1.6).
 
 A câmera virtual nativa (`vcam`) não muda.
 
 ## 1. Agent
 
-### 1.1 Arquivo
+### 1.1 Biblioteca de vídeos
 
-- `PUT /api/video-source/file` recebe o arquivo como corpo bruto (`application/octet-stream`), com o nome original no cabeçalho `X-File-Name` (codificado em URL), gravado em partes direto no disco, sem carregar tudo na memória, em `<diretório de dados>/video/`. Limite de 20 GB; acima disso, `413 video_too_large`.
-- Ao terminar, o agente abre o arquivo com PyAV e confere que há uma faixa de vídeo decodificável (decodifica o primeiro quadro). Se não houver, apaga o arquivo e responde `422 video_unsupported`.
-- Guarda um vídeo por vez: um envio novo substitui o anterior (desativando antes, se estiver ativo). O arquivo fica no diretório de dados até ser removido (`DELETE /api/video-source/file`) e sobrevive a reiniciar o agente; o estado ativo não sobrevive (o agente sempre sobe com o vídeo desativado).
+- `POST /api/videos` recebe um vídeo como corpo bruto (`application/octet-stream`), com o nome original em `X-File-Name` (codificado em URL), gravado em partes direto no disco em `<diretório de dados>/video/`, sem carregar na memória. Limite de 20 GB por arquivo (`413 video_too_large`) e de 20 vídeos guardados (`409 video_library_full`).
+- Só com o celular em `live`: sem sessão `live`, `409 no_live_session` antes de ler o corpo.
+- Ao terminar, abre com PyAV e decodifica o primeiro quadro; sem faixa de vídeo decodificável, apaga e responde `422 video_unsupported`.
+- Gera a tira de miniaturas do vídeo para a linha do tempo: até 60 quadros espaçados por igual na duração, cada um com 160 de largura e a proporção do vídeo já com a rotação aplicada, lado a lado num JPEG. Servida em `GET /api/videos/{id}/filmstrip`.
+- `DELETE /api/videos/{id}` apaga o arquivo e tira da linha do tempo os trechos que o usam; `404 video_not_found`.
+- Vídeos e linha do tempo sobrevivem a reiniciar o agente (tabelas novas por migration). O estado ativo não sobrevive: o agente sempre sobe com o vídeo desativado.
 - Áudio é ignorado.
 
-### 1.2 Reprodução
+### 1.2 Linha do tempo
+
+- Uma faixa só, com trechos em sequência, sem espaço entre eles. Cada trecho é `{"id", "videoId", "inSeconds", "outSeconds"}`: um pedaço de um vídeo da biblioteca. O mesmo vídeo pode aparecer em mais de um trecho.
+- `PUT /api/timeline` com `{"clips": [...]}` troca a linha do tempo inteira: o console calcula arrastar, cortar e dividir e manda o resultado. `id` é gerado pelo console e devolvido como veio. Regras: até 50 trechos; `0 <= inSeconds < outSeconds <= durationSeconds` do vídeo; trecho de pelo menos 0,5 s; `videoId` existente. Fora disso, `422 invalid_request`.
+- Vale na hora, com o vídeo ativo ou não. Com o vídeo ativo, a reprodução segue no mesmo segundo da linha do tempo (limitado à nova duração). Se a linha do tempo ficar vazia com o vídeo ativo, o vídeo desativa (§1.4).
+
+### 1.3 Reprodução
 
 - Uma tarefa com dono e cancelamento explícito; decodificação e conversão no executor, fora do event loop.
-- Cada quadro é convertido para I420 no formato anunciado pela câmera (`videoFormat.camera`), mantendo a proporção, centralizado com faixas pretas (Y=16, UV=128) quando a proporção não bate. A rotação gravada no arquivo (vídeo do celular em pé) é aplicada antes.
-- O ritmo segue o tempo do vídeo (`pts`), não a velocidade da decodificação. A câmera recebe quadros no fps anunciado: quadro repetido quando o vídeo tem fps menor, quadro pulado quando tem maior ou quando a decodificação atrasa. O vídeo nunca fica em câmera lenta.
-- No fim, volta ao começo e continua, sem quadro preto entre as voltas.
-- Cor: faixa e matriz convertidas para o que a câmera espera, com o caminho padrão do PyAV. HDR sai sem mapeamento de tom (pode ficar com cor lavada); fica registrado como limitação.
+- Toca os trechos em ordem e, no fim do último, volta ao começo do primeiro.
+- Cada quadro é convertido para I420 no formato anunciado (`videoFormat.camera`), com a rotação gravada aplicada, mantendo a proporção, centralizado com faixas pretas (Y=16, UV=128).
+- Ritmo pelo `pts`, não pela velocidade da decodificação: a câmera recebe quadros no fps anunciado, repetindo ou pulando quadros conforme o vídeo; nunca em câmera lenta.
+- Troca de trecho sem preto e sem parada: o próximo trecho é aberto e tem o primeiro quadro decodificado antes do fim do atual. Na troca, no máximo um quadro repetido.
+- Pular para um ponto: `PUT /api/video-source/position` com `{"seconds"}` na linha do tempo inteira. Busca o quadro-chave anterior no trecho certo, decodifica sem entregar até o ponto e segue dali; a câmera repete o último quadro enquanto isso. Fora de `[0, duração da linha do tempo)`: `422 invalid_request`; vídeo desativado: `409 video_source_inactive`.
+- `videoSource.positionSeconds` é a posição do quadro entregue na linha do tempo. Com Congelar imagem ligado, a posição para; ao descongelar, segue de onde parou. Pular congelado entrega o quadro do novo ponto e continua congelado.
+- Cor pelo caminho padrão do PyAV; HDR sem mapeamento de tom (limitação registrada).
 
-### 1.3 Ativar e desativar
+### 1.4 Usar vídeo e voltar à câmera
 
-- `PUT /api/video-source` com `{"active": bool}`: `204`. Ativar sem arquivo: `409 no_video_file`.
-- Ativar encerra a sessão do celular, se houver, com o motivo novo `video_source` (o celular mostra que o computador passou a usar um vídeo), fecha a janela do QR e faz `POST /api/pairing` responder `409 video_source_active` enquanto o vídeo estiver ativo.
-- Desativar volta ao comportamento normal: quadro de espera até um celular conectar.
-- `virtualCamera.source` ganha `video`.
-- Controles com o vídeo ativo: Congelar imagem e Espelhar valem (congela o quadro atual do vídeo; espelha a saída); Desligar câmera e Trocar câmera continuam exigindo celular (`409 no_live_session`).
-- A prévia do console (ADR 0015) mostra o vídeo, porque mostra o quadro entregue.
-
-### 1.4 Linha do tempo
-
-- O agente sabe a posição atual do vídeo em segundos (pelo `pts` do quadro entregue) e a publica em `videoSource.positionSeconds`.
-- `PUT /api/video-source/position` com `{"seconds": number}` pula para esse ponto: busca o quadro-chave anterior, decodifica sem entregar até o ponto pedido e segue dali, no mesmo ritmo e na mesma repetição. Até achar o ponto, a câmera repete o último quadro entregue, sem preto. Fora de `[0, durationSeconds)`: `422 invalid_request`. Com o vídeo desativado: `409 video_source_inactive`.
-- Com Congelar imagem ligado, a posição para; ao descongelar, o vídeo segue de onde parou (não salta o tempo congelado). Pular com o vídeo congelado entrega o quadro do novo ponto e continua congelado.
+- `PUT /api/video-source` com `{"active": bool}`: `204`.
+- Ativar exige o celular em `live` (`409 no_live_session`) e a linha do tempo com pelo menos um trecho (`409 timeline_empty`).
+- Ativar não encerra a sessão: o agente manda ao celular `{"type": "video_source", "active": true}`, o celular desliga a câmera (para a faixa, a luz da câmera apaga) e mostra que o computador está mostrando um vídeo, com o botão para voltar à câmera. Enquanto o vídeo está ativo, a falta de quadros do celular não é queda nem congelamento.
+- Desativar (console, bandeja ou celular): com a sessão `live`, o agente manda `{"type": "video_source", "active": false}`, o celular religa a câmera e a imagem do celular volta. Sem sessão, a câmera volta ao quadro de espera e o console ao QR.
+- Celular desconecta com o vídeo ativo: a sessão termina com o motivo de sempre e o vídeo continua. O console oferece o QR. Um celular que conectar nesse estado entra em `live` com a câmera desligada e a mensagem do vídeo, até alguém voltar à câmera.
+- Celular manda `{"type": "set_video_source", "active": false}` quando o usuário toca em voltar à câmera. Só vale em `live`; `active: true` vindo do celular é ignorado com log (escolher vídeo é só no computador).
+- Controles com o vídeo ativo: Congelar imagem (no console, Pausar e Continuar da linha do tempo) e Espelhar valem, Congelar também sem celular; Desligar câmera e Trocar câmera respondem `409 video_source_active`.
+- `virtualCamera.source` `video`. A prévia do console mostra o vídeo, porque mostra o quadro entregue.
 
 ### 1.5 Bandeja
 
-- Item "Usar vídeo" marcável, desabilitado sem arquivo.
+- Item "Usar vídeo" marcável, habilitado só com o celular em `live` e a linha do tempo com trecho, ou com o vídeo ativo (para poder voltar).
 - Sexto estado do ícone: vídeo em repetição, selo em forma de triângulo de reprodução, `--data-2`, dica com o estado em texto.
+
+### 1.6 Bugs da revisão 1
+
+- Linhas verdes e azuis com a câmera em 4K: causa raiz no relatório, com teste que falha antes da correção (nenhuma linha do quadro entregue com Y, U e V zerados).
+- Travamentos: o relatório mede, em 1080p30 e em 4K, tempo de decodificação e conversão por quadro e quadros repetidos ou pulados por atraso, com o vídeo de teste H.264 e o `IMG_0641.MOV` do usuário (4K HEVC). Bug de ritmo ou de agendamento é corrigido nesta versão. Custo de CPU da decodificação HEVC em software fica para a 0.10.0 Desempenho (decodificação na GPU), com os números registrados.
 
 ## 2. Web (console)
 
-- Área "Vídeo" no console, com direção das skills de design (registro em `docs/design-v0.9.0.md`): escolher ou arrastar um arquivo, barra de progresso do envio, nome, duração, resolução e fps do vídeo enviado (fps e resolução só em Detalhes), **Usar vídeo** e **Voltar ao celular**, **Remover vídeo**.
-- Com o vídeo ativo, o console mostra o estado "Vídeo em repetição" com a prévia, no lugar do QR e da área do celular, e deixa claro que a câmera não está ao vivo.
-- Envio com `XMLHttpRequest` (progresso do upload), encapsulado em módulo em `data/` ou `media/`, fora do componente.
-- `/cam`: mensagem para o encerramento `video_source`.
-- Erros `video_too_large`, `video_unsupported`, `no_video_file`, `video_source_active` e `video_source_inactive` com texto próprio.
+Direção das skills de design (registro em `docs/design-v0.9.0.md`, refeito): `taste-skill`, `impeccable` (`shape` antes, `audit` e `polish` depois), `emil-design-eng`, `mobile-native` para o `/cam`, `animate` e `review-animations` para arrastar e cortar.
 
-### 2.1 Linha do tempo
+### 2.1 Onde o vídeo aparece
 
-- Com o vídeo ativo, o console mostra sob a prévia uma linha do tempo do vídeo: posição atual, duração e uma barra que o usuário clica ou arrasta para pular (`PUT /api/video-source/position` ao soltar, não durante o arraste). Operável pelo teclado (setas pulam 5 s) e com rótulo acessível.
-- Entre os eventos do SSE, o console avança a posição pelo relógio local enquanto o vídeo roda e não está congelado, e corrige pelo valor do agente a cada evento, para a barra andar sem saltos de 1 s.
-- Sem miniaturas, cortes ou marcadores nesta versão.
+- Sem celular conectado e sem vídeo ativo, o console não mostra nada de vídeo: só o QR, como na v0.8.0.
+- Com o celular em `live`, um controle "Usar vídeo" entra junto dos controles da câmera e abre o editor.
+- O editor ocupa a tela do console: prévia em cima (o que os apps recebem), barra de reprodução, linha do tempo na largura toda e a biblioteca de vídeos ao lado. Estado claro de que a câmera mostra o vídeo, não o celular. "Voltar à câmera" sempre visível.
+- Cada controle aparece uma vez: nada de botão repetido sobre a prévia e na barra (bug da revisão 1).
 
-### 2.2 Gráficos e ícones por biblioteca
+### 2.2 Biblioteca
 
-Pedido do usuário em 2026-11-15: trocar os gráficos do `/dev` e os ícones desenhados à mão (SVG próprio, decisão da spec v0.8.0 §4.1) por bibliotecas, para deixar a interface mais leve.
+- Escolher ou arrastar arquivos (vários de uma vez), progresso de cada envio, nome e duração; resolução, fps e codec só em Detalhes. Remover com confirmação quando o vídeo está em uso na linha do tempo.
+- Envio com `XMLHttpRequest` (progresso), num módulo em `data/` ou `media/`, um por vez em fila.
+- Adicionar à linha do tempo: arrastar o vídeo para a faixa (entra na posição solta) ou o botão de adicionar (entra no fim), já com o vídeo inteiro.
 
-- Gráficos: `uPlot`, que desenha em canvas e foi feita para séries temporais em tempo real. Hoje o React redesenha cada SVG a cada amostra, 1 vez por segundo em cada gráfico. Vale para todos os gráficos do `/dev`: séries, minigráficos da faixa de saúde e histograma. Marcas de evento, linhas de referência e cores continuam como estão (tokens de §5.6, skill `dataviz`).
-- Ícones: `lucide-react`, importando ícone por ícone para o build levar só os usados. Substitui os ícones de console, `/cam`, `/dev` e do que entrar na área Vídeo. O ícone da bandeja continua desenhado pelo agente em Pillow.
-- Justificativa das duas dependências: código de desenho a menos para manter, e no `/dev` menos trabalho do navegador a cada amostra. Biblioteca não deixa a página mais leve por si só, então a troca precisa provar isso com a medição do CA 9. Se uma delas não melhorar, ela não entra e o relatório registra o motivo.
-- O estilo dos gráficos não muda (pedido do usuário): mesmo tipo de cada gráfico, mesmas cores, espessura de linha, grade, eixos, rótulos, linhas de referência, marcas de evento e layout da v0.8.0. A biblioteca é configurada para ficar igual ao atual, sem tema, legenda, tooltip ou animação padrão dela. Na revisão, comparo capturas antes e depois lado a lado.
+### 2.3 Linha do tempo de editor
 
-## 3. Contrato (`docs/contrato.md` vai para 0.9.0)
+- Faixa com os trechos lado a lado, largura proporcional à duração, com a tira de miniaturas (`/filmstrip`) e o nome.
+- Régua de tempo e cursor de reprodução que anda com a posição; clicar ou arrastar na régua pula (`PUT /api/video-source/position` ao soltar).
+- Arrastar um trecho muda a ordem. Arrastar a borda esquerda ou direita corta o começo ou o fim, com o tempo mostrado durante o arraste. Dividir no cursor (botão e tecla S). Excluir trecho (botão e tecla Delete). Zoom da faixa (mais e menos), para cortar com precisão em vídeo longo.
+- Cada mudança vira `PUT /api/timeline` ao soltar, com a linha do tempo inteira calculada num módulo puro em `data/` (testado com Vitest).
+- Teclado: espaço pausa e continua (Congelar), setas pulam 5 s, Tab chega a cada trecho, Alt com setas move o trecho selecionado. Rótulos acessíveis em trechos, bordas e cursor.
+- Entre eventos do SSE, o cursor avança pelo relógio local e é corrigido pelo agente a cada evento (regra da revisão 1, que continua).
+- Com o vídeo inativo e o celular conectado, o editor fica disponível para montar a linha do tempo antes de usar; a prévia mostra a câmera do celular e o botão principal é "Usar vídeo".
 
-- `PUT /api/video-source/file`: corpo bruto, `X-File-Name`; `201 {"name", "durationSeconds", "width", "height", "fps", "codec"}`; `413 video_too_large`, `422 video_unsupported`.
-- `DELETE /api/video-source/file`: `204` (desativa antes); `404 no_video_file` sem arquivo.
-- `PUT /api/video-source` com `{"active": bool}`: `204`; `409 no_video_file`; `422 invalid_request`.
-- `GET /api/status` ganha `"videoSource": {"file": {"name", "durationSeconds", "width", "height", "fps", "codec"} | null, "active": bool, "positionSeconds": number | null}` (`null` com o vídeo desativado) no primeiro nível, sempre presente; entra no SSE do console.
-- `PUT /api/video-source/position` com `{"seconds": number}`: `204`; `409 video_source_inactive`; `422 invalid_request`.
-- `virtualCamera.source`: `video`. `lastEnded.reason`: `video_source`. `POST /api/pairing`: `409 video_source_active`.
-- Erros novos na tabela geral: `video_too_large` (413), `video_unsupported` (422), `no_video_file` (404 no `DELETE`, 409 no `PUT`), `video_source_active` (409), `video_source_inactive` (409).
-- `GET /api/dev/events`: `delivered` vale também para o vídeo; evento `video_source` (`{"active", "name"}`).
+### 2.4 `/cam`
+
+- Ao receber `video_source` `active: true`: para a faixa da câmera (luz apagada) e mostra "O computador está mostrando um vídeo" com o botão "Voltar à câmera" (`set_video_source`). Ao receber `false`: pede a câmera de novo e volta ao visor, sem novo QR.
+
+### 2.5 Erros
+
+Texto próprio para `video_too_large`, `video_unsupported`, `video_library_full`, `video_not_found`, `timeline_empty`, `video_source_active`, `video_source_inactive` e para `no_live_session` no envio.
+
+### 2.6 Gráficos e ícones por biblioteca
+
+Sem mudança desde a revisão 1 (decisões registradas abaixo): gráficos do `/dev` continuam em SVG próprio; ícones em `lucide-react`.
+
+## 3. Contrato (`docs/contrato.md` 0.9.0, reescrito na seção "Vídeo como câmera")
+
+- `POST /api/videos`: corpo bruto, `X-File-Name`; `201 {"id", "name", "durationSeconds", "width", "height", "fps", "codec", "filmstripFrames"}`; `409 no_live_session`, `409 video_library_full`, `413 video_too_large`, `422 video_unsupported`.
+- `GET /api/videos/{id}/filmstrip`: `200 image/jpeg`; `404 video_not_found`.
+- `DELETE /api/videos/{id}`: `204`; `404 video_not_found`.
+- `PUT /api/timeline` com `{"clips": [{"id", "videoId", "inSeconds", "outSeconds"}]}`: `204`; `422 invalid_request`.
+- `PUT /api/video-source` com `{"active": bool}`: `204`; `409 no_live_session`, `409 timeline_empty`, `422 invalid_request`.
+- `PUT /api/video-source/position` com `{"seconds"}`: `204`; `409 video_source_inactive`, `422 invalid_request`.
+- `GET /api/status` e SSE do console: `"videoSource": {"videos": [{"id", "name", "durationSeconds", "width", "height", "fps", "codec", "filmstripFrames"}], "timeline": {"clips": [...], "durationSeconds"}, "active": bool, "positionSeconds": number | null}`.
+- DataChannel: agente para o celular `{"type": "video_source", "active": bool}` (ao ativar, ao desativar e ao chegar a `live` com o vídeo ativo); celular para o agente `{"type": "set_video_source", "active": false}`.
+- `PATCH /api/controls`: `cameraOff` e `facing` com o vídeo ativo, `409 video_source_active`; `frozen` aceito sem celular com o vídeo ativo.
+- Saem da revisão 1: `PUT`/`DELETE /api/video-source/file`, `videoSource.file`, `lastEnded.reason` `video_source`, `409 video_source_active` no `POST /api/pairing`, erro `no_video_file`.
+- Erros novos ou mudados: `video_library_full` (409), `video_not_found` (404), `timeline_empty` (409), `video_source_active` (409, agora nos controles).
+- `GET /api/dev/events`: evento `video_source` (`{"active"}`) e `timeline` (`{"clips": n, "durationSeconds"}`).
 
 ## 4. ADR
 
-ADR 0016: o vídeo enviado pelo usuário é uma origem própria da câmera, ajustada ao formato anunciado (pode redimensionar e converter cor). O CA-2 continua valendo só para a imagem do celular, que não muda.
+ADR 0017 substitui na ADR 0016 a parte "com o vídeo ativo, o celular não é usado: a sessão termina" e acrescenta a linha do tempo: o vídeo só é escolhido e ativado com o celular conectado, o celular fica conectado com a câmera desligada, e a origem toca uma sequência de trechos. O resto da ADR 0016 (ajuste ao formato anunciado, CA-2 só para o celular, HDR sem mapeamento) continua.
 
 ## 5. Planejamento
 
-O orquestrador emenda `docs/planejamento.md` antes do código: §5.4 ganha a linha "Usar vídeo" (bandeja e console); §6 ganha a 0.9.0 "Vídeo como câmera", e "Zoom e enquadramento" passa a 0.11.0, depois da 0.10.0 "Desempenho" (decisão do usuário em 2026-11-15), com as linhas seguintes andando.
+O orquestrador emenda `docs/planejamento.md` antes do código: §5.4, "Usar vídeo" só com o celular conectado e "Voltar à câmera" no console, na bandeja e no celular.
 
 ## Textos
 
-Chaves novas em `locales/` na integração antes do código: área Vídeo do console, estado "Vídeo em repetição", Usar vídeo, Voltar ao celular, Remover vídeo, progresso do envio, item e estado da bandeja, encerramento `video_source` no celular, a linha do tempo (rótulo acessível e tempos) e os cinco erros.
+O orquestrador põe em `locales/` antes do código: editor (biblioteca, adicionar, dividir, excluir trecho, zoom, régua, Pausar, Continuar, rótulos acessíveis de trecho, borda e cursor), "Voltar à câmera", mensagem e botão do celular, erros novos. Saem `cam.ended_video_source` e `errors.no_video_file`. `console.*` e `cam.*` de detalhe a sessão web pode acrescentar, nos dois arquivos, listando no relatório.
 
 ## Testes
 
-- Agent: vídeos pequenos gerados no próprio teste com PyAV (H.264, 2 s; um em pé com rotação gravada; um de 60 fps; um de 15 fps). Testes de: arquivo inválido (`422`, arquivo apagado); volta ao começo sem quadro preto; quadro ajustado com faixas nos valores certos e rotação aplicada; ritmo (em 4 s de relógio falso, a câmera recebe 4 × fps quadros, com repetição ou pulo conforme o vídeo); ativar encerra a sessão com `video_source` e `POST /api/pairing` responde `409`; Congelar e Espelhar com o vídeo; pular para um ponto (o próximo quadro entregue tem `pts` no ponto pedido, sem preto durante a busca), pular fora da duração (`422`) e com o vídeo desativado (`409`); posição parada enquanto congelado.
-- Web: Vitest no módulo de envio (progresso e erros) e na posição da linha do tempo (avanço pelo relógio, correção pelo agente, parada com Congelar).
-- e2e: enviar um vídeo pelo console, ativar, ver `virtualCamera.source` `video` e a prévia com imagem; arrastar a linha do tempo e ver `positionSeconds` no ponto escolhido; desativar volta ao QR.
+- Agent: vídeos gerados no teste com PyAV. Envio sem sessão `live` (`409`, nada gravado); biblioteca cheia; tira de miniaturas com o número certo de quadros e rotação aplicada; `PUT /api/timeline` com cada regra inválida (`422`); excluir vídeo tira os trechos; persistência depois de reiniciar; reprodução de dois trechos de vídeos diferentes com corte (o `pts` do primeiro quadro de cada trecho é o `inSeconds`, nenhum quadro depois do `outSeconds`, no máximo um quadro repetido na troca, volta ao começo); pular para um ponto no segundo trecho; ativar sem sessão e sem trecho (`409`); ativar com sessão manda `video_source` ao celular e a sessão continua `live`; desativar religa; celular desconecta com o vídeo ativo e o vídeo continua; `set_video_source` do celular; controles com o vídeo ativo; ritmo com relógio falso; o teste das linhas verdes da §1.6.
+- Web: Vitest no módulo da linha do tempo (mover, cortar respeitando 0,5 s e a duração, dividir no cursor, excluir, posição do cursor por trecho), no envio em fila e na posição pelo relógio.
+- e2e: com o celular falso em `live`, enviar dois vídeos, montar a linha do tempo, usar vídeo (`virtualCamera.source` `video`, sessão ainda `live`, celular com a mensagem), pular, voltar à câmera (imagem do celular de volta sem novo QR); SSIM do CA-2 com o vídeo desativado.
 
 ## Decisões registradas
 
-- 2026-11-15, gráficos (§2.2, CA 8 e 9): o `uPlot` não reduziu a CPU do navegador no `/dev` (renderizador 9,97% com SVG contra 15,14% com `uPlot`, prévia ligada; GPU dobrou com canvas; JS do `/dev` de 84,2 para 106,7 KB gzip). Pela regra da §2.2, ele não entra e os gráficos continuam em SVG próprio, sem mudança visual.
-- 2026-11-15, ícones (§2.2, CA 9): o `lucide-react` fica. A condição de CPU vale para a troca dos gráficos, já que o `/dev` não tem ícones; a troca dos ícones é pedido do usuário e cumpre o limite de JS (`/` de 88,9 para 90,2 KB gzip). O usuário confere o desenho novo dos ícones na bateria.
+- 2026-11-15, gráficos (CA 9 da revisão 1): o `uPlot` não reduziu a CPU do navegador no `/dev` (renderizador 9,97% com SVG contra 15,14% com `uPlot`, prévia ligada; GPU dobrou com canvas; JS do `/dev` de 84,2 para 106,7 KB gzip). Não entra; os gráficos continuam em SVG próprio, sem mudança visual.
+- 2026-11-15, ícones: o `lucide-react` fica. A troca dos ícones é pedido do usuário e cumpre o limite de JS (`/` de 88,9 para 90,2 KB gzip).
+- 2026-11-15, bateria da revisão 1: linha do tempo de editor e vídeo só com celular conectado entram nesta versão (decisão do usuário); o vídeo continua se o celular desconectar.
 
 ## Fora do escopo
 
-- HDR com mapeamento de tom, corte ou escolha de trecho, miniaturas na linha do tempo, lista de vídeos, velocidade, áudio.
-- Trocar o formato da câmera para o do vídeo.
-- Enviar o vídeo pelo celular.
+- Mais de uma faixa, transições, textos, sobreposições, velocidade, áudio, mudar posição ou tamanho do vídeo no quadro, desfazer e refazer.
+- HDR com mapeamento de tom; trocar o formato da câmera para o do vídeo; enviar o vídeo pelo celular.
+- Decodificação na GPU (0.10.0 Desempenho).
 
 ## Critérios de aceitação
 
-1. Um vídeo gravado no iPhone do usuário, enviado pelo console, aparece em repetição na câmera WCam no OBS, no app Câmera do Windows e no Meet, sem câmera lenta e sem quadro preto na volta.
-2. Vídeo em pé aparece em pé, com faixas laterais; vídeo de outra resolução ocupa o formato anunciado sem distorcer.
-3. Linha do tempo: mostra a posição andando, pula para o ponto escolhido (clique, arraste e teclado) com a imagem no Meet mudando em até 1 s e sem quadro preto, e para com Congelar imagem.
-4. Ativar o vídeo encerra o celular e esconde o QR; desativar volta ao QR; tudo aparece no console e na bandeja em menos de 300 ms.
-5. Arquivo que não é vídeo é recusado com texto próprio, sem deixar arquivo no disco.
-6. CPU registrada no relatório com um vídeo 1080p30 H.264 e um 4K HEVC do iPhone.
-7. CA-2 do celular mantido (SSIM de pelo menos 0,98 no e2e com o vídeo desativado).
-8. Gráficos do `/dev` em `uPlot` e ícones em `lucide-react` (§2.2), com o mesmo visual da v0.8.0, conferido pelo usuário.
-9. Relatório web com antes e depois da troca de bibliotecas: tamanho do JS da `/` e da `/dev` (gzip) e CPU do navegador com o `/dev` aberto por 2 min na janela de 120 s. A troca só fica se reduzir a CPU sem aumentar o JS da `/` em mais de 15 KB gzip.
-10. Verificação completa do CLAUDE.md e `npm run test:e2e`; `version` 0.9.0 em `agent/pyproject.toml` e `web/package.json`.
+1. Com o celular conectado, dois vídeos do iPhone do usuário enviados e montados na linha do tempo (um deles cortado) aparecem em sequência e em repetição na câmera WCam no OBS, no app Câmera do Windows e no Meet, sem câmera lenta, sem preto na troca de trecho e na volta.
+2. Sem celular conectado, o console não oferece vídeo e o agente recusa envio e ativação.
+3. Usar vídeo desliga a câmera do celular (luz apagada) sem desconectar; Voltar à câmera, no console, na bandeja ou no celular, traz a imagem do celular de volta sem novo QR; tudo aparece nos três lugares em menos de 300 ms.
+4. Celular desconectado com o vídeo rodando: o vídeo continua e o console oferece o QR.
+5. Editor: adicionar, mudar a ordem arrastando, cortar pelas bordas, dividir no cursor, excluir e pular pela régua, com mouse e teclado; o Meet mostra a mudança em até 1 s, sem preto. Pausar para a posição.
+6. Vídeo em pé aparece em pé, com faixas; outra resolução ocupa o formato sem distorcer.
+7. Nenhuma linha verde, azul ou de cor errada em nenhum formato da câmera, conferido em 1080p e em 4K.
+8. Em 1080p30, com o vídeo de teste e com o `IMG_0641.MOV`, sem travamento visível no Meet e quadros repetidos ou pulados por atraso abaixo de 1% em 2 min. Em 4K, os números ficam registrados no relatório como base da 0.10.0.
+9. Interface refeita conferida pelo usuário: sem controle repetido, editor com a direção das skills registrada.
+10. Arquivo que não é vídeo é recusado com texto próprio, sem deixar arquivo no disco.
+11. CA-2 do celular mantido (SSIM de pelo menos 0,98 no e2e com o vídeo desativado).
+12. Verificação completa do CLAUDE.md e `npm run test:e2e`; `version` 0.9.0 em `agent/pyproject.toml` e `web/package.json`.
