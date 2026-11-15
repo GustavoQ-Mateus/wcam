@@ -8,6 +8,7 @@ from wcam.virtualcam.sink import I420Frame
 
 QUARTER_TURN_DEGREES = 90
 TURNS_PER_CIRCLE = 4
+SINGLE_THREAD = 1
 
 
 def quarter_turns(frame: VideoFrame) -> int:
@@ -40,6 +41,8 @@ def fitted_i420(frame: VideoFrame, width: int, height: int) -> I420Frame:
 
 
 def converted_i420(frame: VideoFrame, width: int, height: int) -> I420Frame:
+    # Threaded swscale leaves chroma rows unwritten at slice edges when it copies without scaling.
+    threads = SINGLE_THREAD if (frame.width, frame.height) == (width, height) else None
     reduced = frame.reformat(
         width=width,
         height=height,
@@ -47,6 +50,7 @@ def converted_i420(frame: VideoFrame, width: int, height: int) -> I420Frame:
         dst_colorspace=Colorspace.ITU709,
         interpolation=REDUCTION_INTERPOLATION,
         dst_color_range=ColorRange.MPEG,
+        threads=threads,
     )
     image: I420Frame = np.ascontiguousarray(reduced.to_ndarray(), dtype=np.uint8)
     return image
