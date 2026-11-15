@@ -424,3 +424,4 @@ Medição automática:
 | `E2E_PHONE_URL` | `https://agent:8443` |
 | `E2E_QUALITY_REFERENCE` | `/reference/reference.y4m` (volume `reference`, o mesmo arquivo de `WCAM_QUALITY_REFERENCE` no `agent`) |
 | `E2E_TEST_VIDEO` | `/reference/test-video.mp4` (volume `reference`, gerado no `agent` por `python -m wcam.tools.make_test_video`: H.264, 1280x720, 30 fps, 6 s, determinístico) |
+| `E2E_TEST_VIDEO_2` | `/reference/test-video-2.mp4` (mesmo volume, gerado por `python -m wcam.tools.make_test_video <saída> portrait`: H.264, 1280x720 gravado com rotação de -90, aparece como 720x1280, 30 fps, 4 s, determinístico) |
