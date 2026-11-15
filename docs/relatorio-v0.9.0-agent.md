@@ -70,21 +70,34 @@ Branch: `feature/video-agent`, PR para `feature/video`. Spec: `docs/specs/spec-v
 
 ## CPU (CA 6)
 
-Pendente: o usuário vai fornecer um vídeo 1080p30 H.264 e um 4K HEVC gravado no iPhone. A medição é um script fora do repositório: reprodução real, pipeline com câmera falsa, sem portas, 5 s de aquecimento e média de `psutil` por segundo durante 60 s, num PC de 6 núcleos.
+Medido em 2026-11-15 com o vídeo do iPhone do usuário (`IMG_0641.MOV`: HEVC Main 8 bits, 3840x2160, 30 fps, 39,9 s, SDR BT.709, rotação gravada de -180). O 1080p30 H.264 não veio do usuário: foi gerado a partir do mesmo `IMG_0641.MOV`, transcodificado com PyAV (libx264, preset medium, CRF 18, 1920x1080, 30 fps, BT.709, mesma rotação gravada). Nenhum dos dois arquivos entrou no repositório.
 
-Referência, com os mesmos números que vão para os arquivos do usuário (100% = um núcleo), câmera em 1080p30:
+Método: script fora do repositório, com reprodução real e pipeline com câmera falsa, sem portas. A câmera fica em 1080p30. Cada vídeo roda sozinho, com 5 s de aquecimento, e a CPU é a média do `psutil` por segundo durante 60 s. PC: Intel família 6 modelo 158, 6 núcleos sem hyperthreading. A CPU do sistema estava em 21% antes da medição, com os outros programas abertos. Na tabela, 100% equivale a um núcleo.
+
+| Vídeo | CPU do processo, média (máx.) | CPU da máquina | Quadros entregues | Descartes | `color` mediana / p95 |
+|---|---|---|---|---|---|
+| iPhone 4K HEVC (`IMG_0641.MOV`) | 220,0% (249,6%) | 36,7% | 29,9 fps | 0 | 10,5 / 16,3 ms |
+| 1080p30 H.264 gerado do `IMG_0641.MOV` | 131,4% (180,6%) | 21,9% | 30,0 fps | 0 | 13,2 / 37,2 ms |
+
+- O 4K HEVC custa pouco mais de dois núcleos, quase todo na decodificação em software. A decodificação no hardware (ADR 0014 e 0016) é o próximo passo se isso pesar na reunião, junto da v0.10.0 "Desempenho".
+- `decode` aparece perto de 0,2 ms porque as threads do FFmpeg decodificam à frente. O custo real da decodificação está na CPU do processo, não no tempo dessa etapa.
+- No 1080p a etapa `color` não reduz nada, mas gira o quadro em 180 graus em numpy e converte os planos. Por isso fica mais cara que no 4K, onde a redução para 1080p vem antes do giro. O p95 de 37 ms passa do orçamento de 33 ms, mas a entrega se manteve em 30 fps sem descarte, porque a conversão roda numa thread separada da entrega.
+
+Referência anterior, com o mesmo método em 15 s:
 
 | Vídeo | CPU do processo | CPU da máquina | Quadros entregues | `color` mediana / p95 |
 |---|---|---|---|---|
-| Sintético 1080p30 H.264 (gerador de teste), 15 s | 66,6% | 11,1% | 30,0 fps | 6,0 / 21,3 ms |
-| WhatsApp em pé, 384x848, 60 fps H.264, 15 s | 22,8% | 3,8% | 30,0 fps | 4,5 / 7,4 ms |
+| Sintético 1080p30 H.264 (gerador de teste) | 66,6% | 11,1% | 30,0 fps | 6,0 / 21,3 ms |
+| WhatsApp em pé, 384x848, 60 fps H.264 | 22,8% | 3,8% | 30,0 fps | 4,5 / 7,4 ms |
 
-O vídeo sintético é mais fácil de decodificar que um vídeo real; o número do CA é o dos arquivos do iPhone.
+## Rotação do iPhone
+
+O `IMG_0641.MOV` foi gravado de cabeça para baixo, com rotação de -180 na matriz de exibição. O quadro 45 foi passado pelo mesmo caminho da câmera (`fitted_i420` para 1920x1080) e conferido em imagem: o quadro gravado está de cabeça para baixo e o entregue está de pé. As imagens ficaram só no scratchpad e foram apagadas.
 
 ## Não verificado
 
 - Câmera WCam real (Media Foundation) com o vídeo no OBS, no app Câmera do Windows e no Meet (CA 1 a 4), e o pulo visto no Meet em até 1 s (CA 3). Precisa do agente nas portas do usuário; combinar com o orquestrador.
-- Vídeo do iPhone: rotação real (o teste usa a matriz de exibição gravada pelo PyAV, a mesma convenção do FFmpeg) e HEVC 10 bits com HDR (cor lavada é a limitação aceita pela ADR 0016).
+- Vídeo do iPhone em pé (rotação de 90 graus) e HEVC 10 bits com HDR: o arquivo recebido é 8 bits SDR, deitado. O teste automático cobre a rotação de -90 com um vídeo gerado; a cor lavada em HDR é a limitação aceita pela ADR 0016.
 - Envio real de um arquivo grande pelo console (o limite de 20 GB está testado com um limite pequeno).
 - Bandeja real no Windows com o sexto estado.
-- e2e (`npm run test:e2e`) com o web: a sessão web está rodando contra esta branch.
+- e2e (`npm run test:e2e`) com o web: a sessão web roda contra esta branch.
