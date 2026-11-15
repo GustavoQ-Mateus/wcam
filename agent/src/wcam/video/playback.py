@@ -27,6 +27,8 @@ STREAM_THREADING = "AUTO"
 READ_AHEAD_FRAMES = 4
 LATE_JUMP_SECONDS = 0.5
 EMIT_SHARE_OF_PERIOD = 0.75
+NEAREST_FRAME_SHARE = 0.5
+MAX_FRAMES_BEHIND = 2
 TIME_TOLERANCE_SECONDS = 1e-6
 SETTLE_TIMEOUT_SECONDS = 10.0
 
@@ -96,6 +98,10 @@ class ReadAhead:
             self._frames.clear()
             self._condition.notify_all()
 
+    def is_empty(self) -> bool:
+        with self._condition:
+            return not self._frames
+
     def is_current(self, generation: int) -> bool:
         with self._condition:
             return self._current(generation)
@@ -123,12 +129,14 @@ class ReadAhead:
             return self._frames.popleft()
 
     def take_due(self, play_seconds: float) -> TimelineFrame | None:
-        due = None
         with self._condition:
-            while self._frames and self._frames[0].play_seconds <= play_seconds + TIME_TOLERANCE_SECONDS:
-                due = self._frames.popleft()
+            due = sum(1 for frame in self._frames if frame.play_seconds <= play_seconds + TIME_TOLERANCE_SECONDS)
+            if due == 0:
+                return None
+            for _ in range(due - 1 if due > MAX_FRAMES_BEHIND else 0):
+                self._frames.popleft()
             self._condition.notify_all()
-        return due
+            return self._frames.popleft()
 
     def wait_settled(self) -> None:
         with self._condition:
@@ -155,11 +163,13 @@ class ClipDecoder:
         self._from = clip.in_seconds
         self._frames: Iterator[VideoFrame] = iter(())
 
-    def start_at(self, offset_seconds: float, *, backward: bool = True) -> None:
+    def start_at(self, offset_seconds: float) -> None:
         self._from = self.clip.in_seconds + offset_seconds
-        target = self._start + round(self._from / self._time_base)
-        self._container.seek(target, stream=self._stream, backward=backward, any_frame=False)
-        self._frames = self._container.decode(self._stream)
+        self._seek(self._from, backward=True)
+
+    def jump_to_keyframe_after(self, offset_seconds: float) -> None:
+        self._from = self.clip.in_seconds
+        self._seek(self.clip.in_seconds + offset_seconds, backward=False)
 
     def decoded(self) -> Iterator[tuple[float, VideoFrame, float]]:
         while True:
@@ -175,6 +185,11 @@ class ClipDecoder:
 
     def close(self) -> None:
         self._container.close()
+
+    def _seek(self, seconds: float, *, backward: bool) -> None:
+        target = self._start + round(seconds / self._time_base)
+        self._container.seek(target, stream=self._stream, backward=backward, any_frame=False)
+        self._frames = self._container.decode(self._stream)
 
     def _seconds(self, frame: VideoFrame) -> float:
         pts = frame.pts if frame.pts is not None else self._start
@@ -290,7 +305,7 @@ class TimelineReader:
         if play_seconds - self._last_emitted < period * EMIT_SHARE_OF_PERIOD:
             return False
         target = self._target()
-        return target is None or play_seconds >= target - period
+        return target is None or play_seconds >= target - period or self._read_ahead.is_empty()
 
     def _emit(self, frame: TimelineFrame) -> None:
         self._last_emitted = frame.play_seconds
@@ -306,9 +321,8 @@ class TimelineReader:
         self.late_jumps += 1
         if offset >= prepared.decoder.clip.duration_seconds:
             return True
-        prepared.decoder.start_at(offset, backward=False)
-        prepared.frames = prepared.decoder.decoded()
-        self._last_emitted = target - LATE_JUMP_SECONDS
+        prepared.decoder.jump_to_keyframe_after(offset)
+        self._last_emitted = target
         return False
 
     def _size(self) -> tuple[int, int]:
@@ -409,7 +423,8 @@ class VideoPlayback:
         return self._clock()
 
     def _show_due(self, play_seconds: float) -> None:
-        frame = self._read_ahead.take_due(play_seconds)
+        # Taking the nearest frame, not the last one already due, keeps tick jitter from pairing a skip with a repeat.
+        frame = self._read_ahead.take_due(play_seconds + NEAREST_FRAME_SHARE / self._output.output.fps)
         if frame is not None:
             self._show(frame, replace_held=False)
 
