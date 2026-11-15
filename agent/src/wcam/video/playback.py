@@ -13,6 +13,7 @@ from typing import Protocol
 import av
 from av import VideoFrame
 from av.container import InputContainer
+from av.error import FFmpegError
 from av.video.stream import VideoStream
 
 from wcam.diagnostics.stage_times import Stage
@@ -167,9 +168,13 @@ class ClipDecoder:
         self._from = self.clip.in_seconds + offset_seconds
         self._seek(self._from, backward=True)
 
-    def jump_to_keyframe_after(self, offset_seconds: float) -> None:
+    def jump_to_keyframe_after(self, offset_seconds: float) -> bool:
         self._from = self.clip.in_seconds
-        self._seek(self.clip.in_seconds + offset_seconds, backward=False)
+        try:
+            self._seek(self.clip.in_seconds + offset_seconds, backward=False)
+        except FFmpegError:
+            return False
+        return True
 
     def decoded(self) -> Iterator[tuple[float, VideoFrame, float]]:
         while True:
@@ -321,9 +326,8 @@ class TimelineReader:
         self.late_jumps += 1
         if offset >= prepared.decoder.clip.duration_seconds:
             return True
-        prepared.decoder.jump_to_keyframe_after(offset)
         self._last_emitted = target
-        return False
+        return not prepared.decoder.jump_to_keyframe_after(offset)
 
     def _size(self) -> tuple[int, int]:
         output = self._output.output
