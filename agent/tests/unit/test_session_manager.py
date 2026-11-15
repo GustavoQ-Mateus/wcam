@@ -7,9 +7,11 @@ import pytest
 from tests.fakes import AGENT_FINGERPRINT, OFFER_SDP, PHONE_FINGERPRINT, FakeClock, FakePeerFactory
 from wcam.pairing.confirmation_code import confirmation_code
 from wcam.pairing.errors import PairingTokenInvalidError, PairingWindowClosedError
+from wcam.sessions.controls import ControlsChange
 from wcam.sessions.errors import (
     InvalidOfferError,
     NoActiveSessionError,
+    NoLiveSessionError,
     NoSessionAwaitingConfirmationError,
     SessionAlreadyActiveError,
     TooManyAttemptsError,
@@ -24,6 +26,7 @@ from wcam.sessions.manager import (
     SessionRequest,
     SessionState,
 )
+from wcam.video.errors import VideoSourceActiveError
 
 PHONE_IP = "192.168.0.23"
 SHORT_TIMEOUT = 0.01
@@ -363,3 +366,57 @@ async def test_busy_rejection_does_not_count_as_failure() -> None:
     await manager.disconnect()
 
     await manager.create_session(session_request(manager.open_pairing().token))
+
+
+async def test_video_source_ends_the_phone_session_and_closes_pairing() -> None:
+    factory = FakePeerFactory()
+    manager = await connected_manager(factory)
+    confirm_on_both_sides(manager, factory)
+
+    await manager.start_video_source()
+
+    status = manager.status()
+    assert status.session is None
+    assert status.pairing_expires_at is None
+    assert status.last_ended is not None
+    assert status.last_ended.reason is EndReason.VIDEO_SOURCE
+    assert factory.last.sent[-1] == {"type": "session_state", "state": "ended", "reason": "video_source"}
+    assert factory.last.closed
+
+
+async def test_pairing_is_refused_while_the_video_source_is_active() -> None:
+    manager = SessionManager(FakePeerFactory())
+    await manager.start_video_source()
+
+    with pytest.raises(VideoSourceActiveError):
+        manager.open_pairing()
+
+
+async def test_pairing_opens_again_after_the_video_source_stops() -> None:
+    manager = SessionManager(FakePeerFactory())
+    await manager.start_video_source()
+
+    manager.stop_video_source()
+
+    assert manager.open_pairing().token
+
+
+async def test_video_source_allows_freezing_without_a_phone_but_not_the_phone_camera() -> None:
+    manager = SessionManager(FakePeerFactory())
+    await manager.start_video_source()
+
+    manager.change_controls(ControlsChange(frozen=True))
+
+    assert manager.status().controls.frozen
+    with pytest.raises(NoLiveSessionError):
+        manager.change_controls(ControlsChange(camera_off=True))
+
+
+async def test_stopping_the_video_source_unfreezes() -> None:
+    manager = SessionManager(FakePeerFactory())
+    await manager.start_video_source()
+    manager.change_controls(ControlsChange(frozen=True))
+
+    manager.stop_video_source()
+
+    assert not manager.status().controls.frozen

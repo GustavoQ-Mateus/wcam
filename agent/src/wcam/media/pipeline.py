@@ -3,6 +3,7 @@ import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
 from enum import StrEnum
 
 import numpy as np
@@ -45,10 +46,17 @@ MIRRORED_COLUMNS = slice(None, None, -1)
 
 class FrameSource(StrEnum):
     PHONE = "phone"
+    VIDEO = "video"
     FROZEN = "frozen"
     HELD = "held"
     CAMERA_OFF = "camera_off"
     PLACEHOLDER = "placeholder"
+
+
+@dataclass(frozen=True, slots=True)
+class VideoImageFrame:
+    image: I420Frame
+    replace_held: bool
 
 
 class FramePipeline:
@@ -66,12 +74,14 @@ class FramePipeline:
         self._clock = clock
         self.output = DEFAULT_OUTPUT
         self._placeholder = black_i420(DEFAULT_OUTPUT.width, DEFAULT_OUTPUT.height)
-        self._pending: asyncio.Queue[tuple[VideoFrame, float]] = asyncio.Queue(maxsize=1)
+        self._pending: asyncio.Queue[tuple[VideoFrame | VideoImageFrame, float]] = asyncio.Queue(maxsize=1)
         self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=WORKER_NAME)
         self._quality_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=QUALITY_WORKER_NAME)
         self._measuring: Future[None] | None = None
         self._measured_correction = CorrectionState.DEFAULT
         self._phone_active = False
+        self._video_active = False
+        self._last_video: I420Frame | None = None
         self._last_phone: I420Frame | None = None
         self._last_phone_at: float | None = None
         self.portrait = False
@@ -94,6 +104,10 @@ class FramePipeline:
     @property
     def last_sent(self) -> I420Frame | None:
         return self._last_sent
+
+    @property
+    def video_active(self) -> bool:
+        return self._video_active
 
     @property
     def placeholder(self) -> I420Frame:
@@ -137,6 +151,22 @@ class FramePipeline:
         self._last_phone = None
         self.color_correction = None
 
+    def start_video(self) -> None:
+        self.frames_delivered = 0
+        self.frames_dropped = 0
+        self._last_video = None
+        self._video_active = True
+
+    def stop_video(self) -> None:
+        self._video_active = False
+        self._last_video = None
+
+    def submit_video(self, image: I420Frame, *, replace_held: bool = False) -> None:
+        self._enqueue(VideoImageFrame(image, replace_held))
+
+    def record_stage(self, stage: Stage, milliseconds: float) -> None:
+        self.stage_times.record(stage, milliseconds)
+
     def on_source_change(self, listener: Callable[[], None]) -> None:
         self._source_listeners.append(listener)
 
@@ -161,10 +191,7 @@ class FramePipeline:
         return gap
 
     def submit(self, frame: VideoFrame) -> None:
-        if self._pending.full():
-            self._pending.get_nowait()
-            self.frames_dropped += 1
-        self._pending.put_nowait((frame, time.perf_counter()))
+        self._enqueue(frame)
 
     async def run(self) -> None:
         loop = asyncio.get_running_loop()
@@ -177,16 +204,18 @@ class FramePipeline:
             self._quality_worker.shutdown(wait=True)
             self.sink.close()
 
-    def deliver(self, frame: VideoFrame | None, submitted_at: float | None = None) -> None:
+    def deliver(self, frame: VideoFrame | VideoImageFrame | None, submitted_at: float | None = None) -> None:
         now = self._clock()
         placeholder = self._placeholder
-        if frame is not None:
+        if isinstance(frame, VideoImageFrame):
+            self._accept_video_frame(frame)
+        elif frame is not None:
             started = time.perf_counter()
             self._accept_phone_frame(frame, now, placeholder)
             self.stage_times.record(Stage.COLOR, elapsed_since(started))
         elif self._last_phone_at is None or now - self._last_phone_at > FREEZE_SECONDS:
             self._last_phone = None
-        output = self._last_phone if self._phone_active and fits(self._last_phone, placeholder) else None
+        output = self._current_output(placeholder)
         source, sent = self._chosen_frame(output, now, placeholder)
         self._report_source(source)
         self._last_sent = sent
@@ -199,7 +228,24 @@ class FramePipeline:
         self.frames_delivered += 1
         if submitted_at is not None:
             self.stage_times.record(Stage.TOTAL, elapsed_since(submitted_at))
-        self._measure(now, output)
+        if not self._video_active:
+            self._measure(now, output)
+
+    def _enqueue(self, frame: VideoFrame | VideoImageFrame) -> None:
+        if self._pending.full():
+            self._pending.get_nowait()
+            self.frames_dropped += 1
+        self._pending.put_nowait((frame, time.perf_counter()))
+
+    def _current_output(self, placeholder: I420Frame) -> I420Frame | None:
+        if self._video_active:
+            return self._last_video if fits(self._last_video, placeholder) else None
+        return self._last_phone if self._phone_active and fits(self._last_phone, placeholder) else None
+
+    def _accept_video_frame(self, frame: VideoImageFrame) -> None:
+        self._last_video = mirrored_i420(frame.image) if self.mirror else frame.image
+        if frame.replace_held and self.frozen:
+            self._last_sent = self._last_video
 
     def _change_format(self, width: int, height: int, fps: int) -> bool:
         accepted = self.sink.request_format(width, height, fps)
@@ -230,6 +276,8 @@ class FramePipeline:
     def _source_of(self, output: I420Frame | None, now: float) -> FrameSource:
         if output is None:
             return FrameSource.PLACEHOLDER
+        if self._video_active:
+            return FrameSource.VIDEO
         if self._last_phone_at is not None and now - self._last_phone_at > STALE_FRAME_SECONDS:
             return FrameSource.FROZEN
         return FrameSource.PHONE
@@ -252,7 +300,7 @@ class FramePipeline:
         tables = self.color_tables() if state is CorrectionState.APPLIED else None
         self._quality_worker.submit(quality.restart, now, None if tables is None else tables[0])
 
-    async def _next_frame(self) -> tuple[VideoFrame | None, float | None]:
+    async def _next_frame(self) -> tuple[VideoFrame | VideoImageFrame | None, float | None]:
         try:
             return await asyncio.wait_for(self._pending.get(), 1 / self.output.fps)
         except TimeoutError:
@@ -291,6 +339,12 @@ class FramePipeline:
 
     def _converted(self, frame: VideoFrame, width: int, height: int) -> I420Frame:
         return i420_array(frame, width, height, self.color_range, self.color_tables(), mirror=self.mirror)
+
+
+def mirrored_i420(image: I420Frame) -> I420Frame:
+    width, height = frame_size(image)
+    planes = i420_planes(image, width, height)
+    return np.concatenate([plane[:, MIRRORED_COLUMNS].reshape(-1) for plane in planes]).reshape(image.shape)
 
 
 def i420_array(

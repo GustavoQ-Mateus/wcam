@@ -20,6 +20,11 @@ AGENT_ERRORS = {
     "no_live_session": (409, "No session is live."),
     "comparison_not_found": (404, "The comparison does not exist."),
     "comparison_not_ready": (409, "The comparison is not ready."),
+    "video_too_large": (413, "The video is larger than 20 GB."),
+    "video_unsupported": (422, "The file has no video the agent can decode."),
+    "no_video_file": (404, "No video is stored."),
+    "video_source_active": (409, "The camera is showing the stored video."),
+    "video_source_inactive": (409, "The camera is not showing the stored video."),
 }
 
 
@@ -37,6 +42,8 @@ def install_error_handlers(app: FastAPI) -> None:
 async def handle_agent_error(request: Request, exception: Exception) -> JSONResponse:
     code = exception.code if isinstance(exception, AgentError) else "internal_error"
     status_code, message = AGENT_ERRORS.get(code, INTERNAL_ERROR)
+    if isinstance(exception, AgentError) and exception.status_code is not None:
+        status_code = exception.status_code
     return error_response(status_code, code, message)
 
 

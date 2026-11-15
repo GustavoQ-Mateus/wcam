@@ -10,6 +10,7 @@ from wcam.services import AgentServices
 from wcam.sessions.controls import ControlsChange, Facing
 from wcam.sessions.errors import NoActiveSessionError, NoLiveSessionError
 from wcam.tray.menu import MenuEntry, TrayAction, TraySnapshot, TrayState, menu_entries, tray_snapshot
+from wcam.video.errors import NoVideoFileError
 
 REFRESH_SECONDS = 1.0
 OTHER_FACING: dict[Facing, Facing] = {"user": "environment", "environment": "user"}
@@ -67,7 +68,10 @@ class Tray:
     def refresh(self) -> None:
         services = self._services
         snapshot = tray_snapshot(
-            services.manager.status(), services.pipeline.source, services.pipeline.sink.status.state
+            services.manager.status(),
+            services.pipeline.source,
+            services.pipeline.sink.status.state,
+            services.video.view(),
         )
         if snapshot == self._shown:
             return
@@ -84,6 +88,8 @@ class Tray:
             self._quit_agent()
         elif action is TrayAction.DISCONNECT:
             self._run(self._disconnect())
+        elif action is TrayAction.TOGGLE_VIDEO:
+            self._run(self._toggle_video())
         else:
             self._change_controls(action)
 
@@ -107,6 +113,14 @@ class Tray:
         if action is TrayAction.SWITCH_CAMERA and controls.facing is not None:
             return ControlsChange(facing=OTHER_FACING[controls.facing])
         return None
+
+    async def _toggle_video(self) -> None:
+        video = self._services.video
+        if video.active:
+            await video.deactivate()
+            return
+        with contextlib.suppress(NoVideoFileError):
+            await video.activate()
 
     async def _disconnect(self) -> None:
         with contextlib.suppress(NoActiveSessionError):

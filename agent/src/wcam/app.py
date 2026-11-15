@@ -115,6 +115,7 @@ async def run(
     try:
         await serve(servers)
     finally:
+        await services.video.deactivate()
         await services.manager.shutdown()
         await services.preview.shutdown()
         if services.comparisons is not None:
