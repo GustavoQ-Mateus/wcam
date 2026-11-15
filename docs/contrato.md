@@ -1,6 +1,6 @@
 # Contrato entre web e agent
 
-Versão: 0.8.0
+Versão: 0.9.0
 
 Fonte da verdade da comunicação entre `web` e `agent`. Mudou aqui, muda na spec da versão antes do código.
 
@@ -40,6 +40,11 @@ O cliente decide pelo `code`, nunca pela `message`. O texto mostrado ao usuário
 | `no_session_awaiting_confirmation` | 409 | confirmar ou recusar sem sessão aguardando |
 | `no_active_session` | 404 | desconectar sem sessão |
 | `no_live_session` | 409 | ação que exige o celular em `live` sem sessão `live` (controles e rotas de desenvolvimento) |
+| `video_too_large` | 413 | vídeo enviado acima de 20 GB |
+| `video_unsupported` | 422 | arquivo enviado sem faixa de vídeo que o agente consiga decodificar |
+| `no_video_file` | 404, 409 | nenhum vídeo guardado: 404 no `DELETE /api/video-source/file`, 409 ao ativar |
+| `video_source_active` | 409 | `POST /api/pairing` com o vídeo ativo |
+| `video_source_inactive` | 409 | pular na linha do tempo com o vídeo desativado |
 
 Qualquer outro status de erro do framework vira `invalid_request` (4xx) ou `internal_error` (5xx). Não existe código genérico fora desta tabela.
 
@@ -69,7 +74,7 @@ Nos dois servidores.
 
 | Rota | Corpo | Resposta | Erros |
 |---|---|---|---|
-| `POST /api/pairing` | nenhum | `201 {"url","qrSvg","expiresAt"}` | `409 session_already_active` |
+| `POST /api/pairing` | nenhum | `201 {"url","qrSvg","expiresAt"}` | `409 session_already_active`, `409 video_source_active` |
 | `DELETE /api/pairing` | nenhum | `204` | nenhum |
 | `GET /api/status` | nenhum | `200` (abaixo) | nenhum |
 | `PUT /api/video-format` | `{"format"}` | `204` | `422 invalid_request` |
@@ -78,6 +83,10 @@ Nos dois servidores.
 | `DELETE /api/sessions/current` | nenhum | `204` | `404 no_active_session` |
 | `GET /api/events` | nenhum | `200 text/event-stream` ("Eventos do console") | nenhum |
 | `PATCH /api/controls` | subconjunto de `{"frozen","cameraOff","mirror","facing"}` | `204` | `409 no_live_session`, `422 invalid_request` |
+| `PUT /api/video-source/file` | vídeo como corpo bruto ("Vídeo como câmera") | `201` (abaixo) | `413 video_too_large`, `422 video_unsupported` |
+| `DELETE /api/video-source/file` | nenhum | `204` | `404 no_video_file` |
+| `PUT /api/video-source` | `{"active"}` | `204` | `409 no_video_file`, `422 invalid_request` |
+| `PUT /api/video-source/position` | `{"seconds"}` | `204` | `409 video_source_inactive`, `422 invalid_request` |
 | `POST /api/preview` | `{"sdp"}` | `201 {"sdp"}` | `422 invalid_request` |
 | `DELETE /api/preview` | nenhum | `204` | nenhum |
 | `GET /api/dev/events` | nenhum | `200 text/event-stream` ("Console do desenvolvedor") | nenhum |
@@ -107,7 +116,7 @@ Nos dois servidores.
 ```
 
 - `pairing` é `null` com a janela fechada; `session` é `null` sem sessão.
-- `state`: `connecting`, `awaiting_confirmation`, `live`. Sessão encerrada vira `null`, e o motivo do último encerramento fica em `lastEnded: {"reason", "at"}`, campo sempre presente no primeiro nível (`null` se nenhuma sessão terminou desde que o agente subiu) (`rejected`, `disconnected_by_pc`, `disconnected_by_phone`, `connection_failed`, `confirmation_timeout`).
+- `state`: `connecting`, `awaiting_confirmation`, `live`. Sessão encerrada vira `null`, e o motivo do último encerramento fica em `lastEnded: {"reason", "at"}`, campo sempre presente no primeiro nível (`null` se nenhuma sessão terminou desde que o agente subiu) (`rejected`, `disconnected_by_pc`, `disconnected_by_phone`, `connection_failed`, `confirmation_timeout`, `video_source`).
 - `confirmationCode` aparece a partir de `awaiting_confirmation`.
 - `confirmations`: quem já confirmou o código (spec v0.8.0 §1). `POST /api/sessions/current/confirm` marca só `pc`; `confirm_code` no DataChannel marca só `phone`. A sessão vai para `live` quando os dois são `true`, em qualquer ordem. `POST /api/sessions/current/reject` e `reject_code` encerram com `rejected`. `confirmation_timeout` vale enquanto qualquer um dos dois faltar.
 - `rtpPacketsBeforeLive`: pacotes RTP de vídeo recebidos do celular antes de `live`, contados pelo agente; esperado sempre 0. Fica também em `lastEnded`, para o teste ler depois do encerramento.
@@ -163,7 +172,7 @@ Só com `WCAM_DEV_TOOLS=1`; sem a variável, todas as rotas abaixo respondem `40
 - `mirror`: o agente inverte as colunas dos planos Y, U e V antes da câmera. Vale até o agente fechar, inclusive entre conexões.
 - `facing`: câmera pedida ao celular. Sem sessão, é a da última `camera_capabilities` ou `null`; a câmera de fato em uso continua em `session.cameraCapabilities.facingMode`.
 - Regras: `frozen` e `cameraOff` voltam a `false` quando a sessão termina. Com `cameraOff` `true`, `frozen` é sempre `false` (pedir `frozen: true` é ignorado, sem erro); `cameraOff: false` com a imagem congelada também descongela.
-- `PATCH /api/controls` aceita qualquer subconjunto; campo desconhecido ou de tipo errado: `422 invalid_request`. `frozen`, `cameraOff` e `facing` sem sessão `live`: `409 no_live_session`; `mirror` vale sempre. Responde `204` depois de aplicar no agente; o celular recebe `controls` em seguida.
+- `PATCH /api/controls` aceita qualquer subconjunto; campo desconhecido ou de tipo errado: `422 invalid_request`. `cameraOff` e `facing` sem sessão `live`: `409 no_live_session`; `frozen` sem sessão `live` também, exceto com o vídeo ativo ("Vídeo como câmera"); `mirror` vale sempre. Responde `204` depois de aplicar no agente; o celular recebe `controls` em seguida.
 - Toda mudança, venha do console, do celular ou da bandeja, sai no SSE do console e no `controls` do DataChannel em menos de 300 ms.
 
 ## Eventos do console (`GET /api/events`)
@@ -185,6 +194,22 @@ O console reconecta com o `EventSource` padrão. `GET /api/status` continua.
 - O agente envia o quadro entregue à câmera virtual (com espelho, congelamento e quadro de câmera desligada aplicados), reduzido para 960x540 (ou a altura do formato, se menor, mantendo 16:9), a no máximo 30 fps. Sem celular, envia o quadro de espera da câmera.
 - Uma prévia por vez: um `POST` novo fecha a anterior. `DELETE /api/preview` fecha a atual (`204` mesmo sem prévia). O agente libera a prévia quando o ICE cai.
 - Sem prévia aberta, o agente não reduz nem codifica nada para ela.
+
+## Vídeo como câmera (spec v0.9.0)
+
+`videoSource` no primeiro nível de `GET /api/status`, sempre presente, e no SSE do console:
+
+```json
+{"videoSource": {"file": {"name": "reuniao.mov", "durationSeconds": 42.5, "width": 1920, "height": 1080, "fps": 30.0, "codec": "hevc"}, "active": true, "positionSeconds": 12.3}}
+```
+
+- `file`: o vídeo guardado, ou `null`. `active`: se a câmera está mostrando o vídeo. `positionSeconds`: posição do quadro entregue, `null` com o vídeo desativado; mudança só de posição não é mudança para o SSE (vai no evento de 1 s).
+- `PUT /api/video-source/file`: corpo bruto `application/octet-stream`, nome original no cabeçalho `X-File-Name` (codificado em URL). O agente grava em partes no diretório de dados, abre com PyAV e decodifica o primeiro quadro. Responde `201` com o mesmo objeto de `file`. Acima de 20 GB: `413 video_too_large`. Sem faixa de vídeo decodificável: `422 video_unsupported`, arquivo apagado. Um envio novo substitui o anterior, desativando antes.
+- `DELETE /api/video-source/file`: desativa e apaga; `204`; sem arquivo, `404 no_video_file`.
+- `PUT /api/video-source` com `{"active": bool}`: `204`. Ativar sem arquivo: `409 no_video_file`. Ativar encerra a sessão do celular com `lastEnded.reason` `video_source` (o celular recebe `session_state` `ended` com esse motivo) e fecha a janela de pareamento; enquanto ativo, `POST /api/pairing` responde `409 video_source_active`. O agente sempre sobe com `active` `false`.
+- `PUT /api/video-source/position` com `{"seconds": number}`: `204` depois de aceitar o pedido; a câmera repete o último quadro até o novo ponto. Fora de `[0, durationSeconds)`: `422 invalid_request`. Vídeo desativado: `409 video_source_inactive`.
+- Controles com o vídeo ativo: `frozen` e `mirror` valem (`frozen` para a posição); `cameraOff` e `facing` respondem `409 no_live_session`.
+- A prévia do console mostra o vídeo, porque mostra o quadro entregue.
 
 ## Console do desenvolvedor (`GET /api/dev/events`, spec v0.8.0 §4)
 
@@ -227,7 +252,7 @@ Evento `event`, a cada acontecimento; o agente guarda os últimos 50 em memória
 {"at": "2026-11-12T18:00:01.200Z", "kind": "controls", "data": {"frozen": true}}
 ```
 
-`kind`: `session_state` (`{"state", "reason"}`), `controls` (só os campos que mudaram), `video_format` (`{"format"}`), `camera_capabilities` (`{"facingMode", "width", "height", "frameRate"}`), `virtual_camera` (`{"state", "source", "format"}`), `episode` (o registro de episódio da v0.6.0), `preview` (`{"open": bool}`).
+`kind`: `session_state` (`{"state", "reason"}`), `controls` (só os campos que mudaram), `video_format` (`{"format"}`), `camera_capabilities` (`{"facingMode", "width", "height", "frameRate"}`), `virtual_camera` (`{"state", "source", "format"}`), `episode` (o registro de episódio da v0.6.0), `preview` (`{"open": bool}`), `video_source` (`{"active", "name"}`). Com o vídeo ativo, `delivered` e os tempos por etapa valem para os quadros do vídeo.
 
 ## Celular (`<ip-da-lan>:8443`)
 
@@ -343,7 +368,7 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
 - `backend`: `media_foundation` (câmera nativa "WCam", ADR 0011), `obs` (fallback) ou `fake`.
 - `fallbackReason`: por que a câmera nativa não está em uso; `null` quando `backend` é `media_foundation`. Valores: `native_not_registered` (DLL não registrada), `windows_too_old` (build anterior a 22000), `native_error` (a DLL falhou ao iniciar) e `not_windows`. Só é preenchido quando `WCAM_VIRTUAL_CAMERA` é `auto` e a escolha caiu da câmera nativa para outro backend; com backend explícito é sempre `null`. Com `WCAM_VIRTUAL_CAMERA=media_foundation` explícito e falha, não há fallback: `state` `unavailable` com `reason` `driver_missing` (DLL ausente) ou `error` (`WcamCameraStart` falhou).
 - `streamingApps`: quantos apps estão recebendo vídeo da câmera agora, o mesmo valor de `WcamFormatGet` (spec v0.8.0, caminho da imagem do console); `null` nos backends `obs` e `fake`, ou com a câmera indisponível. Mudança no valor conta como mudança para o SSE do console.
-- `source`: `held` quando o usuário congelou a imagem (`controls.frozen`); `camera_off` com `controls.cameraOff`; `phone` quando os quadros vêm do celular; `frozen` quando a câmera repete o último quadro do celular porque nenhum quadro novo chegou há mais de 0,5 s (até completar 3 s sem quadro; antes de 0,5 s continua `phone`, que é o intervalo normal entre quadros); `placeholder` em qualquer outro momento.
+- `source`: `video` quando os quadros vêm do vídeo enviado pelo usuário ("Vídeo como câmera"); `held` quando o usuário congelou a imagem (`controls.frozen`), também com o vídeo; `camera_off` com `controls.cameraOff`; `phone` quando os quadros vêm do celular; `frozen` quando a câmera repete o último quadro do celular porque nenhum quadro novo chegou há mais de 0,5 s (até completar 3 s sem quadro; antes de 0,5 s continua `phone`, que é o intervalo normal entre quadros); `placeholder` em qualquer outro momento.
 - `session.video.colorRange`: faixa declarada pelo celular no quadro mais recente, `full`, `limited` ou `unspecified`. `colorMatrix`: matriz declarada, `bt709`, `bt601`, outro nome do FFmpeg ou `unspecified`. A câmera sempre entrega faixa limitada; quadro em faixa cheia é ajustado pelo agente (CA-2, emenda da v0.6.0).
 - `session.video.colorCorrection`: correção de cor da conexão atual, derivada do `colorSpace` declarado pela câmera em `camera_capabilities` (spec v0.6.0 §1.1). `state`: `applied` (curva de exibição aplicada ao Y) ou `default` (só a faixa: sem `colorSpace`, transferência `srgb`, HDR ou convenção `standard`). `transfer`: o declarado, ou `null`. `display`: convenção de exibição do celular pela plataforma do `User-Agent`, `apple` (iPhone, iPad, Safari no macOS) ou `standard`. Recalculada a cada `camera_capabilities`; nada é guardado entre conexões.
 - `session.cameraCapabilities`: a última mensagem `camera_capabilities` do celular, sem o `type`; `null` até chegar a primeira.

@@ -322,13 +322,15 @@ Toda ação existe nos dois lados quando faz sentido, e qualquer mudança aparec
 | Trocar câmera (frontal, traseira) | sim | sim | sim | |
 | Espelhar | sim | sim | sim | só na saída do PC; no celular fica na folha do formato e não muda o visor (emenda da v0.8.0) |
 | Prévia ligada / desligada | não | sim | sim | cada lado controla a própria prévia; no PC desligar economiza CPU, no celular apaga a tela; a câmera virtual não é afetada |
+| Usar vídeo / Voltar ao celular | sim | sim | | a câmera mostra em repetição o vídeo enviado pelo console; o celular é desconectado e o QR fica indisponível até voltar (emenda da v0.9.0) |
+| Pular no vídeo (linha do tempo) | | sim | | só com o vídeo ativo (emenda da v0.9.0) |
 | Parear celular (mostrar QR) | sim | sim | | abre o console no estado Aguardando |
 | Abrir console | sim | | | |
 | Iniciar com o Windows, Idioma | sim | Ajustes | | |
 | Parar WCam | sim | sim | | fecha as portas e a câmera virtual volta a "Desligada" |
 | Sair | sim | | | |
 
-O ícone da bandeja tem cinco estados, cada um com cor e forma do selo: ao vivo (círculo cheio, `--data`), imagem congelada (quadrado, `--data-2`), câmera desligada (duas barras, `--warning`), aguardando ou parado (círculo vazado, `--muted`), problema ou reconectando (triângulo, `--negative`). Emenda da v0.8.0.
+O ícone da bandeja tem seis estados, cada um com cor e forma do selo: vídeo em repetição (triângulo de reprodução, `--data-2`, emenda da v0.9.0), ao vivo (círculo cheio, `--data`), imagem congelada (quadrado, `--data-2`), câmera desligada (duas barras, `--warning`), aguardando ou parado (círculo vazado, `--muted`), problema ou reconectando (triângulo, `--negative`). Emenda da v0.8.0.
 
 ### 5.5 Idiomas
 
@@ -414,10 +416,11 @@ Cada linha vira uma spec `docs/specs/spec-vX.Y.Z.md` com CA verificáveis. Uma s
 | 0.6.0 | Fidelidade de imagem | faixa de cor normalizada para a câmera, matriz declarada, congelar a última imagem numa falha curta e recuperar o vídeo, registro de episódios, escolha de taxa (Máxima, Equilibrada, Leve) no celular e no console, QR fora de arquivo de log, medição de capacidades do celular e do custo de decodificação | sombras e cores da WCam no nível da prévia do celular; reunião de 30 min sem preto |
 | 0.7.0 | Resolução e fps | o usuário escolhe resolução e fps entre os que o celular entrega e o PC sustenta; a câmera WCam anuncia o formato escolhido; avaliação de codecs mais eficientes que o H.264 (VP9, AV1, HEVC) por medição de qualidade, CPU no PC e aquecimento do celular, com a troca só se a medição justificar; ADR nova e CA-2 reescrito | cada formato oferecido funciona de ponta a ponta sem redimensionar; decisão de codec registrada em ADR com os números |
 | 0.8.0 | Console | correção de segurança: confirmação nos dois lados (botão "O código é igual" no celular e Confirmar no PC), nenhum vídeo nem mensagem do celular antes das duas confirmações, terminal indicando onde confirmar; QR no console, SSE, prévia por MediaRelay com liga e desliga, métricas numa área de detalhes, controles via DataChannel, revisão de linguagem de todas as superfícies (§5.7) | CA-3 completo; trocar câmera pelo console muda a imagem no Meet; teste prova que nenhum pacote de vídeo chega ao agente antes das duas confirmações e que, com um falso computador (código diferente), o celular nunca envia vídeo |
-| 0.9.0 | Zoom e enquadramento | zoom real no celular (lentes de 0,5x ao máximo e enquadramento aberto da frontal), controlado pelo console e pelo celular, a partir do spike da v0.8.0; enquadramento no PC (recorte 16:9 escolhido na prévia, ampliado para o formato anunciado), com ADR que abre exceção ao CA-2 só quando o usuário liga o recorte | zoom muda a imagem no Meet pelos dois lados; sem recorte, SSIM do CA-2 mantido |
-| 0.10.0 | Persistência | SQLite, migrations, preferências, histórico de sessões e métricas | preferências sobrevivem a reinício; histórico visível no console |
-| 0.11.0 | Robustez | reconexão com token de sessão, troca de rede, tela do celular bloqueada, encerramento limpo | Wi-Fi do celular fora por 10 s volta sozinho; fora por mais de 60 s exige novo QR |
-| 0.12.0 | Polimento do front | passada completa de `impeccable audit`, `emil-design-eng`, Playwright e2e | auditoria sem pendência crítica; e2e verde no CI |
+| 0.9.0 | Vídeo como câmera | o usuário envia um vídeo pelo console e a câmera WCam o mostra em repetição, ajustado ao formato anunciado, com linha do tempo; celular desconectado enquanto o vídeo está ativo; gráficos do `/dev` e ícones por biblioteca com o mesmo estilo, só se a medição mostrar ganho (ADR 0016) | vídeo do iPhone em repetição no OBS, no app Câmera e no Meet, sem câmera lenta nem preto na volta; CA-2 do celular mantido |
+| 0.10.0 | Zoom e enquadramento | spike de medição do zoom no iPhone (saiu da v0.8.0); zoom real no celular (lentes de 0,5x ao máximo e enquadramento aberto da frontal), controlado pelo console e pelo celular; enquadramento no PC (recorte 16:9 escolhido na prévia, ampliado para o formato anunciado), com ADR que abre exceção ao CA-2 só quando o usuário liga o recorte | zoom muda a imagem no Meet pelos dois lados; sem recorte, SSIM do CA-2 mantido |
+| 0.11.0 | Persistência | SQLite, migrations, preferências, histórico de sessões e métricas | preferências sobrevivem a reinício; histórico visível no console |
+| 0.12.0 | Robustez | reconexão com token de sessão, troca de rede, tela do celular bloqueada, encerramento limpo | Wi-Fi do celular fora por 10 s volta sozinho; fora por mais de 60 s exige novo QR |
+| 0.13.0 | Polimento do front | passada completa de `impeccable audit`, `emil-design-eng`, Playwright e2e | auditoria sem pendência crítica; e2e verde no CI |
 | 1.0.0 | App Windows | executável PyInstaller, bandeja, janela WebView2 com a prévia na qualidade total da câmera (pedido do usuário em 2026-11-15; no navegador continua a prévia reduzida da ADR 0015; caminho e custo de CPU decididos em ADR nova com medição em 1080p e 4K), instalador único nas Releases do GitHub que, com um só pedido de administrador, copia os arquivos, registra a câmera "WCam" e cria a regra de firewall (desinstalar remove tudo; o usuário final nunca roda script nem PowerShell), README com GIF de demonstração, guia de solução de problemas, varredura `nmap` do CA-4 | instalação limpa num Windows sem o repositório funciona do zero; celular não instala nada |
 | 1.x | Futuro | Linux, macOS | cada uma com ADR própria |
 
