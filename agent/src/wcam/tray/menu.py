@@ -4,13 +4,16 @@ from enum import StrEnum
 from wcam.media.pipeline import FrameSource
 from wcam.sessions.controls import Controls
 from wcam.sessions.manager import SessionState, Status
+from wcam.video.source import VideoSourceView
 from wcam.virtualcam.sink import CameraState
 
 CAMERA_TEXT_KEYS = {"user": "camera.front", "environment": "camera.back"}
+NO_VIDEO = VideoSourceView(None, active=False, position_seconds=None)
 
 
 class TrayState(StrEnum):
     LIVE = "live"
+    VIDEO = "video"
     FROZEN = "frozen"
     CAMERA_OFF = "camera_off"
     WAITING = "waiting"
@@ -24,6 +27,7 @@ class TrayAction(StrEnum):
     TOGGLE_CAMERA = "toggle_camera"
     SWITCH_CAMERA = "switch_camera"
     TOGGLE_MIRROR = "toggle_mirror"
+    TOGGLE_VIDEO = "toggle_video"
     OPEN_CONSOLE = "open_console"
     SHOW_QR = "show_qr"
     DISCONNECT = "disconnect"
@@ -36,6 +40,8 @@ class TraySnapshot:
     state_text_key: str
     connected: bool
     controls: Controls
+    video_stored: bool = False
+    video_active: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,18 +55,30 @@ class MenuEntry:
 SEPARATOR = MenuEntry("", TrayAction.SEPARATOR)
 
 
-def tray_snapshot(status: Status, source: FrameSource, camera_state: CameraState) -> TraySnapshot:
+def tray_snapshot(
+    status: Status,
+    source: FrameSource,
+    camera_state: CameraState,
+    video: VideoSourceView = NO_VIDEO,
+) -> TraySnapshot:
     session = status.session
     controls = status.controls
     live = session is not None and session.state is SessionState.LIVE
-    state, text_key = tray_state(status, source, camera_state)
-    return TraySnapshot(state, text_key, live, controls)
+    state, text_key = tray_state(status, source, camera_state, video.active)
+    return TraySnapshot(state, text_key, live, controls, video.file is not None, video.active)
 
 
-def tray_state(status: Status, source: FrameSource, camera_state: CameraState) -> tuple[TrayState, str]:
+def tray_state(
+    status: Status,
+    source: FrameSource,
+    camera_state: CameraState,
+    video_active: bool = False,
+) -> tuple[TrayState, str]:
     session = status.session
     if camera_state is not CameraState.ACTIVE:
         return TrayState.PROBLEM, "state.problem"
+    if video_active:
+        return (TrayState.FROZEN, "state.frozen") if status.controls.frozen else (TrayState.VIDEO, "state.video")
     if session is None:
         return TrayState.WAITING, "state.waiting"
     if session.state is not SessionState.LIVE:
@@ -84,7 +102,7 @@ def menu_entries(snapshot: TraySnapshot) -> list[MenuEntry]:
         MenuEntry(
             "controls.unfreeze" if controls.frozen else "controls.freeze",
             TrayAction.TOGGLE_FREEZE,
-            enabled=connected and not controls.camera_off,
+            enabled=(connected or snapshot.video_active) and not controls.camera_off,
         ),
         MenuEntry(
             "controls.camera_on" if controls.camera_off else "controls.camera_off",
@@ -93,6 +111,12 @@ def menu_entries(snapshot: TraySnapshot) -> list[MenuEntry]:
         ),
         MenuEntry("controls.switch_camera", TrayAction.SWITCH_CAMERA, enabled=connected),
         MenuEntry("controls.mirror", TrayAction.TOGGLE_MIRROR, checked=controls.mirror),
+        MenuEntry(
+            "tray.use_video",
+            TrayAction.TOGGLE_VIDEO,
+            enabled=snapshot.video_stored,
+            checked=snapshot.video_active,
+        ),
         SEPARATOR,
         MenuEntry("tray.open_console", TrayAction.OPEN_CONSOLE),
         MenuEntry("tray.show_qr", TrayAction.SHOW_QR),

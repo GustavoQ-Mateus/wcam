@@ -11,6 +11,8 @@ from wcam.media.video_format import VideoFormat
 from wcam.sessions.controls import Controls, ControlsChange, Facing
 from wcam.sessions.manager import LastEnded, SessionOffer, SessionView, Status, VideoFormatState
 from wcam.sessions.phone_messages import CameraCapabilitiesMessage, CameraColorSpaceMessage, CameraModesMessage
+from wcam.video.source import VideoSourceView
+from wcam.video.store import VideoFileInfo
 from wcam.virtualcam.sink import CameraState
 
 
@@ -146,6 +148,33 @@ class ControlsRequest(CamelModel):
         return ControlsChange(self.frozen, self.camera_off, self.mirror, self.facing)
 
 
+class VideoFileBody(CamelModel):
+    name: str
+    duration_seconds: float
+    width: int
+    height: int
+    fps: float
+    codec: str
+
+
+class VideoSourceBody(CamelModel):
+    file: VideoFileBody | None
+    active: bool
+    position_seconds: float | None
+
+
+class VideoSourceRequest(CamelModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    active: bool
+
+
+class VideoPositionRequest(CamelModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    seconds: float
+
+
 class StatusResponse(CamelModel):
     pairing: PairingBody | None
     session: SessionBody | None
@@ -156,6 +185,7 @@ class StatusResponse(CamelModel):
     quality: QualityBody | None
     dev_tools: bool
     controls: ControlsBody
+    video_source: VideoSourceBody
 
 
 class VideoFormatRequest(CamelModel):
@@ -185,7 +215,13 @@ def iso_utc(moment: datetime) -> str:
     return moment.replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def status_response(status: Status, pipeline: FramePipeline, cpu_percent: float, dev_tools: bool) -> StatusResponse:
+def status_response(
+    status: Status,
+    pipeline: FramePipeline,
+    cpu_percent: float,
+    dev_tools: bool,
+    video: VideoSourceView,
+) -> StatusResponse:
     expires_at = status.pairing_expires_at
     quality = pipeline.quality_report
     return StatusResponse(
@@ -198,6 +234,27 @@ def status_response(status: Status, pipeline: FramePipeline, cpu_percent: float,
         quality=None if quality is None else quality_body(quality),
         dev_tools=dev_tools,
         controls=controls_body(status.controls),
+        video_source=video_source_body(video),
+    )
+
+
+def video_file_body(info: VideoFileInfo) -> VideoFileBody:
+    return VideoFileBody(
+        name=info.name,
+        duration_seconds=info.duration_seconds,
+        width=info.width,
+        height=info.height,
+        fps=info.fps,
+        codec=info.codec,
+    )
+
+
+def video_source_body(video: VideoSourceView) -> VideoSourceBody:
+    position = None if not video.active or video.position_seconds is None else round(video.position_seconds, 3)
+    return VideoSourceBody(
+        file=None if video.file is None else video_file_body(video.file),
+        active=video.active,
+        position_seconds=position,
     )
 
 

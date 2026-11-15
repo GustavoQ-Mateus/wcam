@@ -29,11 +29,13 @@ from wcam.services import AgentServices
 from wcam.sessions.comparisons import ComparisonStore, CorrectionSnapshot
 from wcam.sessions.manager import SessionManager, SessionState
 from wcam.tray.tray import Tray, windows_tray_icon
+from wcam.video.store import VideoStore
 from wcam.virtualcam.factory import FallbackReason, SinkSelection, select_sink
 from wcam.virtualcam.media_foundation_sink import load_native_library
 from wcam.virtualcam.sink import CameraState
 
 EXIT_NO_LAN = 2
+VIDEO_FOLDER = "video"
 OBS_FALLBACK_REASONS = (
     FallbackReason.NATIVE_NOT_REGISTERED,
     FallbackReason.WINDOWS_TOO_OLD,
@@ -78,7 +80,9 @@ def start(settings: Settings, messages: Messages) -> None:
         camera=camera,
         output=pipeline,
     )
-    services = AgentServices(manager, pipeline, CpuMonitor(), camera, comparisons)
+    video_store = VideoStore(settings.data_dir / VIDEO_FOLDER)
+    video_store.load()
+    services = AgentServices(manager, pipeline, CpuMonitor(), camera, comparisons, video_store=video_store)
     time_decoders(pipeline.stage_times.record_decode)
     logging.getLogger(EPISODE_LOGGER).addHandler(EpisodeEvents(services.dev_events))
     print_banner(messages, console_url, phone_url, certificate)

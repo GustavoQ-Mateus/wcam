@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Callable
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -8,6 +9,7 @@ from tests.conftest import opened_pipeline, services
 from tests.fakes import FakePeerFactory
 from tests.unit.test_cli import english
 from tests.unit.test_dev_console import live_agent
+from tests.videos import chunks_of, small_video
 from wcam.media.pipeline import FrameSource
 from wcam.services import AgentServices
 from wcam.sessions.controls import Controls, ControlsChange
@@ -15,6 +17,8 @@ from wcam.sessions.manager import SessionManager
 from wcam.tray.icons import ICON_SIZE, tray_icon
 from wcam.tray.menu import MenuEntry, TrayAction, TrayState, menu_entries, tray_snapshot
 from wcam.tray.tray import Tray
+from wcam.video.source import VideoSourceView
+from wcam.video.store import VideoFileInfo
 from wcam.virtualcam.sink import CameraState
 
 WAIT_SECONDS = 1.0
@@ -181,3 +185,50 @@ def test_each_tray_state_has_its_own_icon(state: TrayState) -> None:
 
     assert tray_icon(state).size == (ICON_SIZE, ICON_SIZE)
     assert list(images.values()).count(images[state]) == 1
+
+
+def stored_video() -> VideoSourceView:
+    info = VideoFileInfo("clip.mp4", 2.0, 320, 180, 30.0, "h264")
+    return VideoSourceView(info, active=False, position_seconds=None)
+
+
+def test_use_video_item_is_disabled_until_a_video_is_stored() -> None:
+    status = idle_agent().manager.status()
+
+    without = tray_snapshot(status, FrameSource.PLACEHOLDER, CameraState.ACTIVE)
+    stored = tray_snapshot(status, FrameSource.PLACEHOLDER, CameraState.ACTIVE, stored_video())
+
+    assert not {entry.action: entry for entry in menu_entries(without)}[TrayAction.TOGGLE_VIDEO].enabled
+    assert {entry.action: entry for entry in menu_entries(stored)}[TrayAction.TOGGLE_VIDEO].enabled
+
+
+@pytest.mark.parametrize(
+    ("controls", "expected"),
+    [(Controls(), (TrayState.VIDEO, "state.video")), (Controls(frozen=True), (TrayState.FROZEN, "state.frozen"))],
+)
+def test_active_video_shows_its_own_state_and_can_be_frozen(
+    controls: Controls,
+    expected: tuple[TrayState, str],
+) -> None:
+    status = replace(idle_agent().manager.status(), controls=controls)
+    video = replace(stored_video(), active=True)
+
+    snapshot = tray_snapshot(status, FrameSource.VIDEO, CameraState.ACTIVE, video)
+
+    entries = {entry.action: entry for entry in menu_entries(snapshot)}
+    assert (snapshot.state, snapshot.state_text_key) == expected
+    assert entries[TrayAction.TOGGLE_VIDEO].checked
+    assert entries[TrayAction.TOGGLE_FREEZE].enabled
+    assert not entries[TrayAction.TOGGLE_CAMERA].enabled
+
+
+async def test_use_video_from_the_tray_turns_the_stored_video_on_and_off(tmp_path: Path) -> None:
+    agent = idle_agent()
+    await agent.video.save(chunks_of(small_video(tmp_path).read_bytes()), "clip.mp4")
+    tray = tray_for(agent, FakeTrayIcon(), Calls())
+
+    tray.select(TrayAction.TOGGLE_VIDEO)
+    await asyncio.wait_for(wait_for(lambda: agent.video.active), WAIT_SECONDS)
+    tray.select(TrayAction.TOGGLE_VIDEO)
+    await asyncio.wait_for(wait_for(lambda: not agent.video.active), WAIT_SECONDS)
+    await agent.video.remove()
