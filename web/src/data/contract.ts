@@ -25,12 +25,7 @@ export interface PairingWindow {
 
 export type SessionState = "connecting" | "awaiting_confirmation" | "live";
 export type EndReason =
-  | "rejected"
-  | "disconnected_by_pc"
-  | "disconnected_by_phone"
-  | "connection_failed"
-  | "confirmation_timeout"
-  | "video_source";
+  "rejected" | "disconnected_by_pc" | "disconnected_by_phone" | "connection_failed" | "confirmation_timeout";
 
 export interface Video {
   width: number;
@@ -103,17 +98,32 @@ export interface Status {
   videoSource: VideoSource;
 }
 
-export interface VideoFile {
+export interface LibraryVideo {
+  id: string;
   name: string;
   durationSeconds: number;
   width: number;
   height: number;
   fps: number;
   codec: string;
+  filmstripFrames: number;
+}
+
+export interface TimelineClip {
+  id: string;
+  videoId: string;
+  inSeconds: number;
+  outSeconds: number;
+}
+
+export interface Timeline {
+  clips: TimelineClip[];
+  durationSeconds: number;
 }
 
 export interface VideoSource {
-  file: VideoFile | null;
+  videos: LibraryVideo[];
+  timeline: Timeline;
   active: boolean;
   positionSeconds: number | null;
 }
@@ -169,6 +179,7 @@ export type ControlMessage =
   | { type: "confirmation"; pc: boolean; phone: boolean }
   | ({ type: "controls" } & Controls)
   | { type: "stats_request"; enabled: boolean }
+  | { type: "video_source"; active: boolean }
   | {
       type: "video_format";
       format: VideoFormat;
