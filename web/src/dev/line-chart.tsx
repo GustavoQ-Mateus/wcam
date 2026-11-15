@@ -1,21 +1,18 @@
-import { useMemo, useState, type PointerEvent } from "react";
-import type uPlot from "uplot";
-import { lineChartColumns } from "../data/chart-data";
+import { useState, type PointerEvent } from "react";
+import { lineSegments, stackedBands } from "../data/dev-metrics";
 import type { ChartMark } from "../data/dev-view";
-import { usePlot } from "../media/use-plot";
 import styles from "./dev.module.scss";
-import { lineChartOptions, type ChartTone, type LineChartExtras } from "./plot-options";
 
 export interface ChartSeries {
   label: string;
   values: (number | null)[];
-  tone: ChartTone;
+  tone: "primary" | "secondary" | "tertiary";
 }
 
 export interface ChartBand {
   label: string;
   values: number[];
-  tone: ChartTone;
+  tone: "primary" | "secondary" | "tertiary";
 }
 
 export interface ChartReference {
@@ -36,7 +33,9 @@ interface LineChartProps {
   endLabel: string;
 }
 
-const PERCENT = 100;
+export const CHART_WIDTH = 600;
+export const CHART_HEIGHT = 160;
+const GRID_LINES = [0.25, 0.5, 0.75];
 
 export function LineChart({
   title,
@@ -51,38 +50,14 @@ export function LineChart({
   endLabel,
 }: LineChartProps) {
   const [hover, setHover] = useState<number | null>(null);
-  const [build] = useState(() =>
-    lineChartOptions(
-      bands.map((band) => band.tone),
-      series.map((line) => line.tone),
-      reference !== undefined,
-    ),
-  );
-  const referenceValue = reference?.value ?? null;
-  const data = useMemo(() => {
-    const columns = lineChartColumns(
-      series.map((line) => line.values),
-      bands.map((band) => band.values),
-      max,
-      referenceValue,
-    );
-    return [
-      columns.indexes,
-      ...columns.bands,
-      ...(columns.reference ? [columns.reference] : []),
-      ...columns.lines,
-    ] as uPlot.AlignedData;
-  }, [series, bands, max, referenceValue]);
-  const extras = useMemo<LineChartExtras>(() => ({ max, marks }), [max, marks]);
-  const plotRef = usePlot(build, data, extras);
   const count = series[0]?.values.length ?? bands[0]?.values.length ?? 0;
   const keyed = [...bands, ...series];
-  const onMove = (event: PointerEvent<HTMLDivElement>) => {
+  const onMove = (event: PointerEvent<SVGSVGElement>) => {
     const box = event.currentTarget.getBoundingClientRect();
     const share = (event.clientX - box.left) / box.width;
     setHover(count > 1 ? Math.round(share * (count - 1)) : null);
   };
-  const hoverShare = hover !== null && count > 1 ? hover / (count - 1) : null;
+  const hoverX = hover !== null && count > 1 ? (hover / (count - 1)) * CHART_WIDTH : null;
   return (
     <section className={styles.chart}>
       <header className={styles.chartHeader}>
@@ -110,21 +85,72 @@ export function LineChart({
       </header>
       <div className={styles.plot}>
         <span className={styles.axisTop}>{format(max)}</span>
-        <div
-          ref={plotRef}
+        <svg
           className={styles.svg}
+          viewBox={`0 0 ${String(CHART_WIDTH)} ${String(CHART_HEIGHT)}`}
+          preserveAspectRatio="none"
           role="img"
           aria-label={title}
           onPointerMove={onMove}
           onPointerLeave={() => {
             setHover(null);
           }}
-        />
-        {hoverShare !== null && (
-          <div className={styles.crosshair} style={{ insetInlineStart: `${String(hoverShare * PERCENT)}%` }} />
-        )}
+        >
+          {GRID_LINES.map((share) => (
+            <line
+              key={share}
+              className={styles.gridLine}
+              x1="0"
+              x2={CHART_WIDTH}
+              y1={share * CHART_HEIGHT}
+              y2={share * CHART_HEIGHT}
+            />
+          ))}
+          {marks.map((mark, index) => (
+            <line
+              key={index}
+              className={styles.mark}
+              data-kind={mark.kind}
+              x1={mark.share * CHART_WIDTH}
+              x2={mark.share * CHART_WIDTH}
+              y1="0"
+              y2={CHART_HEIGHT}
+            />
+          ))}
+          {stackedBands(
+            bands.map((band) => band.values),
+            CHART_WIDTH,
+            CHART_HEIGHT,
+            max,
+          ).map((points, index) => (
+            <polygon key={bands[index]?.label} className={styles.band} data-tone={bands[index]?.tone} points={points} />
+          ))}
+          {reference && (
+            <line
+              className={styles.reference}
+              x1="0"
+              x2={CHART_WIDTH}
+              y1={CHART_HEIGHT - (Math.min(reference.value, max) / max) * CHART_HEIGHT}
+              y2={CHART_HEIGHT - (Math.min(reference.value, max) / max) * CHART_HEIGHT}
+            />
+          )}
+          {series.map((line) =>
+            lineSegments(line.values, CHART_WIDTH, CHART_HEIGHT, max).map((points, index) => (
+              <polyline
+                key={`${line.label}-${String(index)}`}
+                className={styles.line}
+                data-tone={line.tone}
+                points={points}
+              />
+            )),
+          )}
+          {hoverX !== null && <line className={styles.crosshair} x1={hoverX} x2={hoverX} y1="0" y2={CHART_HEIGHT} />}
+        </svg>
         {hover !== null && (
-          <div className={styles.tooltip} style={{ insetInlineStart: `${String((hoverShare ?? 0) * PERCENT)}%` }}>
+          <div
+            className={styles.tooltip}
+            style={{ insetInlineStart: `${String(((hoverX ?? 0) / CHART_WIDTH) * 100)}%` }}
+          >
             {keyed.map((line) => {
               const value = line.values[hover];
               return (
