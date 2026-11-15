@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { comparisonAvailable } from "../data/console-format";
-import { consoleMode, isLiveMode, phoneFlowMode, stateBadge } from "../data/console-view";
+import { consoleMode, isLiveMode, stateBadge } from "../data/console-view";
 import type { TimelineClip } from "../data/contract";
 import { errorMessageKey } from "../data/i18n";
 import { t } from "../data/language";
@@ -12,6 +12,7 @@ import { ConnectingView } from "./connecting-view";
 import { ConsoleHeader } from "./console-header";
 import styles from "./console-page.module.scss";
 import { LiveView } from "./live-view";
+import { PhoneReconnectPanel } from "./phone-reconnect-panel";
 import { useComparison } from "./use-comparison";
 import { VideoEditor } from "./video-editor";
 import { WaitingView } from "./waiting-view";
@@ -35,7 +36,6 @@ export default function ConsolePage() {
   const session = status?.session ?? null;
   const mode = status ? consoleMode(status) : null;
   const editing = active || (session?.state === "live" && editorFor === session.id);
-  const flowMode = status && (editing ? phoneFlowMode(status) : mode);
   return (
     <main className={styles.page}>
       <ConsoleHeader badge={status ? stateBadge(status) : null} />
@@ -55,9 +55,20 @@ export default function ConsolePage() {
           onClose={() => {
             setEditorFor(null);
           }}
+          phoneSlot={
+            <PhoneReconnectPanel
+              session={session}
+              qrSvg={data.qrSvg}
+              expiresAt={status.pairing?.expiresAt ?? null}
+              receivedAt={data.receivedAt}
+              onNewPairing={data.newPairing}
+              onConfirm={data.confirm}
+              onReject={data.reject}
+            />
+          }
         />
       )}
-      {status && flowMode === "waiting" && (
+      {status && !editing && mode === "waiting" && (
         <WaitingView
           qrSvg={data.qrSvg}
           expiresAt={status.pairing?.expiresAt ?? null}
@@ -65,8 +76,8 @@ export default function ConsolePage() {
           onNewPairing={data.newPairing}
         />
       )}
-      {session && flowMode === "connecting" && <ConnectingView session={session} />}
-      {session && flowMode === "confirming" && (
+      {session && !editing && mode === "connecting" && <ConnectingView session={session} />}
+      {session && !editing && mode === "confirming" && (
         <ConfirmView session={session} onConfirm={data.confirm} onReject={data.reject} />
       )}
       {status && mode && !editing && isLiveMode(mode) && (

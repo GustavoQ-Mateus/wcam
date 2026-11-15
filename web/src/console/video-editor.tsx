@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 import type { ControlsPatch, Status, TimelineClip } from "../data/contract";
 import type { ConsoleMode } from "../data/console-view";
 import { currentFacing } from "../data/console-view";
@@ -40,9 +40,19 @@ interface VideoEditorProps {
   onChange: (patch: ControlsPatch) => void;
   onChooseFormat: (format: VideoFormat) => void;
   onClose: () => void;
+  phoneSlot: ReactNode;
 }
 
-export function VideoEditor({ status, receivedAt, mode, video, onChange, onChooseFormat, onClose }: VideoEditorProps) {
+export function VideoEditor({
+  status,
+  receivedAt,
+  mode,
+  video,
+  onChange,
+  onChooseFormat,
+  onClose,
+  phoneSlot,
+}: VideoEditorProps) {
   const [previewOn, setPreviewOn] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [zoomIndex, setZoomIndex] = useState(0);
@@ -144,6 +154,7 @@ export function VideoEditor({ status, receivedAt, mode, video, onChange, onChoos
             }}
             onRemove={video.remove}
           />
+          {!phoneLive && phoneSlot}
           {session && phoneLive && (
             <PhonePanel
               session={session}
@@ -165,7 +176,7 @@ export function VideoEditor({ status, receivedAt, mode, video, onChange, onChoos
         canUse={phoneLive && clips.length > 0}
         canSplit={clips.length > 0}
         canDelete={selectedIndex !== -1}
-        canZoomIn={zoomIndex < ZOOM_LEVELS.length - 1}
+        canZoomIn={clips.length > 0 && zoomIndex < ZOOM_LEVELS.length - 1}
         canZoomOut={zoomIndex > 0}
         previewOn={previewOn}
         previewStopped={previewOn && preview.state === "stopped"}

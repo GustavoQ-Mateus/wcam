@@ -1,5 +1,6 @@
 .viewport {
   position: relative;
+  padding: 0 var(--space-2);
   overflow-x: auto;
   overflow-y: hidden;
   background: var(--surface);
