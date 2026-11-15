@@ -47,6 +47,11 @@ class SetControlsMessage(PhoneMessage):
         return ControlsChange(self.frozen, self.camera_off, self.mirror, self.facing)
 
 
+class SetVideoSourceMessage(PhoneMessage):
+    type: Literal["set_video_source"]
+    active: bool
+
+
 class OutboundStatsMessage(PhoneMessage):
     frames_per_second: float | None = None
     frames_sent: int | None = None
@@ -160,6 +165,7 @@ type AnyPhoneMessage = (
     ConfirmCodeMessage
     | RejectCodeMessage
     | SetControlsMessage
+    | SetVideoSourceMessage
     | StatsMessage
     | SetVideoFormatMessage
     | CameraCapabilitiesMessage
@@ -174,6 +180,7 @@ PHONE_MESSAGE = TypeAdapter[AnyPhoneMessage](
         ConfirmCodeMessage
         | RejectCodeMessage
         | SetControlsMessage
+        | SetVideoSourceMessage
         | StatsMessage
         | SetVideoFormatMessage
         | CameraCapabilitiesMessage

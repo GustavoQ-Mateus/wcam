@@ -10,7 +10,7 @@ from wcam.services import AgentServices
 from wcam.sessions.controls import ControlsChange, Facing
 from wcam.sessions.errors import NoActiveSessionError, NoLiveSessionError
 from wcam.tray.menu import MenuEntry, TrayAction, TraySnapshot, TrayState, menu_entries, tray_snapshot
-from wcam.video.errors import NoVideoFileError
+from wcam.video.errors import TimelineEmptyError, VideoSourceActiveError
 
 REFRESH_SECONDS = 1.0
 OTHER_FACING: dict[Facing, Facing] = {"user": "environment", "environment": "user"}
@@ -99,7 +99,7 @@ class Tray:
             return
         try:
             self._services.manager.change_controls(change)
-        except NoLiveSessionError:
+        except (NoLiveSessionError, VideoSourceActiveError):
             logger.warning(IGNORED_TRAY_ACTION)
 
     def _change_for(self, action: TrayAction) -> ControlsChange | None:
@@ -119,7 +119,7 @@ class Tray:
         if video.active:
             await video.deactivate()
             return
-        with contextlib.suppress(NoVideoFileError):
+        with contextlib.suppress(NoLiveSessionError, TimelineEmptyError):
             await video.activate()
 
     async def _disconnect(self) -> None:

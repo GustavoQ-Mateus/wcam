@@ -24,12 +24,12 @@ from wcam.media.pipeline import FramePipeline
 from wcam.media.quality import QualityMeter, read_y4m_luma
 from wcam.network.certificates import TlsCertificate, load_or_create_certificate
 from wcam.network.lan import NoLanInterfaceError, detect_lan_interface
+from wcam.persistence.database import open_database
 from wcam.process_monitor import CpuMonitor
 from wcam.services import AgentServices
 from wcam.sessions.comparisons import ComparisonStore, CorrectionSnapshot
 from wcam.sessions.manager import SessionManager, SessionState
 from wcam.tray.tray import Tray, windows_tray_icon
-from wcam.video.store import VideoStore
 from wcam.virtualcam.factory import FallbackReason, SinkSelection, select_sink
 from wcam.virtualcam.media_foundation_sink import load_native_library
 from wcam.virtualcam.sink import CameraState
@@ -80,9 +80,15 @@ def start(settings: Settings, messages: Messages) -> None:
         camera=camera,
         output=pipeline,
     )
-    video_store = VideoStore(settings.data_dir / VIDEO_FOLDER)
-    video_store.load()
-    services = AgentServices(manager, pipeline, CpuMonitor(), camera, comparisons, video_store=video_store)
+    services = AgentServices(
+        manager,
+        pipeline,
+        CpuMonitor(),
+        camera,
+        comparisons,
+        video_folder=settings.data_dir / VIDEO_FOLDER,
+        database=open_database(settings.data_dir),
+    )
     time_decoders(pipeline.stage_times.record_decode)
     logging.getLogger(EPISODE_LOGGER).addHandler(EpisodeEvents(services.dev_events))
     print_banner(messages, console_url, phone_url, certificate)
