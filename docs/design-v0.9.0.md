@@ -56,6 +56,7 @@ A rodada de perguntas da skill foi substituída pela spec v0.9.0 revisão 2 apro
 
 - Com `video_source` `true`, a faixa da câmera para (luz apagada) e o visor dá lugar a uma mensagem em tela cheia, no mesmo sistema das mensagens do `/cam`: "O computador está mostrando um vídeo", "A câmera deste celular está desligada." e o botão principal "Voltar à câmera", na zona do polegar. A luz de "ao vivo" some, porque o celular não está mandando imagem.
 - Com `false`, a câmera é pedida de novo e o visor volta, sem novo QR.
+- `mobile-native`: a tela usa as margens com `env(safe-area-inset-*)` do `/cam`, o botão principal da v0.8.0 (resposta no `:active`, sem destaque de toque) e transição só de opacidade, desligada com `prefers-reduced-motion`. Falta conferir num celular real.
 
 ## 5. Gráficos do `/dev` e ícones (sem mudança desde a revisão 1)
 
