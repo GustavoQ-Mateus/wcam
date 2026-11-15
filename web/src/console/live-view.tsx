@@ -44,7 +44,7 @@ export function LiveView({
           mode={mode}
           previewOn={previewOn}
           attachPreview={preview.attach}
-          previewShowing={preview.showing}
+          previewState={preview.state}
           frozenSince={frozenSince}
           onUnfreeze={() => {
             onChange({ frozen: false });
@@ -52,11 +52,13 @@ export function LiveView({
           onCameraOn={() => {
             onChange({ cameraOff: false });
           }}
+          onShowPreviewAgain={preview.showAgain}
         />
         <ControlBar
           controls={controls}
           facing={facing}
           previewOn={previewOn}
+          previewStopped={previewOn && preview.state === "stopped"}
           onChange={onChange}
           onTogglePreview={() => {
             setPreviewOn((on) => !on);

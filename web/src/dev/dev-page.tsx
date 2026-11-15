@@ -134,7 +134,7 @@ export default function DevPage() {
               mode={mode}
               previewOn
               attachPreview={preview.attach}
-              previewShowing={preview.showing}
+              previewState={preview.state}
               frozenSince={null}
               onUnfreeze={() => {
                 consoleData.changeControls({ frozen: false });
@@ -142,6 +142,7 @@ export default function DevPage() {
               onCameraOn={() => {
                 consoleData.changeControls({ cameraOff: false });
               }}
+              onShowPreviewAgain={preview.showAgain}
             />
           )}
           {status?.session?.state === "live" && (

@@ -6,7 +6,7 @@ Spec: `docs/specs/spec-v0.8.0.md` · Handoff: `docs/handoff-v0.8.0.md` · Branch
 
 Página em `spike/zoom` (commit b469131): `web/spike/zoom.html` servida por um Vite próprio em HTTPS na porta 5174, com o certificado do WCam. O spike não usa as portas 8080 e 8443 nem sobe o agente. Verificada no Chrome com câmera falsa, roda até o fim e salva o resultado.
 
-**Pendente:** o teste no iPhone do usuário, que o orquestrador está combinando. A tabela por câmera entra aqui quando o resultado chegar.
+O teste no iPhone não foi feito nesta versão. Por decisão do orquestrador (2026-11-15), a medição vai junto com o zoom na v0.10.0, e a tabela por câmera não entra neste relatório. O servidor do spike foi desligado e o worktree temporário removido.
 
 ## 1. Confirmação nos dois lados (spec §1.1)
 
@@ -50,7 +50,7 @@ Desvios aceitos pelo orquestrador (registrados na spec, "Decisões registradas")
 
 ## 5. Textos (`locales/`)
 
-Acrescentadas: `cam.mirror_apps`, `console.apps_one`, `console.confirm_hint`, `console.path_title`, `console.preview_label`, `console.detail_*` (resolution, fps, bitrate, bitrate_value, codec, camera_format, cpu, percent, none), `dev.collect_note`, `dev.event_*` (session_state, controls, video_format, camera_capabilities, virtual_camera, episode, preview), `dev.headroom`, `dev.key_frames_every`, `dev.now`, `dev.preview`, `dev.seconds_ago`, `dev.series_round_trip`, `dev.size_at_fps`, `dev.unit_fps`, `dev.unit_mbps`, `dev.unit_percent`.
+Acrescentadas: `console.preview_stopped`, `console.preview_show_again` (prévia que parou, 2026-11-15), `cam.mirror_apps`, `console.apps_one`, `console.confirm_hint`, `console.path_title`, `console.preview_label`, `console.detail_*` (resolution, fps, bitrate, bitrate_value, codec, camera_format, cpu, percent, none), `dev.collect_note`, `dev.event_*` (session_state, controls, video_format, camera_capabilities, virtual_camera, episode, preview), `dev.headroom`, `dev.key_frames_every`, `dev.now`, `dev.preview`, `dev.seconds_ago`, `dev.series_round_trip`, `dev.size_at_fps`, `dev.unit_fps`, `dev.unit_mbps`, `dev.unit_percent`.
 
 Removidas por falta de uso: `cam.confirm_body`, `cam.preview_off`, `cam.switch_camera`, `console.disconnect`, `console.state_live`, `console.source_*`, `console.status_checking`, `console.status_running`, `console.video_format`, `console.virtual_camera_active`, `console.virtual_camera_unavailable`, `console.color_matched`, `console.color_default`, `console.camera_color*`, `console.cpu`, `dev.back`, `dev.browser`, `dev.codec`, `dev.device`, `dev.format`.
 
@@ -62,7 +62,7 @@ Nenhum termo proibido da spec §6 em valores fora de `dev.*` (checagem local; o 
 
 | CA | Situação |
 | --- | --- |
-| 1 Spike | Página pronta; teste no iPhone pendente |
+| 1 Spike | Página pronta; medição no iPhone movida para a v0.10.0 |
 | 2 Confirmação | e2e completo passando; no iPhone real, não verificado |
 | 3 CA-3 | Estados vistos em capturas do Chromium; a validação visual é do usuário |
 | 4 Controles | Console e celular abaixo de 300 ms no e2e; o indicador de câmera do iPhone e a troca de câmera no Meet não foram verificados |
@@ -89,3 +89,19 @@ Estado: `feature/console-web` em 720fe9b, com `origin/feature/console` até f749
 
 - Nada foi visto num celular real: confirmação no Safari, controles e indicador de câmera, `stats` com os campos do Safari, layout do `/cam` com a coluna nova.
 - Nenhum dado real do iPhone no `/dev` (campos do Safari em `stats`).
+
+## 9. Prévia que parou (bateria de 2026-11-15)
+
+Na bateria, o console aberto no Opera mostrava Ao vivo e o rótulo "O que os apps recebem" sobre uma área preta. Não reproduzi contra o WCam rodando: Chrome headless, Opera GX 138 headless e Opera GX com janela, com e sem GPU, com perfil temporário, sempre conectaram e mostraram a imagem. O perfil do Opera do usuário não tem política de WebRTC, proxy, VPN nem extensão. A causa exata no navegador dele ficou sem confirmação.
+
+O defeito do console que produz esse sintoma:
+- O rótulo acendia no evento `track`, que dispara ao aplicar a resposta, antes de qualquer quadro.
+- O WCam aceita uma prévia só, e a nova fecha a anterior. A aba que perdia ficava com o último quadro, depois preta, com "Desligar prévia" ainda visível e sem saída.
+
+Correção (decisão do orquestrador, sem mudar contrato nem agente):
+- Regra em `data/preview-state.ts` (Vitest): Conectando, Mostrando, Parada. O rótulo só aparece em Mostrando, quando o `<video>` tem quadro (`videoWidth > 0` no `resize` ou no `playing`).
+- Se a conexão vai a `failed` ou `closed`, ou se nenhum quadro chega em 5 s, a aba fecha a conexão local, sem `DELETE /api/preview` (para não derrubar a prévia de outra janela), e mostra `console.preview_stopped` com o botão `console.preview_show_again`. "Desligar prévia" some nesse estado. Nada renegocia sozinho.
+- Com a câmera desligada, o `<video>` fica montado e escondido, para a regra dos 5 s não confundir a tela preta da câmera desligada com prévia parada.
+- e2e em `preview.spec.ts`: o rótulo aparece com o vídeo já em 960 de largura; uma segunda página toma a prévia, a primeira mostra a mensagem sem rótulo, sem vídeo e sem "Desligar prévia", e "Mostrar prévia" volta a imagem.
+
+Verificação no estado `feature/console-web` com `origin/feature/console` até f277328: `npm run build` sem avisos, `npm run lint` limpo, `npm test` com 158 testes em 22 arquivos e `npm run test:e2e` completo pelo compose com 32 passando e 0 falhando. Não verificado no Opera do usuário.
