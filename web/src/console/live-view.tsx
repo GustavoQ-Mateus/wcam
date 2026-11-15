@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { ControlsPatch, Status } from "../data/contract";
 import { currentFacing, problemKey, signalPath, type ConsoleMode } from "../data/console-view";
 import { LANGUAGE } from "../data/language";
@@ -21,6 +21,7 @@ interface LiveViewProps {
   onDisconnect: () => void;
   onChooseFormat: (format: VideoFormat) => void;
   onCompare?: (() => void) | undefined;
+  videoPanel: ReactNode;
 }
 
 export function LiveView({
@@ -31,6 +32,7 @@ export function LiveView({
   onDisconnect,
   onChooseFormat,
   onCompare,
+  videoPanel,
 }: LiveViewProps) {
   const [previewOn, setPreviewOn] = useState(true);
   const preview = usePreview(previewOn);
@@ -79,6 +81,7 @@ export function LiveView({
         )}
         <SignalPath steps={signalPath(status)} problemKey={problemKey(status)} />
         <FormatPanel videoFormat={status.videoFormat} onChoose={onChooseFormat} />
+        {videoPanel}
         <DetailsPanel status={status} />
       </aside>
     </div>

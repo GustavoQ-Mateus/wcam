@@ -13,6 +13,7 @@ interface ControlBarProps {
   onTogglePreview: () => void;
   onDisconnect: () => void;
   onCompare?: (() => void) | undefined;
+  onBackToPhone?: (() => void) | undefined;
 }
 
 export function ControlBar({
@@ -24,8 +25,10 @@ export function ControlBar({
   onTogglePreview,
   onDisconnect,
   onCompare,
+  onBackToPhone,
 }: ControlBarProps) {
   const other = otherFacing(facing);
+  const phoneControls = onBackToPhone === undefined;
   return (
     <div className={styles.bar}>
       <button
@@ -39,25 +42,29 @@ export function ControlBar({
       >
         {t(controls.frozen ? "controls.unfreeze" : "controls.freeze")}
       </button>
-      <button
-        type="button"
-        className={styles.control}
-        aria-pressed={controls.cameraOff}
-        onClick={() => {
-          onChange({ cameraOff: !controls.cameraOff });
-        }}
-      >
-        {t(controls.cameraOff ? "controls.camera_on" : "controls.camera_off")}
-      </button>
-      <button
-        type="button"
-        className={styles.control}
-        onClick={() => {
-          onChange({ facing: other });
-        }}
-      >
-        {t(other === "user" ? "controls.use_front" : "controls.use_back")}
-      </button>
+      {phoneControls && (
+        <>
+          <button
+            type="button"
+            className={styles.control}
+            aria-pressed={controls.cameraOff}
+            onClick={() => {
+              onChange({ cameraOff: !controls.cameraOff });
+            }}
+          >
+            {t(controls.cameraOff ? "controls.camera_on" : "controls.camera_off")}
+          </button>
+          <button
+            type="button"
+            className={styles.control}
+            onClick={() => {
+              onChange({ facing: other });
+            }}
+          >
+            {t(other === "user" ? "controls.use_front" : "controls.use_back")}
+          </button>
+        </>
+      )}
       <button
         type="button"
         className={styles.control}
@@ -78,9 +85,15 @@ export function ControlBar({
           {t("console.dev_compare")}
         </button>
       )}
-      <button type="button" className={styles.disconnect} onClick={onDisconnect}>
-        {t("controls.disconnect")}
-      </button>
+      {phoneControls ? (
+        <button type="button" className={styles.disconnect} onClick={onDisconnect}>
+          {t("controls.disconnect")}
+        </button>
+      ) : (
+        <button type="button" className={styles.backToPhone} onClick={onBackToPhone}>
+          {t("controls.back_to_phone")}
+        </button>
+      )}
     </div>
   );
 }

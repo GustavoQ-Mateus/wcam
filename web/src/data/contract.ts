@@ -25,7 +25,12 @@ export interface PairingWindow {
 
 export type SessionState = "connecting" | "awaiting_confirmation" | "live";
 export type EndReason =
-  "rejected" | "disconnected_by_pc" | "disconnected_by_phone" | "connection_failed" | "confirmation_timeout";
+  | "rejected"
+  | "disconnected_by_pc"
+  | "disconnected_by_phone"
+  | "connection_failed"
+  | "confirmation_timeout"
+  | "video_source";
 
 export interface Video {
   width: number;
@@ -66,7 +71,7 @@ export interface VirtualCamera {
   backend: "media_foundation" | "obs" | "fake";
   reason: VirtualCameraUnavailableReason | null;
   output: { width: number; height: number; fps: number };
-  source: "phone" | "frozen" | "held" | "camera_off" | "placeholder";
+  source: "phone" | "frozen" | "held" | "camera_off" | "placeholder" | "video";
   streamingApps: number | null;
 }
 
@@ -95,6 +100,22 @@ export interface Status {
   quality: Quality | null;
   devTools: boolean;
   controls: Controls;
+  videoSource: VideoSource;
+}
+
+export interface VideoFile {
+  name: string;
+  durationSeconds: number;
+  width: number;
+  height: number;
+  fps: number;
+  codec: string;
+}
+
+export interface VideoSource {
+  file: VideoFile | null;
+  active: boolean;
+  positionSeconds: number | null;
 }
 
 export interface VideoFormatStatus {

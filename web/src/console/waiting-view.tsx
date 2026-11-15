@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { secondsUntil, svgDataUrl, windowProgress } from "../data/console-format";
 import { t } from "../data/language";
 import { ConsoleButton } from "./console-button";
@@ -10,9 +11,10 @@ interface WaitingViewProps {
   expiresAt: string | null;
   receivedAt: number;
   onNewPairing: () => void;
+  videoPanel: ReactNode;
 }
 
-export function WaitingView({ qrSvg, expiresAt, receivedAt, onNewPairing }: WaitingViewProps) {
+export function WaitingView({ qrSvg, expiresAt, receivedAt, onNewPairing, videoPanel }: WaitingViewProps) {
   const title = t("console.pairing_title");
   const showQr = qrSvg !== null && expiresAt !== null;
   return (
@@ -43,6 +45,7 @@ export function WaitingView({ qrSvg, expiresAt, receivedAt, onNewPairing }: Wait
             {t("console.pairing_new")}
           </ConsoleButton>
         </div>
+        {videoPanel}
       </div>
     </section>
   );

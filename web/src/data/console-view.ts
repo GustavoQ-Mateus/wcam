@@ -2,9 +2,9 @@ import type { Facing } from "./cam-state";
 import type { Status, VirtualCameraUnavailableReason } from "./contract";
 import type { MessageKey } from "./i18n";
 
-export type ConsoleMode = "waiting" | "connecting" | "confirming" | "live" | "frozen" | "camera_off" | "lost";
+export type ConsoleMode = "waiting" | "connecting" | "confirming" | "live" | "frozen" | "camera_off" | "lost" | "video";
 export type BadgeTone = "neutral" | "live" | "still" | "warning" | "negative";
-export type BadgeShape = "ring" | "dot" | "square" | "bars" | "triangle";
+export type BadgeShape = "ring" | "dot" | "square" | "bars" | "triangle" | "play";
 export type PathState = "ok" | "waiting" | "problem";
 
 export interface Badge {
@@ -28,6 +28,7 @@ const BADGES: Readonly<Record<ConsoleMode, Badge>> = {
   frozen: { key: "state.frozen", tone: "still", shape: "square" },
   camera_off: { key: "state.camera_off", tone: "warning", shape: "bars" },
   lost: { key: "state.lost", tone: "negative", shape: "triangle" },
+  video: { key: "state.video", tone: "still", shape: "play" },
 };
 const PROBLEM_BADGE: Badge = { key: "state.problem", tone: "negative", shape: "triangle" };
 const NOTE_KEYS: Readonly<Record<PathState, MessageKey>> = {
@@ -43,7 +44,10 @@ const UNAVAILABLE_KEYS: Readonly<Record<VirtualCameraUnavailableReason, MessageK
 const LIVE_MODES: ReadonlySet<ConsoleMode> = new Set(["live", "frozen", "camera_off", "lost"]);
 
 export function consoleMode(status: Status): ConsoleMode {
-  const { session, controls, virtualCamera } = status;
+  const { session, controls, virtualCamera, videoSource } = status;
+  if (videoSource.active) {
+    return controls.frozen ? "frozen" : "video";
+  }
   if (session === null) {
     return "waiting";
   }

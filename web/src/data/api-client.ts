@@ -22,6 +22,7 @@ const NETWORK_ERROR_STATUS = 0;
 const PNG_TYPE = "image/png";
 const COMPARISONS_PATH = "/api/dev/comparisons";
 const PREVIEW_PATH = "/api/preview";
+const VIDEO_SOURCE_PATH = "/api/video-source";
 
 export class ApiError extends Error {
   readonly code: string;
@@ -73,6 +74,18 @@ export function openPreview(sdp: string): Promise<{ sdp: string }> {
 
 export function closePreview(): Promise<null> {
   return requestJson<null>(PREVIEW_PATH, { method: "DELETE" });
+}
+
+export function changeVideoSource(active: boolean): Promise<null> {
+  return requestJson<null>(VIDEO_SOURCE_PATH, { method: "PUT", body: { active } });
+}
+
+export function removeVideoFile(): Promise<null> {
+  return requestJson<null>(`${VIDEO_SOURCE_PATH}/file`, { method: "DELETE" });
+}
+
+export function seekVideo(seconds: number): Promise<null> {
+  return requestJson<null>(`${VIDEO_SOURCE_PATH}/position`, { method: "PUT", body: { seconds } });
 }
 
 export function createComparison(): Promise<{ id: string }> {
@@ -136,7 +149,7 @@ function comparisonPath(id: string): string {
   return `${COMPARISONS_PATH}/${encodeURIComponent(id)}`;
 }
 
-function toApiError(body: unknown, status: number): ApiError {
+export function toApiError(body: unknown, status: number): ApiError {
   if (!isErrorBody(body)) {
     return new ApiError(UNKNOWN_ERROR_CODE, status, `HTTP ${String(status)}`);
   }
