@@ -9,6 +9,7 @@ from av import VideoFrame
 from wcam.diagnostics.stage_times import Stage
 from wcam.tools.make_test_video import write_test_video
 from wcam.video.playback import VideoPlayback
+from wcam.video.timeline import Clip, Timeline
 from wcam.virtualcam.sink import AnnouncedFormat, I420Frame
 
 SMALL_WIDTH = 320
@@ -72,6 +73,7 @@ class FakeVideoOutput:
 class FakeTime:
     def __init__(self, stop_at: float) -> None:
         self.now = 0.0
+        self.settle: Callable[[], None] = lambda: None
         self._stop_at = stop_at
         self._actions: list[tuple[float, Callable[[], None]]] = []
 
@@ -82,6 +84,7 @@ class FakeTime:
         self._actions.append((moment, action))
 
     async def sleep(self, seconds: float) -> None:
+        await asyncio.to_thread(self.settle)
         self.now += max(seconds, 0.0)
         if self.now >= self._stop_at - END_TOLERANCE_SECONDS:
             raise PlaybackStoppedError
@@ -91,16 +94,35 @@ class FakeTime:
         await asyncio.sleep(0)
 
 
+def video_duration(path: Path) -> float:
+    with av.open(str(path)) as container:
+        stream = container.streams.video[0]
+        return float((stream.duration or 0) * (stream.time_base or 0))
+
+
+def whole_video(path: Path, video_id: str = "v1") -> tuple[Timeline, dict[str, Path]]:
+    return Timeline((Clip("c1", video_id, 0.0, video_duration(path)),)), {video_id: path}
+
+
 async def played(
-    path: Path, seconds: float, setup: Callable[[FakeTime, FakeVideoOutput, VideoPlayback], None] | None = None
+    path: Path,
+    seconds: float,
+    setup: Callable[[FakeTime, FakeVideoOutput, VideoPlayback], None] | None = None,
+) -> FakeVideoOutput:
+    return await played_timeline(*whole_video(path), seconds, setup)
+
+
+async def played_timeline(
+    timeline: Timeline,
+    paths: dict[str, Path],
+    seconds: float,
+    setup: Callable[[FakeTime, FakeVideoOutput, VideoPlayback], None] | None = None,
 ) -> FakeVideoOutput:
     clock = FakeTime(seconds)
     output = FakeVideoOutput()
     output.clock = clock
-    with av.open(str(path)) as container:
-        stream = container.streams.video[0]
-        duration = float((stream.duration or 0) * (stream.time_base or 0))
-    playback = VideoPlayback(path, duration, output, clock, clock.sleep)
+    playback = VideoPlayback(timeline, paths, output, clock, clock.sleep)
+    clock.settle = playback.wait_settled
     output.playback = playback
     if setup is not None:
         setup(clock, output, playback)

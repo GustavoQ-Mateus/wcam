@@ -5,10 +5,11 @@ from wcam.media.pipeline import FrameSource
 from wcam.sessions.controls import Controls
 from wcam.sessions.manager import SessionState, Status
 from wcam.video.source import VideoSourceView
+from wcam.video.timeline import Timeline
 from wcam.virtualcam.sink import CameraState
 
 CAMERA_TEXT_KEYS = {"user": "camera.front", "environment": "camera.back"}
-NO_VIDEO = VideoSourceView(None, active=False, position_seconds=None)
+NO_VIDEO = VideoSourceView((), Timeline(), active=False, position_seconds=None)
 
 
 class TrayState(StrEnum):
@@ -40,7 +41,7 @@ class TraySnapshot:
     state_text_key: str
     connected: bool
     controls: Controls
-    video_stored: bool = False
+    video_ready: bool = False
     video_active: bool = False
 
 
@@ -65,7 +66,7 @@ def tray_snapshot(
     controls = status.controls
     live = session is not None and session.state is SessionState.LIVE
     state, text_key = tray_state(status, source, camera_state, video.active)
-    return TraySnapshot(state, text_key, live, controls, video.file is not None, video.active)
+    return TraySnapshot(state, text_key, live, controls, bool(video.timeline.clips), video.active)
 
 
 def tray_state(
@@ -95,6 +96,7 @@ def tray_state(
 def menu_entries(snapshot: TraySnapshot) -> list[MenuEntry]:
     controls = snapshot.controls
     connected = snapshot.connected
+    phone_camera = connected and not snapshot.video_active
     return [
         MenuEntry(snapshot.state_text_key, TrayAction.NONE, enabled=False),
         MenuEntry(camera_text_key(snapshot), TrayAction.NONE, enabled=False),
@@ -107,14 +109,14 @@ def menu_entries(snapshot: TraySnapshot) -> list[MenuEntry]:
         MenuEntry(
             "controls.camera_on" if controls.camera_off else "controls.camera_off",
             TrayAction.TOGGLE_CAMERA,
-            enabled=connected,
+            enabled=phone_camera,
         ),
-        MenuEntry("controls.switch_camera", TrayAction.SWITCH_CAMERA, enabled=connected),
+        MenuEntry("controls.switch_camera", TrayAction.SWITCH_CAMERA, enabled=phone_camera),
         MenuEntry("controls.mirror", TrayAction.TOGGLE_MIRROR, checked=controls.mirror),
         MenuEntry(
-            "tray.use_video",
+            "controls.back_to_phone" if snapshot.video_active else "tray.use_video",
             TrayAction.TOGGLE_VIDEO,
-            enabled=snapshot.video_stored,
+            enabled=snapshot.video_active or (connected and snapshot.video_ready),
             checked=snapshot.video_active,
         ),
         SEPARATOR,

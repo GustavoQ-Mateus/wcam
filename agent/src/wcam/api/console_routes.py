@@ -3,28 +3,29 @@ from urllib.parse import unquote
 
 import segno
 from fastapi import APIRouter, Request, Response, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from wcam.api.events import developer_events, event_stream, repeated_events
 from wcam.api.health import create_health_router
 from wcam.api.schemas import (
     ControlsRequest,
+    LibraryVideoBody,
     PairingResponse,
     PreviewRequest,
     PreviewResponse,
     StatusResponse,
-    VideoFileBody,
+    TimelineRequest,
     VideoFormatRequest,
     VideoPositionRequest,
     VideoSourceRequest,
     iso_utc,
+    library_video_body,
     status_response,
-    video_file_body,
 )
 from wcam.services import AgentServices
 from wcam.sessions.errors import InvalidOfferError
 from wcam.video.errors import MissingVideoNameError, VideoTooLargeError
-from wcam.video.store import MAX_VIDEO_BYTES
+from wcam.video.library import MAX_VIDEO_BYTES
 
 QR_ERROR_LEVEL = "m"
 QR_DARK = "#000"
@@ -32,6 +33,8 @@ QR_LIGHT = "#fff"
 PAIRING_FRAGMENT = "#t="
 FILE_NAME_HEADER = "x-file-name"
 LENGTH_HEADER = "content-length"
+FILMSTRIP_MEDIA_TYPE = "image/jpeg"
+FILMSTRIP_CACHE = "public, max-age=31536000, immutable"
 
 
 def pairing_url(phone_page_url: str, token: str) -> str:
@@ -206,38 +209,64 @@ def create_console_router(services: AgentServices, phone_page_url: str) -> APIRo
         await manager.disconnect()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    @router.put(
-        "/api/video-source/file",
+    @router.post(
+        "/api/videos",
         status_code=status.HTTP_201_CREATED,
-        summary="Store a video for the camera",
-        description="Receives the video as the raw request body, with its original name URL encoded in the "
-        "X-File-Name header, writes it to disk in parts and checks that its first frame decodes. Replaces the stored "
-        "video, turning it off first. Up to 20 GB.",
+        summary="Add a video to the library",
+        description="Only with the phone live. Receives the video as the raw request body, with its original name "
+        "URL encoded in the X-File-Name header, writes it to disk in parts, checks that its first frame decodes and "
+        "makes its filmstrip. Up to 20 GB per file and 20 videos.",
     )
-    async def store_video(request: Request) -> VideoFileBody:
+    async def add_video(request: Request) -> LibraryVideoBody:
+        services.video.ensure_can_add()
         name = unquote(request.headers.get(FILE_NAME_HEADER, "")).strip()
         if not name:
             raise MissingVideoNameError
         if declared_length(request) > MAX_VIDEO_BYTES:
             raise VideoTooLargeError
-        return video_file_body(await services.video.save(request.stream(), name))
+        return library_video_body(await services.video.add(request.stream(), name))
+
+    @router.get(
+        "/api/videos/{video_id}/filmstrip",
+        summary="Filmstrip of a video",
+        description="JPEG with the video's filmstrip frames side by side, each 160 wide, with the recorded rotation "
+        "applied.",
+        response_class=FileResponse,
+    )
+    async def video_filmstrip(video_id: str) -> FileResponse:
+        return FileResponse(
+            services.video.filmstrip(video_id),
+            media_type=FILMSTRIP_MEDIA_TYPE,
+            headers={"Cache-Control": FILMSTRIP_CACHE},
+        )
 
     @router.delete(
-        "/api/video-source/file",
+        "/api/videos/{video_id}",
         status_code=status.HTTP_204_NO_CONTENT,
-        summary="Remove the stored video",
-        description="Turns the video off, if it is on, and deletes it from disk.",
+        summary="Remove a video from the library",
+        description="Deletes the file and the timeline clips that use it.",
     )
-    async def remove_video() -> Response:
-        await services.video.remove()
+    async def remove_video(video_id: str) -> Response:
+        await services.video.remove(video_id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @router.put(
+        "/api/timeline",
+        status_code=status.HTTP_204_NO_CONTENT,
+        summary="Replace the timeline",
+        description="Up to 50 clips of library videos, each at least 0.5 s and inside its video. With the video on, "
+        "playback goes on from the same second; an empty timeline turns the video off.",
+    )
+    async def replace_timeline(body: TimelineRequest) -> Response:
+        await services.video.set_timeline([clip.to_clip() for clip in body.clips])
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @router.put(
         "/api/video-source",
         status_code=status.HTTP_204_NO_CONTENT,
         summary="Turn the video on or off",
-        description="On, the camera shows the stored video in a loop, the phone is disconnected and the pairing "
-        "window stays closed. Off, the camera waits for a phone again.",
+        description="On, only with the phone live and a clip in the timeline: the camera plays the timeline in a "
+        "loop and the phone turns its camera off without disconnecting. Off, the phone camera comes back.",
     )
     async def use_video(body: VideoSourceRequest) -> Response:
         if body.active:
@@ -250,8 +279,8 @@ def create_console_router(services: AgentServices, phone_page_url: str) -> APIRo
         "/api/video-source/position",
         status_code=status.HTTP_204_NO_CONTENT,
         summary="Jump to a point of the video",
-        description="Moves the video to the given second, from the keyframe before it. The camera repeats the last "
-        "frame until the new point is decoded.",
+        description="Moves playback to the given second of the whole timeline, from the keyframe before it. The "
+        "camera repeats the last frame until the new point is decoded.",
     )
     async def jump_in_video(body: VideoPositionRequest) -> Response:
         services.video.seek(body.seconds)

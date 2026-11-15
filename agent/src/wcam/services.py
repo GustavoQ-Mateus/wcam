@@ -1,4 +1,5 @@
 import secrets
+import sqlite3
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -10,18 +11,24 @@ from wcam.diagnostics.dev_events import DevEventLog
 from wcam.media.camera_format import CameraFormatControl
 from wcam.media.pipeline import FramePipeline
 from wcam.media.preview import Preview
+from wcam.persistence.database import open_database
 from wcam.process_monitor import CpuMonitor
 from wcam.sessions.comparisons import ComparisonStore
 from wcam.sessions.manager import SessionManager
+from wcam.video.library import VideoLibrary
 from wcam.video.source import VideoSource
-from wcam.video.store import VideoStore
+from wcam.video.timeline import TimelineStore
 
 TEMPORARY_VIDEO_PREFIX = "wcam-video-"
 TEMPORARY_ID_BYTES = 8
 
 
-def temporary_video_store() -> VideoStore:
-    return VideoStore(Path(tempfile.gettempdir()) / f"{TEMPORARY_VIDEO_PREFIX}{secrets.token_hex(TEMPORARY_ID_BYTES)}")
+def temporary_video_folder() -> Path:
+    return Path(tempfile.gettempdir()) / f"{TEMPORARY_VIDEO_PREFIX}{secrets.token_hex(TEMPORARY_ID_BYTES)}"
+
+
+def memory_database() -> sqlite3.Connection:
+    return open_database(None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,12 +42,17 @@ class AgentServices:
     preview: Preview = field(init=False)
     dev_events: DevEventLog = field(default_factory=DevEventLog)
     dev_console: DevConsole = field(init=False)
-    video_store: VideoStore = field(default_factory=temporary_video_store)
+    video_folder: Path = field(default_factory=temporary_video_folder)
+    database: sqlite3.Connection = field(default_factory=memory_database)
     video: VideoSource = field(init=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "preview", Preview(self.pipeline))
-        object.__setattr__(self, "video", VideoSource(self.video_store, self.pipeline, self.manager))
+        library = VideoLibrary(self.video_folder, self.database)
+        library.load()
+        video = VideoSource(library, TimelineStore(self.database), self.pipeline, self.manager)
+        object.__setattr__(self, "video", video)
+        self.manager.on_back_to_camera(video.deactivate)
         object.__setattr__(
             self,
             "dev_console",

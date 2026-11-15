@@ -10,6 +10,7 @@ from wcam.media.placeholder import NEUTRAL_CHROMA
 from wcam.virtualcam.sink import I420Frame
 
 ENCODER_NAME = "libx264"
+KEYFRAME_INTERVAL_OPTION = "g"
 I420_FORMAT = "yuv420p"
 DEFAULT_WIDTH = 1280
 DEFAULT_HEIGHT = 720
@@ -21,7 +22,10 @@ BAR_LUMA = 180
 MARKER_SHARE = 4
 BAR_SHARE = 16
 MARKER_CHROMA = 60
-USAGE = "usage: python -m wcam.tools.make_test_video <output.mp4>"
+PORTRAIT_ARGUMENT = "portrait"
+PORTRAIT_SECONDS = 4.0
+PORTRAIT_ROTATION = -90
+USAGE = f"usage: python -m wcam.tools.make_test_video <output.mp4> [{PORTRAIT_ARGUMENT}]"
 
 
 class EncodingStream(Protocol):
@@ -35,7 +39,7 @@ class EncodingStream(Protocol):
 
 
 class Muxer(Protocol):
-    def add_stream(self, codec_name: str, rate: int) -> EncodingStream: ...
+    def add_stream(self, codec_name: str, rate: int, options: dict[str, str]) -> EncodingStream: ...
 
     def mux(self, packets: list[object]) -> None: ...
 
@@ -63,7 +67,7 @@ def write_test_video(
     count = round(fps * seconds)
     with av.open(str(path), "w") as opened:
         container = cast(Muxer, opened)
-        stream = container.add_stream(ENCODER_NAME, rate=fps)
+        stream = container.add_stream(ENCODER_NAME, rate=fps, options={KEYFRAME_INTERVAL_OPTION: str(fps)})
         stream.width = width
         stream.height = height
         stream.pix_fmt = I420_FORMAT
@@ -77,9 +81,13 @@ def write_test_video(
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
+    arguments = sys.argv[1:]
+    if len(arguments) == 1:
+        write_test_video(Path(arguments[0]))
+    elif arguments[1:] == [PORTRAIT_ARGUMENT]:
+        write_test_video(Path(arguments[0]), seconds=PORTRAIT_SECONDS, rotation=PORTRAIT_ROTATION)
+    else:
         sys.exit(USAGE)
-    write_test_video(Path(sys.argv[1]))
 
 
 if __name__ == "__main__":

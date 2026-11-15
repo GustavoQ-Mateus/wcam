@@ -72,7 +72,7 @@ Branch: `feature/video-agent`, PR para `feature/video`. Spec: `docs/specs/spec-v
 
 Medido em 2026-11-15 com o vídeo do iPhone do usuário (`IMG_0641.MOV`: HEVC Main 8 bits, 3840x2160, 30 fps, 39,9 s, SDR BT.709, rotação gravada de -180). O 1080p30 H.264 não veio do usuário: foi gerado a partir do mesmo `IMG_0641.MOV`, transcodificado com PyAV (libx264, preset medium, CRF 18, 1920x1080, 30 fps, BT.709, mesma rotação gravada). Nenhum dos dois arquivos entrou no repositório.
 
-Método: script fora do repositório, com reprodução real e pipeline com câmera falsa, sem portas. A câmera fica em 1080p30. Cada vídeo roda sozinho, com 5 s de aquecimento, e a CPU é a média do `psutil` por segundo durante 60 s. PC: Intel família 6 modelo 158, 6 núcleos sem hyperthreading. A CPU do sistema estava em 21% antes da medição, com os outros programas abertos. Na tabela, 100% equivale a um núcleo.
+Método: script fora do repositório, com reprodução real e pipeline com câmera falsa, sem portas. A câmera fica em 1080p30. Cada vídeo roda sozinho, com 5 s de aquecimento, e a CPU é a média do `psutil` por segundo durante 60 s. PC: Intel Core i5-8500 (família 6 modelo 158), 6 núcleos e 6 threads. A CPU do sistema estava em 21% antes da medição, com os outros programas abertos. Na tabela, 100% equivale a um núcleo.
 
 | Vídeo | CPU do processo, média (máx.) | CPU da máquina | Quadros entregues | Descartes | `color` mediana / p95 |
 |---|---|---|---|---|---|
