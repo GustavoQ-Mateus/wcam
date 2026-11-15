@@ -40,6 +40,17 @@ A rodada de perguntas da skill foi substituída pela spec v0.9.0 revisão 2 apro
 - Zoom: sem animação; mantém o cursor à vista.
 - Pressionar: `scale(var(--scale-press))` em 120 ms, como no resto do console.
 - `prefers-reduced-motion`: os vizinhos trocam de lugar sem deslizar.
+- Mover pelo teclado (Alt com setas), dividir (S) e excluir (Delete) não animam: ação de teclado repetida (`animate`, passo 1).
+- Revisão `emil-design-eng` aplicada no código:
+
+| Antes | Depois | Por quê |
+| --- | --- | --- |
+| Ao soltar, os vizinhos voltavam do deslocamento com a transição enquanto o `left` já mudava, e davam um salto para trás | Um quadro com `data-instant` sem transição na troca de ordem | A nova ordem aparece no lugar, sem o trecho voltar e deslizar de novo |
+| Um segundo dedo ou ponteiro podia começar outro gesto no meio do arraste | Gesto novo ignorado enquanto há um em curso | Proteção de vários toques |
+| Bordas de corte sempre à mostra | Bordas aparecem no trecho selecionado, no foco e no hover (com `hover: hover`) | Menos ruído na faixa; o toque não gera hover falso |
+| Arraste por `left` | Arraste por `transform`, captura do ponteiro | Fora do layout e sem perder o gesto se o ponteiro sair do trecho |
+
+- `review-animations` não pôde ser chamado por esta sessão (a skill só roda por pedido do usuário, `/review-animations`); fica como pendência no relatório.
 
 ## 4. Celular (`mobile-native`)
 

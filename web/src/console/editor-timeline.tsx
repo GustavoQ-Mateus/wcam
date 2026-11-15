@@ -99,22 +99,29 @@ export function EditorTimeline({
   const capture = (event: PointerEvent<HTMLElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId);
   };
+  const busy = gesture !== null;
 
   const startMove = (index: number, event: PointerEvent<HTMLDivElement>) => {
+    if (busy) {
+      return;
+    }
     capture(event);
     setGesture({ kind: "move", index, startX: event.clientX, offset: 0, moved: false });
   };
   const startTrim = (index: number, edge: ClipEdge, event: PointerEvent<HTMLDivElement>) => {
     const original = clips[index];
-    if (!original) {
+    event.stopPropagation();
+    if (!original || busy) {
       return;
     }
-    event.stopPropagation();
     capture(event);
     onSelect(original.id);
     setGesture({ kind: "trim", index, edge, startX: event.clientX, original, clips: [...clips] });
   };
   const startSeek = (event: PointerEvent<HTMLDivElement>) => {
+    if (busy) {
+      return;
+    }
     capture(event);
     setGesture({ kind: "seek", seconds: clampedSeek(secondsAt(event.clientX), duration) });
   };
