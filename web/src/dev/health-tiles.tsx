@@ -1,16 +1,9 @@
-import {
-  bitrateMbps,
-  healthStrip,
-  lineSegments,
-  niceCeiling,
-  roundTripMs,
-  type DevMetrics,
-  type HealthValue,
-} from "../data/dev-metrics";
+import { bitrateMbps, healthStrip, roundTripMs, type DevMetrics, type HealthValue } from "../data/dev-metrics";
 import type { MessageKey } from "../data/i18n";
 import { t } from "../data/language";
 import { StatusMark } from "../console/status-mark";
 import styles from "./dev.module.scss";
+import { Sparkline } from "./sparkline";
 
 interface HealthTilesProps {
   metrics: DevMetrics;
@@ -26,8 +19,6 @@ interface Tile {
   history: (number | null)[];
 }
 
-const SPARK_WIDTH = 120;
-const SPARK_HEIGHT = 24;
 const ONE_DECIMAL = 1;
 
 export function HealthTiles({ metrics, samples, formatFps, lost }: HealthTilesProps) {
@@ -87,21 +78,7 @@ export function HealthTiles({ metrics, samples, formatFps, lost }: HealthTilesPr
           <p className={styles.tileValue} data-empty={tile.value.value === null}>
             {tile.value.value === null ? t("dev.no_data") : tile.text(tile.value.value)}
           </p>
-          <svg
-            className={styles.spark}
-            viewBox={`0 0 ${String(SPARK_WIDTH)} ${String(SPARK_HEIGHT)}`}
-            preserveAspectRatio="none"
-            aria-hidden="true"
-          >
-            {lineSegments(
-              tile.history,
-              SPARK_WIDTH,
-              SPARK_HEIGHT,
-              niceCeiling(Math.max(1, ...tile.history.map((value) => value ?? 0))),
-            ).map((points, index) => (
-              <polyline key={index} className={styles.line} data-tone="primary" points={points} />
-            ))}
-          </svg>
+          <Sparkline history={tile.history} />
         </li>
       ))}
     </ul>

@@ -4,12 +4,10 @@ import {
   healthStrip,
   histogram,
   keyFrameIntervalSeconds,
-  lineSegments,
   metricsCsv,
   niceCeiling,
   packetsLostIn,
   percentile,
-  stackedBands,
   type DevMetrics,
 } from "./dev-metrics";
 
@@ -108,24 +106,6 @@ describe("dev metrics", () => {
 
   it("chart ceilings round up to a readable step", () => {
     expect([9.4, 31, 0.7, 120, 0].map(niceCeiling)).toEqual([10, 50, 1, 200, 1]);
-  });
-
-  it("a line breaks where a second has no value", () => {
-    expect(lineSegments([0, 10, null, 5, 10], 40, 10, 10)).toEqual(["0,10 10,0", "30,5 40,0"]);
-  });
-
-  it("stacked bands sit on top of each other", () => {
-    expect(
-      stackedBands(
-        [
-          [2, 2],
-          [3, 3],
-        ],
-        10,
-        10,
-        10,
-      ),
-    ).toEqual(["0,8 10,8 10,10 0,10", "0,5 10,5 10,8 0,8"]);
   });
 
   it("frame times fall into their bins and the slowest ones into the last", () => {

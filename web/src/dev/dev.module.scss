@@ -361,9 +361,12 @@
 }
 
 .crosshair {
-  stroke: var(--muted);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--muted);
+  pointer-events: none;
 }
 
 .tooltip {
