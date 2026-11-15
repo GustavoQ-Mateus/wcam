@@ -2,7 +2,7 @@ export type Facing = "user" | "environment";
 export type UnavailableReason = "unsupported" | "no_camera" | "in_use";
 export type CameraFailure = "denied" | UnavailableReason;
 export type BlockedReason = "network" | "attempts";
-export type EndedReason = "rejected" | "code_different" | "disconnected" | "lost" | "timeout";
+export type EndedReason = "rejected" | "code_different" | "disconnected" | "lost" | "timeout" | "video_source";
 export type CodeAnswer = "none" | "same" | "different";
 
 export interface FrameSize {
@@ -84,6 +84,7 @@ const ENDED_REASON_BY_AGENT_REASON: Readonly<Partial<Record<string, EndedReason>
   rejected: "rejected",
   disconnected_by_pc: "disconnected",
   confirmation_timeout: "timeout",
+  video_source: "video_source",
 };
 const CONNECTION_LOST: CamState = { kind: "ended", reason: "lost" };
 

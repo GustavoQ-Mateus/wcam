@@ -1,0 +1,65 @@
+.timeline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.time {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.slider {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: var(--hit-min);
+  cursor: pointer;
+  touch-action: none;
+
+  &:focus-visible {
+    outline-offset: 0;
+  }
+}
+
+.track {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: var(--progress-height);
+  overflow: hidden;
+  background: var(--raised);
+  transform: translateY(-50%);
+}
+
+.progress {
+  height: 100%;
+  background: var(--ink);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+.thumbRail {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.thumb {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: var(--timeline-thumb);
+  height: var(--timeline-thumb);
+  border-radius: 50%;
+  background: var(--ink);
+  transform: translate(-50%, -50%);
+  transition: transform var(--duration-press) var(--ease-out);
+
+  .slider[data-dragging="true"] & {
+    transform: translate(-50%, -50%) scale(var(--scale-grab));
+  }
+}

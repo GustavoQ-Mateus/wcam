@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Controls, Session, Status, VirtualCamera } from "./contract";
+import type { Controls, Session, Status, VideoSource, VirtualCamera } from "./contract";
 import {
   consoleMode,
   currentFacing,
@@ -19,6 +19,12 @@ const VIRTUAL_CAMERA: VirtualCamera = {
   source: "phone",
   streamingApps: 1,
 };
+const VIDEO_SOURCE: VideoSource = { file: null, active: false, positionSeconds: null };
+const ACTIVE_VIDEO: VideoSource = {
+  file: { name: "loop.mp4", durationSeconds: 6, width: 1280, height: 720, fps: 30, codec: "h264" },
+  active: true,
+  positionSeconds: 2,
+};
 const SESSION: Session = {
   id: "s1",
   state: "live",
@@ -36,6 +42,7 @@ function statusWith(changes: {
   session?: Partial<Session> | null;
   controls?: Partial<Controls>;
   virtualCamera?: Partial<VirtualCamera>;
+  videoSource?: VideoSource;
 }): Status {
   return {
     pairing: null,
@@ -47,6 +54,7 @@ function statusWith(changes: {
     quality: null,
     devTools: false,
     controls: { ...CONTROLS, ...changes.controls },
+    videoSource: changes.videoSource ?? VIDEO_SOURCE,
   };
 }
 
@@ -79,6 +87,16 @@ describe("console view", () => {
     expect(consoleMode(statusWith({ virtualCamera: { source: "frozen" } }))).toBe("lost");
   });
 
+  it("an active video is the video mode even without a phone", () => {
+    expect(consoleMode(statusWith({ session: null, videoSource: ACTIVE_VIDEO }))).toBe("video");
+  });
+
+  it("an active video frozen by the user is frozen", () => {
+    expect(consoleMode(statusWith({ session: null, videoSource: ACTIVE_VIDEO, controls: { frozen: true } }))).toBe(
+      "frozen",
+    );
+  });
+
   it("each state has its own badge text, colour and shape", () => {
     const badges = [
       statusWith({ session: null }),
@@ -87,6 +105,7 @@ describe("console view", () => {
       statusWith({ controls: { frozen: true } }),
       statusWith({ controls: { cameraOff: true } }),
       statusWith({ virtualCamera: { source: "frozen" } }),
+      statusWith({ session: null, videoSource: ACTIVE_VIDEO }),
     ].map(stateBadge);
 
     expect(badges).toEqual([
@@ -96,6 +115,7 @@ describe("console view", () => {
       { key: "state.frozen", tone: "still", shape: "square" },
       { key: "state.camera_off", tone: "warning", shape: "bars" },
       { key: "state.lost", tone: "negative", shape: "triangle" },
+      { key: "state.video", tone: "still", shape: "play" },
     ]);
   });
 

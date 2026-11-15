@@ -1,3 +1,4 @@
+import { Proportions } from "lucide-react";
 import { useCallback, useId, useRef, useState } from "react";
 import { formatName } from "../data/format-name";
 import { formatView } from "../data/format-view";
@@ -5,7 +6,6 @@ import { t } from "../data/language";
 import { useFormatChoice } from "../data/use-format-choice";
 import type { VideoFormat } from "../data/video-format";
 import { ControlButton } from "./control-button";
-import { FormatIcon } from "./format-icon";
 import styles from "./format-picker.module.scss";
 import { FrameRateOption } from "./frame-rate-option";
 import { ResolutionOption } from "./resolution-option";
@@ -79,7 +79,7 @@ export function FormatPicker({ format, available, dimmed, mirror, onChoose, onTo
           setOpen(!open);
         }}
       >
-        <FormatIcon />
+        <Proportions />
       </ControlButton>
       <span id={currentId} className="visually-hidden">
         {formatName(format)}

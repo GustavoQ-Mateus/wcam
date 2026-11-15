@@ -33,7 +33,9 @@ const ENDED_KEYS: Readonly<Record<EndedReason, MessageKey>> = {
   disconnected: "cam.ended_disconnected",
   lost: "cam.ended_lost",
   timeout: "cam.ended_timeout",
+  video_source: "cam.ended_video_source",
 };
+const NEUTRAL_ENDINGS: ReadonlySet<EndedReason> = new Set(["disconnected", "video_source"]);
 
 export function messageFor(state: MessageState, onStart: () => void): MessageContent {
   const retry: MessageAction = { label: t("cam.retry"), onClick: onStart };
@@ -66,7 +68,7 @@ export function messageFor(state: MessageState, onStart: () => void): MessageCon
     case "busy":
       return failedMessage("cam.busy");
     case "ended":
-      return state.reason === "disconnected"
+      return NEUTRAL_ENDINGS.has(state.reason)
         ? { title: t(ENDED_KEYS[state.reason]), reserveAction: false }
         : failedMessage(ENDED_KEYS[state.reason]);
   }

@@ -55,6 +55,11 @@
     right: 0;
   }
 
+  &[data-shape="play"] {
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+    background: currentColor;
+  }
+
   &[data-shape="triangle"] {
     clip-path: polygon(50% 0, 100% 100%, 0 100%);
     background: currentColor;

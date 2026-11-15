@@ -165,6 +165,7 @@ describe("cam state", () => {
       "confirmation_timeout",
       "connection_failed",
       "disconnected_by_phone",
+      "video_source",
     ].map((reason) => camReducer(LIVE, { type: "session_ended", reason }));
 
     expect(states).toEqual([
@@ -173,6 +174,7 @@ describe("cam state", () => {
       { kind: "ended", reason: "timeout" },
       { kind: "ended", reason: "lost" },
       { kind: "ended", reason: "lost" },
+      { kind: "ended", reason: "video_source" },
     ]);
   });
 
