@@ -18,7 +18,12 @@
     color: var(--ink);
   }
 
-  &:active {
+  &:active:not(:disabled) {
     transform: scale(var(--scale-press));
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: var(--opacity-dimmed);
   }
 }

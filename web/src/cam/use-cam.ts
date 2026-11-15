@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, type RefObject } from "react";
+import { useEffect, useMemo, useReducer, useRef, type RefObject } from "react";
 import type { Controls } from "../data/contract";
 import { camReducer, initialCamState, isFinal, isLive, isSession, type CamState, type Facing } from "../data/cam-state";
 import { consumePairingToken } from "../data/pairing";
@@ -21,7 +21,9 @@ export interface Cam {
   wakeLockUnavailable: boolean;
   videoFormat: VideoFormatMessage | null;
   controls: Controls | null;
+  videoPlaying: boolean;
   start: () => void;
+  backToCamera: () => void;
   switchCamera: () => void;
   toggleFreeze: () => void;
   toggleCamera: () => void;
@@ -66,7 +68,12 @@ export function useCam(hasPairing: boolean): Cam {
   }, [final, stop]);
   const live = state.kind === "live";
   const controls = live ? publisher.controls : null;
-  useControlledCamera(camera, controls);
+  const videoPlaying = live && publisher.videoSourceActive;
+  const cameraControls = useMemo(
+    () => controls && { ...controls, cameraOff: controls.cameraOff || videoPlaying },
+    [controls, videoPlaying],
+  );
+  useControlledCamera(camera, cameraControls);
 
   return {
     state,
@@ -76,6 +83,8 @@ export function useCam(hasPairing: boolean): Cam {
     wakeLockUnavailable: wakeLock.unavailable,
     videoFormat: publisher.videoFormat,
     controls,
+    videoPlaying,
+    backToCamera: publisher.backToCamera,
     start: () => {
       dispatch({ type: "start" });
       camera.open();

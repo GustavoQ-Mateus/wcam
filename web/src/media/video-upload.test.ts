@@ -6,12 +6,14 @@ const CREATED_STATUS = 201;
 const TOO_LARGE_STATUS = 413;
 const UNPROCESSABLE_STATUS = 422;
 const VIDEO_FILE = {
+  id: "0123456789abcdef",
   name: "reunião.mov",
   durationSeconds: 6,
   width: 1280,
   height: 720,
   fps: 30,
   codec: "h264",
+  filmstripFrames: 60,
 };
 
 class FakeRequest extends EventTarget {
@@ -65,11 +67,11 @@ function start(fractions: number[] = []) {
 }
 
 describe("video upload", () => {
-  it("video upload sends the raw file with its encoded name as a put", () => {
+  it("video upload sends the raw file with its encoded name as a post to the library", () => {
     const { request, file } = start();
 
-    expect(request.method).toBe("PUT");
-    expect(request.url).toBe("/api/video-source/file");
+    expect(request.method).toBe("POST");
+    expect(request.url).toBe("/api/videos");
     expect(request.headers).toEqual({
       "Content-Type": "application/octet-stream",
       "X-File-Name": "reuni%C3%A3o.mov",

@@ -1,8 +1,9 @@
 import { cpuPercentValue } from "../data/console-format";
-import type { Status, VideoFile } from "../data/contract";
+import type { LibraryVideo, Status } from "../data/contract";
 import { formatName } from "../data/format-name";
 import type { MessageKey } from "../data/i18n";
 import { t } from "../data/language";
+import { clipAtTime } from "../data/timeline";
 import styles from "./side-panel.module.scss";
 
 interface DetailsPanelProps {
@@ -48,9 +49,11 @@ function detailRows(status: Status): DetailRow[] {
   ];
 }
 
-function sourceRows({ session, videoSource }: Status): DetailRow[] {
-  if (videoSource.active && videoSource.file) {
-    return videoFileRows(videoSource.file);
+function sourceRows(status: Status): DetailRow[] {
+  const { session, videoSource } = status;
+  const playing = videoSource.active ? playingVideo(status) : null;
+  if (playing) {
+    return videoFileRows(playing);
   }
   const video = session?.video ?? null;
   return [
@@ -68,7 +71,14 @@ function sourceRows({ session, videoSource }: Status): DetailRow[] {
   ];
 }
 
-function videoFileRows(file: VideoFile): DetailRow[] {
+function playingVideo({ videoSource }: Status): LibraryVideo | null {
+  const { clips } = videoSource.timeline;
+  const place = clipAtTime(clips, videoSource.positionSeconds ?? 0);
+  const clip = clips[place?.index ?? 0];
+  return videoSource.videos.find((video) => video.id === clip?.videoId) ?? null;
+}
+
+function videoFileRows(file: LibraryVideo): DetailRow[] {
   return [
     { labelKey: "console.detail_resolution", value: `${String(file.width)} × ${String(file.height)}` },
     { labelKey: "console.detail_fps", value: file.fps.toFixed(FPS_DECIMALS) },

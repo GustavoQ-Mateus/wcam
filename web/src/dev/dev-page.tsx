@@ -136,12 +136,6 @@ export default function DevPage() {
               attachPreview={preview.attach}
               previewState={preview.state}
               frozenSince={null}
-              onUnfreeze={() => {
-                consoleData.changeControls({ frozen: false });
-              }}
-              onCameraOn={() => {
-                consoleData.changeControls({ cameraOff: false });
-              }}
               onShowPreviewAgain={preview.showAgain}
             />
           )}

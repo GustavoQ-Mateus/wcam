@@ -8,6 +8,7 @@ interface PhonePanelProps {
   session: Session;
   facing: Facing | null;
   onChooseFacing: (facing: Facing) => void;
+  cameraInUse?: boolean;
 }
 
 const FACINGS: readonly Facing[] = ["user", "environment"];
@@ -17,7 +18,7 @@ const ORIENTATION_KEYS = {
   portrait: "console.orientation_portrait",
 } as const;
 
-export function PhonePanel({ session, facing, onChooseFacing }: PhonePanelProps) {
+export function PhonePanel({ session, facing, onChooseFacing, cameraInUse = true }: PhonePanelProps) {
   const orientation = session.video?.orientation;
   const line = [facing && t(CAMERA_KEYS[facing]), orientation && t(ORIENTATION_KEYS[orientation])].filter(Boolean);
   return (
@@ -30,21 +31,24 @@ export function PhonePanel({ session, facing, onChooseFacing }: PhonePanelProps)
           {line.length > 0 && <p className={styles.note}>{line.join(" · ")}</p>}
         </div>
       </div>
-      <div className={styles.segments}>
-        {FACINGS.map((option) => (
-          <button
-            key={option}
-            type="button"
-            className={styles.segment}
-            aria-pressed={facing === option}
-            onClick={() => {
-              onChooseFacing(option);
-            }}
-          >
-            {t(CAMERA_KEYS[option])}
-          </button>
-        ))}
-      </div>
+      {!cameraInUse && <p className={styles.note}>{t("console.video_phone_camera_off")}</p>}
+      {cameraInUse && (
+        <div className={styles.segments}>
+          {FACINGS.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={styles.segment}
+              aria-pressed={facing === option}
+              onClick={() => {
+                onChooseFacing(option);
+              }}
+            >
+              {t(CAMERA_KEYS[option])}
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

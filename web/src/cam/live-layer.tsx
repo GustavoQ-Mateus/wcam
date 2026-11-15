@@ -16,12 +16,15 @@ import { ScreenNotice } from "./screen-notice";
 import { ScreenshotButton } from "./screenshot-button";
 import { ScrimLayer } from "./scrim-layer";
 import { Tally } from "./tally";
+import { VideoPlayingCover } from "./video-playing-cover";
 
 interface LiveLayerProps {
   state: LiveCamState;
   showNotice: boolean;
   videoFormat: VideoFormatMessage | null;
   controls: Controls | null;
+  videoPlaying: boolean;
+  onBackToCamera: () => void;
   onDismissNotice: () => void;
   onSwitchCamera: () => void;
   onTogglePreview: () => void;
@@ -43,6 +46,8 @@ export function LiveLayer({
   showNotice,
   videoFormat,
   controls,
+  videoPlaying,
+  onBackToCamera,
   onDismissNotice,
   onSwitchCamera,
   onTogglePreview,
@@ -61,7 +66,13 @@ export function LiveLayer({
       <ScrimLayer visible={prompt !== null} contentKey={prompt?.key ?? "none"}>
         {prompt?.content ?? (state.kind === "live" && <p className="visually-hidden">{t("cam.live")}</p>)}
       </ScrimLayer>
-      {prompt === null && (
+      {prompt === null && videoPlaying && (
+        <>
+          <h1 className="visually-hidden">{t("app.name")}</h1>
+          <VideoPlayingCover onBackToCamera={onBackToCamera} />
+        </>
+      )}
+      {prompt === null && !videoPlaying && (
         <>
           <h1 className="visually-hidden">{t("app.name")}</h1>
           <PreviewCover visible={previewOff && !cameraOff} onShow={onTogglePreview} />

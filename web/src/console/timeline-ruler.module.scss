@@ -1,0 +1,25 @@
+.ruler {
+  position: relative;
+  height: var(--ruler-height);
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+
+  &:focus-visible {
+    outline: var(--focus-width) solid var(--focus);
+    outline-offset: calc(var(--focus-width) * -1);
+  }
+}
+
+.tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  padding-left: var(--space-1);
+  border-left: 1px solid var(--grid);
+  color: var(--faint);
+  font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--ruler-height);
+  pointer-events: none;
+}

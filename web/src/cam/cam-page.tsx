@@ -24,6 +24,8 @@ export default function CamPage() {
           showNotice={cam.wakeLockUnavailable && !noticeDismissed}
           videoFormat={cam.videoFormat}
           controls={cam.controls}
+          videoPlaying={cam.videoPlaying}
+          onBackToCamera={cam.backToCamera}
           onDismissNotice={() => {
             setNoticeDismissed(true);
           }}

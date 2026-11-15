@@ -6,6 +6,7 @@ import type {
   ErrorBody,
   PairingWindow,
   Status,
+  TimelineClip,
   VideoFormatRequest,
 } from "./contract";
 
@@ -23,6 +24,8 @@ const PNG_TYPE = "image/png";
 const COMPARISONS_PATH = "/api/dev/comparisons";
 const PREVIEW_PATH = "/api/preview";
 const VIDEO_SOURCE_PATH = "/api/video-source";
+export const VIDEOS_PATH = "/api/videos";
+const TIMELINE_PATH = "/api/timeline";
 
 export class ApiError extends Error {
   readonly code: string;
@@ -80,8 +83,16 @@ export function changeVideoSource(active: boolean): Promise<null> {
   return requestJson<null>(VIDEO_SOURCE_PATH, { method: "PUT", body: { active } });
 }
 
-export function removeVideoFile(): Promise<null> {
-  return requestJson<null>(`${VIDEO_SOURCE_PATH}/file`, { method: "DELETE" });
+export function removeVideo(id: string): Promise<null> {
+  return requestJson<null>(`${VIDEOS_PATH}/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export function filmstripUrl(id: string): string {
+  return `${VIDEOS_PATH}/${encodeURIComponent(id)}/filmstrip`;
+}
+
+export function changeTimeline(clips: TimelineClip[]): Promise<null> {
+  return requestJson<null>(TIMELINE_PATH, { method: "PUT", body: { clips } });
 }
 
 export function seekVideo(seconds: number): Promise<null> {

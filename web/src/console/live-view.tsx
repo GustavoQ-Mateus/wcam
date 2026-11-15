@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import type { ControlsPatch, Status } from "../data/contract";
 import { currentFacing, problemKey, signalPath, type ConsoleMode } from "../data/console-view";
 import { LANGUAGE } from "../data/language";
@@ -21,7 +21,7 @@ interface LiveViewProps {
   onDisconnect: () => void;
   onChooseFormat: (format: VideoFormat) => void;
   onCompare?: (() => void) | undefined;
-  videoPanel: ReactNode;
+  onUseVideo: () => void;
 }
 
 export function LiveView({
@@ -32,7 +32,7 @@ export function LiveView({
   onDisconnect,
   onChooseFormat,
   onCompare,
-  videoPanel,
+  onUseVideo,
 }: LiveViewProps) {
   const [previewOn, setPreviewOn] = useState(true);
   const preview = usePreview(previewOn);
@@ -48,12 +48,6 @@ export function LiveView({
           attachPreview={preview.attach}
           previewState={preview.state}
           frozenSince={frozenSince}
-          onUnfreeze={() => {
-            onChange({ frozen: false });
-          }}
-          onCameraOn={() => {
-            onChange({ cameraOff: false });
-          }}
           onShowPreviewAgain={preview.showAgain}
         />
         <ControlBar
@@ -67,6 +61,7 @@ export function LiveView({
           }}
           onDisconnect={onDisconnect}
           onCompare={onCompare}
+          onUseVideo={onUseVideo}
         />
       </section>
       <aside className={styles.aside}>
@@ -81,7 +76,6 @@ export function LiveView({
         )}
         <SignalPath steps={signalPath(status)} problemKey={problemKey(status)} />
         <FormatPanel videoFormat={status.videoFormat} onChoose={onChooseFormat} />
-        {videoPanel}
         <DetailsPanel status={status} />
       </aside>
     </div>

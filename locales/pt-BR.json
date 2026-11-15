@@ -259,15 +259,11 @@
   "errors.video_source_active": "O WCam está mostrando um vídeo. Volte à câmera para usar isso.",
   "errors.video_source_inactive": "Use o vídeo antes de escolher um ponto dele.",
   "cam.ended_video_source": "O computador passou a mostrar um vídeo na câmera.",
-  "console.video_title": "Vídeo",
   "console.video_choose": "Escolher vídeo",
   "console.video_drop": "Ou arraste um vídeo para cá",
   "console.video_uploading": "Enviando {percent}%",
   "console.video_remove": "Remover vídeo",
-  "console.video_replace": "Trocar vídeo",
-  "console.video_duration": "Duração {duration}",
   "console.video_not_live": "A câmera está mostrando o vídeo, não o celular.",
-  "console.video_timeline": "Posição no vídeo",
   "console.video_position": "{position} de {duration}",
   "errors.video_library_full": "Já há 20 vídeos guardados. Remova um para enviar outro.",
   "errors.video_not_found": "Este vídeo não está mais guardado.",
@@ -289,5 +285,9 @@
   "console.timeline_clip": "Trecho {index} de {count}: {name}, {duration}",
   "console.timeline_trim_start": "Cortar o começo do trecho {index}",
   "console.timeline_trim_end": "Cortar o fim do trecho {index}",
-  "console.timeline_playhead": "Posição na linha do tempo"
+  "console.timeline_playhead": "Posição na linha do tempo",
+  "console.video_queued": "Na fila",
+  "console.video_keep": "Manter",
+  "console.video_dismiss": "Fechar aviso",
+  "console.video_phone_camera_off": "A câmera do celular fica desligada enquanto o vídeo passa."
 }

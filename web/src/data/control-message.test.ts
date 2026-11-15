@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CameraCapabilitiesMessage } from "./camera-capabilities";
 import {
+  backToCameraMessage,
   cameraCapabilitiesData,
   parseControlMessage,
   setControlsMessage,
@@ -62,6 +63,18 @@ describe("control message", () => {
       type: "stats_request",
       enabled: true,
     });
+  });
+
+  it("video source message from the agent is parsed with its switch", () => {
+    expect(parseControlMessage('{"type":"video_source","active":true}')).toEqual({
+      type: "video_source",
+      active: true,
+    });
+    expect(parseControlMessage('{"type":"video_source","active":"yes"}')).toBeNull();
+  });
+
+  it("back to camera message asks the computer to stop the video", () => {
+    expect(JSON.parse(backToCameraMessage())).toEqual({ type: "set_video_source", active: false });
   });
 
   it("set controls message carries only the controls asked for", () => {

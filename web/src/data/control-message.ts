@@ -10,6 +10,8 @@ const CONFIRMATION_TYPE = "confirmation";
 const CONTROLS_TYPE = "controls";
 const SET_CONTROLS_TYPE = "set_controls";
 const STATS_REQUEST_TYPE = "stats_request";
+const VIDEO_SOURCE_TYPE = "video_source";
+const SET_VIDEO_SOURCE_TYPE = "set_video_source";
 const FACINGS: ReadonlySet<unknown> = new Set(["user", "environment"]);
 
 export function parseControlMessage(data: unknown): ControlMessage | null {
@@ -38,6 +40,9 @@ export function parseControlMessage(data: unknown): ControlMessage | null {
   if (message.type === STATS_REQUEST_TYPE) {
     return parseStatsRequest(message as Record<string, unknown>);
   }
+  if (message.type === VIDEO_SOURCE_TYPE) {
+    return parseVideoSource(message as Record<string, unknown>);
+  }
   return null;
 }
 
@@ -47,6 +52,10 @@ export function setVideoFormatMessage(format: VideoFormat): string {
 
 export function setControlsMessage(patch: ControlsPatch): string {
   return JSON.stringify({ type: SET_CONTROLS_TYPE, ...patch });
+}
+
+export function backToCameraMessage(): string {
+  return JSON.stringify({ type: SET_VIDEO_SOURCE_TYPE, active: false });
 }
 
 export function cameraCapabilitiesData(message: CameraCapabilitiesMessage): string {
@@ -85,6 +94,10 @@ function parseControls({ frozen, cameraOff, mirror, facing }: Record<string, unk
 
 function parseStatsRequest({ enabled }: Record<string, unknown>): ControlMessage | null {
   return typeof enabled === "boolean" ? { type: STATS_REQUEST_TYPE, enabled } : null;
+}
+
+function parseVideoSource({ active }: Record<string, unknown>): ControlMessage | null {
+  return typeof active === "boolean" ? { type: VIDEO_SOURCE_TYPE, active } : null;
 }
 
 function parseConfirmation({ pc, phone }: Record<string, unknown>): ControlMessage | null {

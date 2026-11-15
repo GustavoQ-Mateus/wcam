@@ -4,6 +4,7 @@ import {
   consoleMode,
   currentFacing,
   otherFacing,
+  phoneFlowMode,
   problemKey,
   signalPath,
   stateBadge,
@@ -19,9 +20,26 @@ const VIRTUAL_CAMERA: VirtualCamera = {
   source: "phone",
   streamingApps: 1,
 };
-const VIDEO_SOURCE: VideoSource = { file: null, active: false, positionSeconds: null };
+const VIDEO_SOURCE: VideoSource = {
+  videos: [],
+  timeline: { clips: [], durationSeconds: 0 },
+  active: false,
+  positionSeconds: null,
+};
 const ACTIVE_VIDEO: VideoSource = {
-  file: { name: "loop.mp4", durationSeconds: 6, width: 1280, height: 720, fps: 30, codec: "h264" },
+  videos: [
+    {
+      id: "v1",
+      name: "loop.mp4",
+      durationSeconds: 6,
+      width: 1280,
+      height: 720,
+      fps: 30,
+      codec: "h264",
+      filmstripFrames: 60,
+    },
+  ],
+  timeline: { clips: [{ id: "c1", videoId: "v1", inSeconds: 0, outSeconds: 6 }], durationSeconds: 6 },
   active: true,
   positionSeconds: 2,
 };
@@ -89,6 +107,14 @@ describe("console view", () => {
 
   it("an active video is the video mode even without a phone", () => {
     expect(consoleMode(statusWith({ session: null, videoSource: ACTIVE_VIDEO }))).toBe("video");
+  });
+
+  it("a phone arriving while the video plays shows its own step under the video", () => {
+    const flows = [null, { state: "connecting" as const }, { state: "awaiting_confirmation" as const }, {}].map(
+      (session) => phoneFlowMode(statusWith({ session, videoSource: ACTIVE_VIDEO })),
+    );
+
+    expect(flows).toEqual(["waiting", "connecting", "confirming", null]);
   });
 
   it("an active video frozen by the user is frozen", () => {
