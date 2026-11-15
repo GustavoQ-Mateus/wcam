@@ -6,7 +6,7 @@ import pytest
 
 from tests.videos import CAMERA_FPS, SMALL_HEIGHT, FakeTime, FakeVideoOutput, played, small_video
 from wcam.media.placeholder import BLACK_LUMA
-from wcam.video.playback import VideoPlayback
+from wcam.video.playback import VideoPlayback, following_tick
 
 RUN_SECONDS = 4.0
 POSITION_TOLERANCE = 1e-3
@@ -83,3 +83,13 @@ async def test_jump_while_frozen_shows_the_new_point_and_stays_frozen(tmp_path: 
     position, _, replace_held = after_freeze[0]
     assert replace_held
     assert position == pytest.approx(1.2, abs=POSITION_TOLERANCE)
+
+
+def test_late_tick_is_made_up_by_a_shorter_wait() -> None:
+    assert following_tick(1.0, CAMERA_PERIOD, 1.0 + CAMERA_PERIOD + 0.01) == pytest.approx(1.0 + CAMERA_PERIOD)
+
+
+def test_tick_more_than_a_period_behind_starts_again_from_now() -> None:
+    now = 1.0 + 3 * CAMERA_PERIOD
+
+    assert following_tick(1.0, CAMERA_PERIOD, now) == now

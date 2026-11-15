@@ -23,6 +23,16 @@ TIME_TOLERANCE_SECONDS = 1e-6
 type Sleep = Callable[[float], Awaitable[None]]
 
 
+async def precise_sleep(seconds: float) -> None:
+    # asyncio timers on Windows wake in steps of about 15.6 ms; time.sleep uses a high resolution timer.
+    await asyncio.to_thread(time.sleep, max(seconds, 0.0))
+
+
+def following_tick(tick: float, period: float, now: float) -> float:
+    following = tick + period
+    return now if following < now - period else following
+
+
 class VideoOutput(Protocol):
     @property
     def output(self) -> AnnouncedFormat: ...
@@ -117,7 +127,7 @@ class VideoPlayback:
         duration_seconds: float,
         output: VideoOutput,
         clock: Callable[[], float] = time.monotonic,
-        sleep: Sleep = asyncio.sleep,
+        sleep: Sleep = precise_sleep,
     ) -> None:
         self._path = path
         self._duration = duration_seconds
@@ -163,7 +173,7 @@ class VideoPlayback:
             elif not self._output.frozen:
                 shown = await loop.run_in_executor(worker, decoder.frame_at, media_time, output.width, output.height)
                 self._show(shown, replace_held=False)
-            next_tick = max(next_tick + 1 / output.fps, self._clock())
+            next_tick = following_tick(next_tick, 1 / output.fps, self._clock())
             await self._sleep(next_tick - self._clock())
 
     def _show(self, shown: VideoImage, *, replace_held: bool) -> None:
