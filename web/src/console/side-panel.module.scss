@@ -52,14 +52,8 @@
   flex: none;
   width: var(--illustration-size);
   height: var(--illustration-size);
-  fill: none;
-  stroke: var(--ink);
+  color: var(--ink);
   stroke-width: 1.5;
-
-  circle {
-    fill: var(--ink);
-    stroke: none;
-  }
 }
 
 .deviceName {
