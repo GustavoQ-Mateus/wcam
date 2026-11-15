@@ -4,7 +4,7 @@ De: orquestrador
 Spec: `docs/specs/spec-v0.9.0.md` (Aprovada em 2026-11-15)
 Contrato: `docs/contrato.md` (versão 0.9.0): seção nova "Vídeo como câmera"; rotas `PUT`/`DELETE /api/video-source/file`, `PUT /api/video-source`, `PUT /api/video-source/position`; `videoSource` no status e no SSE; `video` em `virtualCamera.source`; `video_source` em `lastEnded.reason` e nos eventos do `/dev`; `frozen` aceito sem celular com o vídeo ativo; erros `video_too_large`, `video_unsupported`, `no_video_file`, `video_source_active` e `video_source_inactive`
 ADR: `docs/adr/0016-video-como-origem-da-camera.md`
-Planejamento: §5.4 (Usar vídeo, Pular no vídeo, bandeja com seis estados) e §6 (0.9.0 Vídeo como câmera; zoom passa a 0.10.0)
+Planejamento: §5.4 (Usar vídeo, Pular no vídeo, bandeja com seis estados) e §6 (0.9.0 Vídeo como câmera; 0.10.0 Desempenho, zoom passa a 0.11.0)
 
 | Sessão | Worktree | Branch |
 |---|---|---|

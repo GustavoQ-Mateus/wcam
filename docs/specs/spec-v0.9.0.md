@@ -95,7 +95,7 @@ ADR 0016: o vídeo enviado pelo usuário é uma origem própria da câmera, ajus
 
 ## 5. Planejamento
 
-O orquestrador emenda `docs/planejamento.md` antes do código: §5.4 ganha a linha "Usar vídeo" (bandeja e console); §6 ganha a 0.9.0 "Vídeo como câmera", e "Zoom e enquadramento" passa a 0.10.0, com as linhas seguintes andando uma versão.
+O orquestrador emenda `docs/planejamento.md` antes do código: §5.4 ganha a linha "Usar vídeo" (bandeja e console); §6 ganha a 0.9.0 "Vídeo como câmera", e "Zoom e enquadramento" passa a 0.11.0, depois da 0.10.0 "Desempenho" (decisão do usuário em 2026-11-15), com as linhas seguintes andando.
 
 ## Textos
 
