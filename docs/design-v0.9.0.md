@@ -21,3 +21,21 @@ A skill pede uma rodada de perguntas antes do brief. Ela foi substituída pela s
 - Arrastar: o botão cresce 15% enquanto segura (`--scale-grab`, 120 ms, `--ease-out`), para mostrar que pegou. O pedido sai ao soltar, não durante o arraste (spec §2.1). Depois de pular, a barra fica no ponto escolhido até o próximo valor do agente, sem voltar para a posição antiga.
 - Teclado: `role="slider"` com rótulo "Posição no vídeo" e `aria-valuetext` com o mesmo texto visível; setas pulam 5 s, Home volta ao começo.
 - Congelar para a barra (a posição para no agente e o relógio local não avança).
+
+## Gráficos do `/dev`: uPlot medido e não adotado (`dataviz`, `animation-performance`)
+
+- A versão em uPlot foi feita com o mesmo estilo da v0.8.0 (mesmas cores, espessuras, tracejados, grade, referência, marcas, legenda, tooltip e rótulos em HTML; o uPlot só desenhava o canvas, sem eixos, legenda, cursor ou animação dele) e medida pelo procedimento do CA 9 (`docs/relatorio-v0.9.0-web.md`).
+- Ela não reduziu a CPU: o custo dos gráficos em SVG já era pequeno (a thread principal do `/dev` fica perto de 1%), e o canvas trouxe mais trabalho de GPU. Pela spec §2.2, o uPlot não entra e o `/dev` continua com os gráficos SVG da v0.8.0, sem mudança visual.
+
+## Ícones em `lucide-react`
+
+| Antes (SVG próprio) | Depois (`lucide-react`) |
+| --- | --- |
+| Congelar: tela com duas barras | `MonitorPause` |
+| Desligar câmera: câmera com risco | `VideoOff` |
+| Prévia desligada: tela com risco | `MonitorOff` |
+| Trocar câmera: duas setas em círculo | `SwitchCamera` |
+| Formato: tela com cantos | `Proportions` |
+| Celular no painel do console, com a lente em cima ou embaixo conforme a câmera | `Smartphone`; a câmera em uso continua escrita na linha abaixo do nome |
+
+Mesmo tamanho (24 px nos botões do celular, 48 px no painel) e mesmo traço (2 px nos botões, 1,5 px no painel). Cada ícone é importado pelo nome, e o build leva só os seis.
