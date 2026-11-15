@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from wcam.tools.make_test_video import DEFAULT_HEIGHT, DEFAULT_WIDTH, PORTRAIT_ARGUMENT, PORTRAIT_SECONDS, main
-from wcam.video.store import probe_video
+from wcam.video.library import probe_video
 
 
 def test_portrait_argument_writes_an_upright_video_turned_like_a_phone(

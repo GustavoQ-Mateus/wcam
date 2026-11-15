@@ -10,6 +10,7 @@ from wcam.media.placeholder import NEUTRAL_CHROMA
 from wcam.virtualcam.sink import I420Frame
 
 ENCODER_NAME = "libx264"
+KEYFRAME_INTERVAL_OPTION = "g"
 I420_FORMAT = "yuv420p"
 DEFAULT_WIDTH = 1280
 DEFAULT_HEIGHT = 720
@@ -38,7 +39,7 @@ class EncodingStream(Protocol):
 
 
 class Muxer(Protocol):
-    def add_stream(self, codec_name: str, rate: int) -> EncodingStream: ...
+    def add_stream(self, codec_name: str, rate: int, options: dict[str, str]) -> EncodingStream: ...
 
     def mux(self, packets: list[object]) -> None: ...
 
@@ -66,7 +67,7 @@ def write_test_video(
     count = round(fps * seconds)
     with av.open(str(path), "w") as opened:
         container = cast(Muxer, opened)
-        stream = container.add_stream(ENCODER_NAME, rate=fps)
+        stream = container.add_stream(ENCODER_NAME, rate=fps, options={KEYFRAME_INTERVAL_OPTION: str(fps)})
         stream.width = width
         stream.height = height
         stream.pix_fmt = I420_FORMAT

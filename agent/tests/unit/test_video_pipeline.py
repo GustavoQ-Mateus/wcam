@@ -1,10 +1,11 @@
 from tests.unit.test_output_controls import mirrored_planes
-from tests.unit.test_pipeline import random_i420
+from tests.unit.test_pipeline import phone_frame, random_i420
 from wcam.media.pipeline import FramePipeline, FrameSource, VideoImageFrame
 from wcam.virtualcam.fake_sink import FakeSink
 from wcam.virtualcam.sink import OUTPUT_HEIGHT, OUTPUT_WIDTH
 
 OTHER_SEED = 11
+VIDEO_SECONDS = 60.0
 
 
 def video_pipeline() -> tuple[FramePipeline, FakeSink]:
@@ -77,3 +78,19 @@ def test_stopping_the_video_brings_back_the_waiting_frame() -> None:
 
     assert sink.last_frame is pipeline.placeholder
     assert pipeline.source is FrameSource.PLACEHOLDER
+
+
+def test_time_on_the_video_is_not_counted_as_a_gap_in_the_phone_frames() -> None:
+    now = [0.0]
+    pipeline = FramePipeline(FakeSink(), clock=lambda: now[0])
+    pipeline.open()
+    pipeline.start_phone()
+    pipeline.deliver(phone_frame())
+    pipeline.take_longest_gap()
+    pipeline.start_video()
+    now[0] = VIDEO_SECONDS
+    pipeline.stop_video()
+
+    pipeline.deliver(phone_frame())
+
+    assert pipeline.take_longest_gap() is None

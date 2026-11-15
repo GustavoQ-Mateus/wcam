@@ -9,12 +9,16 @@ class VideoUnsupportedError(AgentError):
     code = "video_unsupported"
 
 
-class NoVideoFileError(AgentError):
-    code = "no_video_file"
+class VideoLibraryFullError(AgentError):
+    code = "video_library_full"
 
 
-class NoVideoFileToUseError(NoVideoFileError):
-    status_code = 409
+class VideoNotFoundError(AgentError):
+    code = "video_not_found"
+
+
+class TimelineEmptyError(AgentError):
+    code = "timeline_empty"
 
 
 class VideoSourceActiveError(AgentError):
@@ -23,6 +27,10 @@ class VideoSourceActiveError(AgentError):
 
 class VideoSourceInactiveError(AgentError):
     code = "video_source_inactive"
+
+
+class InvalidTimelineError(AgentError):
+    code = "invalid_request"
 
 
 class InvalidVideoPositionError(AgentError):

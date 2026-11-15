@@ -15,10 +15,10 @@ from wcam.services import AgentServices
 from wcam.sessions.controls import Controls, ControlsChange
 from wcam.sessions.manager import SessionManager
 from wcam.tray.icons import ICON_SIZE, tray_icon
-from wcam.tray.menu import MenuEntry, TrayAction, TrayState, menu_entries, tray_snapshot
+from wcam.tray.menu import MenuEntry, TrayAction, TraySnapshot, TrayState, menu_entries, tray_snapshot
 from wcam.tray.tray import Tray
 from wcam.video.source import VideoSourceView
-from wcam.video.store import VideoFileInfo
+from wcam.video.timeline import Clip, Timeline
 from wcam.virtualcam.sink import CameraState
 
 WAIT_SECONDS = 1.0
@@ -187,48 +187,57 @@ def test_each_tray_state_has_its_own_icon(state: TrayState) -> None:
     assert list(images.values()).count(images[state]) == 1
 
 
-def stored_video() -> VideoSourceView:
-    info = VideoFileInfo("clip.mp4", 2.0, 320, 180, 30.0, "h264")
-    return VideoSourceView(info, active=False, position_seconds=None)
+def video_with_a_clip(active: bool = False) -> VideoSourceView:
+    return VideoSourceView((), Timeline((Clip("c1", "v1", 0.0, 2.0),)), active=active, position_seconds=None)
 
 
-def test_use_video_item_is_disabled_until_a_video_is_stored() -> None:
-    status = idle_agent().manager.status()
+def use_video_entry(snapshot: TraySnapshot) -> MenuEntry:
+    return {entry.action: entry for entry in menu_entries(snapshot)}[TrayAction.TOGGLE_VIDEO]
 
-    without = tray_snapshot(status, FrameSource.PLACEHOLDER, CameraState.ACTIVE)
-    stored = tray_snapshot(status, FrameSource.PLACEHOLDER, CameraState.ACTIVE, stored_video())
 
-    assert not {entry.action: entry for entry in menu_entries(without)}[TrayAction.TOGGLE_VIDEO].enabled
-    assert {entry.action: entry for entry in menu_entries(stored)}[TrayAction.TOGGLE_VIDEO].enabled
+async def test_use_video_item_needs_a_live_phone_and_a_clip() -> None:
+    idle = idle_agent().manager.status()
+    live = (await live_agent(FakePeerFactory())).manager.status()
+
+    without_phone = tray_snapshot(idle, FrameSource.PLACEHOLDER, CameraState.ACTIVE, video_with_a_clip())
+    without_clip = tray_snapshot(live, FrameSource.PHONE, CameraState.ACTIVE)
+    ready = tray_snapshot(live, FrameSource.PHONE, CameraState.ACTIVE, video_with_a_clip())
+
+    assert not use_video_entry(without_phone).enabled
+    assert not use_video_entry(without_clip).enabled
+    assert use_video_entry(ready).enabled
+    assert use_video_entry(ready).text_key == "tray.use_video"
 
 
 @pytest.mark.parametrize(
     ("controls", "expected"),
     [(Controls(), (TrayState.VIDEO, "state.video")), (Controls(frozen=True), (TrayState.FROZEN, "state.frozen"))],
 )
-def test_active_video_shows_its_own_state_and_can_be_frozen(
+def test_active_video_shows_its_own_state_and_can_be_frozen_or_left(
     controls: Controls,
     expected: tuple[TrayState, str],
 ) -> None:
     status = replace(idle_agent().manager.status(), controls=controls)
-    video = replace(stored_video(), active=True)
 
-    snapshot = tray_snapshot(status, FrameSource.VIDEO, CameraState.ACTIVE, video)
+    snapshot = tray_snapshot(status, FrameSource.VIDEO, CameraState.ACTIVE, video_with_a_clip(active=True))
 
     entries = {entry.action: entry for entry in menu_entries(snapshot)}
     assert (snapshot.state, snapshot.state_text_key) == expected
+    assert entries[TrayAction.TOGGLE_VIDEO].enabled
     assert entries[TrayAction.TOGGLE_VIDEO].checked
+    assert entries[TrayAction.TOGGLE_VIDEO].text_key == "controls.back_to_phone"
     assert entries[TrayAction.TOGGLE_FREEZE].enabled
     assert not entries[TrayAction.TOGGLE_CAMERA].enabled
+    assert not entries[TrayAction.SWITCH_CAMERA].enabled
 
 
-async def test_use_video_from_the_tray_turns_the_stored_video_on_and_off(tmp_path: Path) -> None:
-    agent = idle_agent()
-    await agent.video.save(chunks_of(small_video(tmp_path).read_bytes()), "clip.mp4")
+async def test_use_video_from_the_tray_turns_the_timeline_on_and_back_to_the_camera(tmp_path: Path) -> None:
+    agent = await live_agent(FakePeerFactory())
+    video = await agent.video.add(chunks_of(small_video(tmp_path).read_bytes()), "clip.mp4")
+    await agent.video.set_timeline([Clip("c1", video.id, 0.0, video.info.duration_seconds)])
     tray = tray_for(agent, FakeTrayIcon(), Calls())
 
     tray.select(TrayAction.TOGGLE_VIDEO)
     await asyncio.wait_for(wait_for(lambda: agent.video.active), WAIT_SECONDS)
     tray.select(TrayAction.TOGGLE_VIDEO)
     await asyncio.wait_for(wait_for(lambda: not agent.video.active), WAIT_SECONDS)
-    await agent.video.remove()

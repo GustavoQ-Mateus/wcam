@@ -155,11 +155,14 @@ class FramePipeline:
         self.frames_delivered = 0
         self.frames_dropped = 0
         self._last_video = None
+        self._last_phone = None
+        self._last_phone_at = None
         self._video_active = True
 
     def stop_video(self) -> None:
         self._video_active = False
         self._last_video = None
+        self._last_phone_at = None
 
     def submit_video(self, image: I420Frame, *, replace_held: bool = False) -> None:
         self._enqueue(VideoImageFrame(image, replace_held))

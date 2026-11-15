@@ -21,7 +21,10 @@ class ControlsChange:
 
     def needs_live_session(self, video_source_active: bool = False) -> bool:
         frozen_needs_phone = self.frozen is not None and not video_source_active
-        return frozen_needs_phone or self.camera_off is not None or self.facing is not None
+        return frozen_needs_phone or self.changes_camera()
+
+    def changes_camera(self) -> bool:
+        return self.camera_off is not None or self.facing is not None
 
 
 def changed_controls(controls: Controls, change: ControlsChange) -> Controls:
