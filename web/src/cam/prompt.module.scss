@@ -25,3 +25,18 @@
   letter-spacing: var(--tracking-code);
   font-variant-numeric: tabular-nums;
 }
+
+.answers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  max-width: var(--measure);
+}
+
+.waiting {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: var(--measure);
+  color: var(--ink);
+}

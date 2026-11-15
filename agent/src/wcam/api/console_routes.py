@@ -2,10 +2,22 @@ import io
 
 import segno
 from fastapi import APIRouter, Response, status
+from fastapi.responses import StreamingResponse
 
+from wcam.api.events import developer_events, event_stream, repeated_events
 from wcam.api.health import create_health_router
-from wcam.api.schemas import PairingResponse, StatusResponse, VideoFormatRequest, iso_utc, status_response
+from wcam.api.schemas import (
+    ControlsRequest,
+    PairingResponse,
+    PreviewRequest,
+    PreviewResponse,
+    StatusResponse,
+    VideoFormatRequest,
+    iso_utc,
+    status_response,
+)
 from wcam.services import AgentServices
+from wcam.sessions.errors import InvalidOfferError
 
 QR_ERROR_LEVEL = "m"
 QR_DARK = "#000"
@@ -34,6 +46,15 @@ def qr_svg(url: str) -> str:
 def create_console_router(services: AgentServices, phone_page_url: str) -> APIRouter:
     manager = services.manager
     router = APIRouter()
+
+    def current_status() -> StatusResponse:
+        return status_response(
+            manager.status(), services.pipeline, services.cpu.percent, services.comparisons is not None
+        )
+
+    def status_json() -> str:
+        return current_status().model_dump_json(by_alias=True)
+
     router.include_router(create_health_router("console"))
 
     @router.post(
@@ -66,9 +87,29 @@ def create_console_router(services: AgentServices, phone_page_url: str) -> APIRo
         "measured quality.",
     )
     async def get_status() -> StatusResponse:
-        return status_response(
-            manager.status(), services.pipeline, services.cpu.percent, services.comparisons is not None
-        )
+        return current_status()
+
+    @router.get(
+        "/api/events",
+        response_class=StreamingResponse,
+        summary="Status events",
+        description="Server-sent events with the same JSON as the status, named status: on connecting, on "
+        "every change that is not a measurement and every second.",
+    )
+    async def status_events() -> StreamingResponse:
+        return event_stream(repeated_events(services.status_changes, "status", status_json))
+
+    @router.get(
+        "/api/dev/events",
+        response_class=StreamingResponse,
+        summary="Developer console events",
+        description="Server-sent events for the developer console: metrics every second and each event as it "
+        "happens, starting with the last 50. Detailed timing and the phone statistics run only while someone "
+        "listens.",
+    )
+    async def developer_console_events() -> StreamingResponse:
+        dev = services.dev_console
+        return event_stream(developer_events(services.dev_events, dev.metrics, services.status_changes))
 
     @router.put(
         "/api/video-format",
@@ -82,11 +123,46 @@ def create_console_router(services: AgentServices, phone_page_url: str) -> APIRo
         manager.set_video_format(body.format)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+    @router.patch(
+        "/api/controls",
+        status_code=status.HTTP_204_NO_CONTENT,
+        summary="Change the controls",
+        description="Freezes the image, turns the phone camera off or on, mirrors the image or switches the phone "
+        "camera. Any subset of the fields; freezing, the camera and switching need a live phone. The phone gets the "
+        "new controls right after.",
+    )
+    async def change_controls(body: ControlsRequest) -> Response:
+        manager.change_controls(body.to_change())
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @router.post(
+        "/api/preview",
+        status_code=status.HTTP_201_CREATED,
+        summary="Open the console preview",
+        description="Answers a WebRTC offer from the console with a video of what the apps receive, reduced to "
+        "960x540 at up to 30 fps, over loopback only. A new preview closes the previous one.",
+    )
+    async def open_preview(body: PreviewRequest) -> PreviewResponse:
+        try:
+            return PreviewResponse(sdp=await services.preview.open(body.sdp))
+        except ValueError as error:
+            raise InvalidOfferError from error
+
+    @router.delete(
+        "/api/preview",
+        status_code=status.HTTP_204_NO_CONTENT,
+        summary="Close the console preview",
+        description="Closes the preview connection, if any, and stops reducing and encoding frames for it.",
+    )
+    async def close_preview() -> Response:
+        await services.preview.close()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
     @router.post(
         "/api/sessions/current/confirm",
         status_code=status.HTTP_204_NO_CONTENT,
         summary="Confirm the session",
-        description="Opens the frame gate after the user checked that both screens show the same code.",
+        description="Marks the code as confirmed on the computer. The phone goes live when it confirmed too.",
     )
     async def confirm_session() -> Response:
         manager.confirm()

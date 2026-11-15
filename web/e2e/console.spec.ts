@@ -1,15 +1,12 @@
 import { expect, test } from "@playwright/test";
-import type { Health } from "../src/data/contract";
 import { translate } from "../src/data/i18n";
 import { requiredUrl } from "./environment";
+import { endSession } from "./session-helpers";
 
-test("console shows the agent running", async ({ page, request }) => {
-  const consoleUrl = requiredUrl("E2E_CONSOLE_URL");
-  const health = (await (await request.get(`${consoleUrl}/api/health`)).json()) as Health;
+test("console without a phone shows it is waiting for the phone", async ({ page, request }) => {
+  await endSession(request);
 
-  await page.goto(consoleUrl);
+  await page.goto(requiredUrl("E2E_CONSOLE_URL"));
 
-  await expect(page.getByRole("status")).toHaveText(
-    translate("en", "console.status_running", { version: health.version }),
-  );
+  await expect(page.getByRole("status")).toHaveText(translate("en", "state.waiting"));
 });

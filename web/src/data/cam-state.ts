@@ -2,7 +2,8 @@ export type Facing = "user" | "environment";
 export type UnavailableReason = "unsupported" | "no_camera" | "in_use";
 export type CameraFailure = "denied" | UnavailableReason;
 export type BlockedReason = "network" | "attempts";
-export type EndedReason = "rejected" | "disconnected" | "lost" | "timeout";
+export type EndedReason = "rejected" | "code_different" | "disconnected" | "lost" | "timeout";
+export type CodeAnswer = "none" | "same" | "different";
 
 export interface FrameSize {
   width: number;
@@ -27,7 +28,7 @@ export type CamState =
   | ({ kind: "ready" } & FramedFields)
   | ({ kind: "preview_off" } & FramedFields)
   | ({ kind: "connecting" } & FramedFields)
-  | ({ kind: "awaiting_confirmation"; code: string } & FramedFields)
+  | ({ kind: "awaiting_confirmation"; code: string; answer: CodeAnswer } & FramedFields)
   | ({ kind: "live"; previewOff: boolean } & FramedFields)
   | { kind: "pairing_failed" }
   | { kind: "blocked"; reason: BlockedReason }
@@ -46,6 +47,7 @@ export type CamEvent =
   | { type: "preview_toggled" }
   | { type: "session_started" }
   | { type: "session_awaiting_confirmation"; code: string }
+  | { type: "code_answered"; same: boolean }
   | { type: "session_live" }
   | { type: "session_failed"; code: string }
   | { type: "session_ended"; reason: string };
@@ -151,7 +153,17 @@ function sessionReducer(state: SessionCamState, event: CamEvent): CamState {
       return state.kind === "live" ? { ...state, previewOff: !state.previewOff } : state;
     case "session_awaiting_confirmation":
       return state.kind === "connecting"
-        ? { kind: "awaiting_confirmation", capture: state.capture, portrait: state.portrait, code: event.code }
+        ? {
+            kind: "awaiting_confirmation",
+            capture: state.capture,
+            portrait: state.portrait,
+            code: event.code,
+            answer: "none",
+          }
+        : state;
+    case "code_answered":
+      return state.kind === "awaiting_confirmation" && state.answer === "none"
+        ? { ...state, answer: event.same ? "same" : "different" }
         : state;
     case "session_live":
       return state.kind === "awaiting_confirmation"
@@ -160,11 +172,17 @@ function sessionReducer(state: SessionCamState, event: CamEvent): CamState {
     case "session_failed":
       return state.kind === "connecting" ? (SESSION_FAILURE_BY_CODE[event.code] ?? CONNECTION_LOST) : state;
     case "session_ended":
-      return { kind: "ended", reason: ENDED_REASON_BY_AGENT_REASON[event.reason] ?? "lost" };
+      return { kind: "ended", reason: endedReason(state, event.reason) };
     case "start":
     case "session_started":
       return state;
   }
+}
+
+function endedReason(state: SessionCamState, agentReason: string): EndedReason {
+  const reason = ENDED_REASON_BY_AGENT_REASON[agentReason] ?? "lost";
+  const answeredDifferent = state.kind === "awaiting_confirmation" && state.answer === "different";
+  return reason === "rejected" && answeredDifferent ? "code_different" : reason;
 }
 
 function framedState(capture: CaptureFormat, portrait: boolean, previewOff: boolean): LiveCamState {

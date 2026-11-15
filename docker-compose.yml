@@ -45,6 +45,7 @@ services:
     build:
       context: .
       dockerfile: web/e2e.Dockerfile
+    network_mode: "service:agent"
     environment:
       E2E_CONSOLE_URL: http://agent:8080
       E2E_PHONE_URL: https://agent:8443

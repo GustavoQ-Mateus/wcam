@@ -4,7 +4,7 @@ import logging
 import pytest
 
 from tests.fakes import FakePeerFactory
-from tests.unit.test_session_manager import connected_manager, session_request
+from tests.unit.test_session_manager import confirm_on_both_sides, connected_manager, session_request
 from wcam.media.video_format import (
     DEFAULT_VIDEO_FORMAT,
     CameraLimits,
@@ -16,8 +16,8 @@ from wcam.media.video_format import (
 )
 from wcam.sessions.errors import UnavailableVideoFormatError
 from wcam.sessions.manager import (
-    FORMAT_BEFORE_LIVE,
     IGNORED_PHONE_MESSAGE,
+    MESSAGE_BEFORE_LIVE,
     UNAVAILABLE_FORMAT_FROM_PHONE,
     SessionManager,
 )
@@ -66,7 +66,7 @@ def video_format_message(video_format: str, available: list[str]) -> dict[str, o
 
 async def live_manager(factory: FakePeerFactory) -> SessionManager:
     manager = await connected_manager(factory)
-    manager.confirm()
+    confirm_on_both_sides(manager, factory)
     factory.last.sent.clear()
     return manager
 
@@ -154,15 +154,24 @@ def test_format_outside_the_available_ones_is_refused() -> None:
     assert manager.status().video_format.selected is VideoFormat.FULL_HD_30
 
 
-async def test_channel_opening_sends_the_format_and_its_bitrate() -> None:
+async def test_channel_opening_limits_the_bitrate_without_sending_the_format() -> None:
     factory = FakePeerFactory()
     manager = SessionManager(factory)
 
     await manager.create_session(session_request(manager.open_pairing().token))
     factory.last.events.on_connected()
 
-    assert video_format_message("1080p30", ["1080p30"]) in factory.last.sent
+    assert all(message["type"] != "video_format" for message in factory.last.sent)
     assert factory.last.max_bitrate_bps == VideoFormat.FULL_HD_30.size.max_bitrate_bps
+
+
+async def test_going_live_sends_the_format() -> None:
+    factory = FakePeerFactory()
+    manager = await connected_manager(factory)
+
+    confirm_on_both_sides(manager, factory)
+
+    assert factory.last.sent[-1] == video_format_message("1080p30", ["1080p30"])
 
 
 async def test_capabilities_offer_the_formats_that_fit_and_tell_the_phone() -> None:
@@ -172,7 +181,7 @@ async def test_capabilities_offer_the_formats_that_fit_and_tell_the_phone() -> N
     factory.last.events.on_message(json.dumps(CAPABILITIES))
 
     assert manager.status().video_format.available == tuple(VideoFormat)
-    assert factory.last.sent == [video_format_message("1080p30", ALL_FORMATS)]
+    assert factory.last.sent[-1] == video_format_message("1080p30", ALL_FORMATS)
 
 
 async def test_console_change_limits_the_bitrate_and_tells_the_phone() -> None:
@@ -207,7 +216,7 @@ async def test_phone_change_before_confirmation_is_ignored(caplog: pytest.LogCap
         factory.last.events.on_message(json.dumps({"type": "set_video_format", "format": "720p60"}))
 
     assert manager.status().video_format.selected is VideoFormat.FULL_HD_30
-    assert FORMAT_BEFORE_LIVE in caplog.text
+    assert MESSAGE_BEFORE_LIVE in caplog.text
     assert factory.last.sent == []
 
 
@@ -246,6 +255,7 @@ async def test_chosen_format_lasts_into_the_next_session() -> None:
 
     await manager.create_session(session_request(manager.open_pairing().token))
     factory.last.events.on_connected()
+    confirm_on_both_sides(manager, factory)
 
     assert factory.last.max_bitrate_bps == VideoFormat.HD_60.size.max_bitrate_bps
     assert video_format_message("720p60", ALL_FORMATS) in factory.last.sent
@@ -253,7 +263,7 @@ async def test_chosen_format_lasts_into_the_next_session() -> None:
 
 async def test_camera_capabilities_are_kept_in_the_session() -> None:
     factory = FakePeerFactory()
-    manager = await connected_manager(factory)
+    manager = await live_manager(factory)
 
     factory.last.events.on_message(json.dumps(CAPABILITIES))
 

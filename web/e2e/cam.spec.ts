@@ -58,7 +58,7 @@ test.describe("in portrait", () => {
     await goLive(page, request);
 
     await expect(page.getByText(translate("en", "cam.portrait_hint"))).toBeVisible();
-    await expect(page.getByRole("button", { name: translate("en", "cam.switch_camera") })).toBeVisible();
+    await expect(page.getByRole("button", { name: translate("en", "controls.switch_camera") })).toBeVisible();
   });
 
   test("turning the phone upright, lying down and upright again ends each turn matching the screen", async ({

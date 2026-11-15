@@ -1,7 +1,8 @@
 import asyncio
 import contextlib
 import signal
-from collections.abc import Generator, Sequence
+from collections.abc import Callable, Coroutine, Generator, Sequence
+from socket import socket
 from types import FrameType
 
 import uvicorn
@@ -20,7 +21,7 @@ from wcam.network.certificates import TlsCertificate
 from wcam.network.lan import LanInterface
 from wcam.services import AgentServices
 
-CONSOLE_PAGES = ("/",)
+CONSOLE_PAGES = ("/", "/dev")
 PHONE_PAGES = ("/cam",)
 STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM)
 SERVER_LOG_LEVEL = "warning"
@@ -28,6 +29,14 @@ GRACEFUL_SHUTDOWN_SECONDS = 2
 
 
 class SupervisedServer(uvicorn.Server):
+    def __init__(self, config: uvicorn.Config, before_shutdown: Callable[[], None] = lambda: None) -> None:
+        super().__init__(config)
+        self._before_shutdown = before_shutdown
+
+    async def shutdown(self, sockets: list[socket] | None = None) -> None:
+        self._before_shutdown()
+        await super().shutdown(sockets)
+
     @contextlib.contextmanager
     def capture_signals(self) -> Generator[None]:
         yield
@@ -91,16 +100,23 @@ def create_servers(
         proxy_headers=False,
         timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
     )
-    return [SupervisedServer(console), SupervisedServer(phone)]
+    return [SupervisedServer(console, services.status_changes.close), SupervisedServer(phone)]
 
 
-async def run(servers: Sequence[uvicorn.Server], services: AgentServices) -> None:
+async def run(
+    servers: Sequence[uvicorn.Server],
+    services: AgentServices,
+    tray: Callable[[], Coroutine[None, None, None]] | None = None,
+) -> None:
     background = [asyncio.create_task(services.pipeline.run()), asyncio.create_task(services.cpu.run())]
+    if tray is not None:
+        background.append(asyncio.create_task(tray()))
     services.camera.start()
     try:
         await serve(servers)
     finally:
         await services.manager.shutdown()
+        await services.preview.shutdown()
         if services.comparisons is not None:
             await services.comparisons.close()
         await services.camera.close()
@@ -113,13 +129,17 @@ async def serve(servers: Sequence[uvicorn.Server]) -> None:
     await asyncio.gather(*(server.serve() for server in servers))
 
 
+def request_stop(servers: Sequence[uvicorn.Server]) -> None:
+    for server in servers:
+        server.should_exit = True
+
+
 @contextlib.contextmanager
 def stop_signals_handled(servers: Sequence[uvicorn.Server]) -> Generator[None]:
     # Installed before asyncio.run, so the runner keeps this handler instead of its own, which would cancel the
     # shutdown on a second Ctrl+C and end with a KeyboardInterrupt traceback.
     def stop(signal_number: int, frame: FrameType | None) -> None:
-        for server in servers:
-            server.should_exit = True
+        request_stop(servers)
 
     previous_handlers = {stop_signal: signal.signal(stop_signal, stop) for stop_signal in STOP_SIGNALS}
     try:

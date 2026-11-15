@@ -9,6 +9,7 @@ export interface CameraStream {
   opening: boolean;
   track: MediaStreamTrack | null;
   open: () => void;
+  openFacing: (facing: Facing) => void;
   switchCamera: () => void;
   stop: () => void;
 }
@@ -109,6 +110,7 @@ export function useCameraStream(
     opening,
     track,
     open: () => void openCamera(facingRef.current),
+    openFacing: (nextFacing) => void openCamera(nextFacing),
     switchCamera: () => void openCamera(oppositeFacing(facingRef.current)),
     stop,
   };

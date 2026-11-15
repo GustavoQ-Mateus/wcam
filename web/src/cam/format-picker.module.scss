@@ -82,3 +82,45 @@
     transform: translateX(-50%);
   }
 }
+
+.switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: var(--hit-min);
+  font-weight: var(--weight-strong);
+  text-align: left;
+}
+
+.switchTrack {
+  flex: none;
+  position: relative;
+  width: calc(var(--hit-min) * 0.9);
+  height: calc(var(--hit-min) * 0.55);
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  transition: background-color var(--duration-press) var(--ease-out);
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: var(--space-1);
+    width: calc(var(--hit-min) * 0.4);
+    height: calc(var(--hit-min) * 0.4);
+    border-radius: 50%;
+    background: var(--ink);
+    transform: translateY(-50%);
+    transition: transform var(--duration-press) var(--ease-out);
+  }
+
+  [aria-checked="true"] > & {
+    background: var(--data);
+
+    &::after {
+      background: var(--ground);
+      transform: translate(calc(var(--hit-min) * 0.9 - var(--hit-min) * 0.4 - var(--space-1) * 2), -50%);
+    }
+  }
+}

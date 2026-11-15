@@ -101,9 +101,39 @@ describe("cam state", () => {
     const live = camReducer(awaiting, { type: "session_live" });
 
     expect([awaiting, live]).toEqual([
-      { kind: "awaiting_confirmation", capture: CAPTURE, portrait: false, code: "92Q-M2H" },
+      { kind: "awaiting_confirmation", capture: CAPTURE, portrait: false, code: "92Q-M2H", answer: "none" },
       { kind: "live", capture: CAPTURE, portrait: false, previewOff: false },
     ]);
+  });
+
+  it("answering the code records the first answer only", () => {
+    const awaiting = camReducer(CONNECTING, { type: "session_awaiting_confirmation", code: "92Q-M2H" });
+    const same = camReducer(awaiting, { type: "code_answered", same: true });
+    const changed = camReducer(same, { type: "code_answered", same: false });
+
+    expect([same, changed].map((state) => state.kind === "awaiting_confirmation" && state.answer)).toEqual([
+      "same",
+      "same",
+    ]);
+  });
+
+  it("rejection after this phone said the code is different ends as code different", () => {
+    const awaiting = camReducer(CONNECTING, { type: "session_awaiting_confirmation", code: "92Q-M2H" });
+    const different = camReducer(awaiting, { type: "code_answered", same: false });
+
+    expect(camReducer(different, { type: "session_ended", reason: "rejected" })).toEqual({
+      kind: "ended",
+      reason: "code_different",
+    });
+  });
+
+  it("rejection by the computer while this phone has not answered stays rejected", () => {
+    const awaiting = camReducer(CONNECTING, { type: "session_awaiting_confirmation", code: "92Q-M2H" });
+
+    expect(camReducer(awaiting, { type: "session_ended", reason: "rejected" })).toEqual({
+      kind: "ended",
+      reason: "rejected",
+    });
   });
 
   it("cam state maps each session error to its final state", () => {

@@ -12,6 +12,7 @@ from wcam.media.episodes import (
     EpisodeAction,
     EpisodeCause,
     EpisodeTracker,
+    FrameGap,
     LinkSample,
     episode_line,
     open_episode_log,
@@ -146,3 +147,26 @@ def test_episodes_are_written_one_json_line_each(episode_log: Path) -> None:
 
     assert len(lines) == 2
     assert all(set(json.loads(line)) == LINE_FIELDS for line in lines)
+
+
+def test_stall_that_ends_between_two_samples_is_still_one_episode() -> None:
+    episodes, recorder = tracker()
+    episodes.observe(sample(0.0, 0.0))
+
+    episodes.observe(
+        LinkSample(0.1, 0.02, False, 40_000, 1, 1, closed_gap=FrameGap(seconds=0.56, ended=0.08)),
+    )
+
+    assert len(recorder.episodes) == 1
+    episode = recorder.episodes[0]
+    assert (episode.cause, episode.pli_sent, episode.rtp_bytes) == (EpisodeCause.STALLED, 1, 40_000)
+    assert (episode.ended_at - episode.started_at).total_seconds() == pytest.approx(0.56)
+
+
+def test_short_gap_between_two_samples_is_not_an_episode() -> None:
+    episodes, recorder = tracker()
+    episodes.observe(sample(0.0, 0.0))
+
+    episodes.observe(LinkSample(0.1, 0.02, False, 0, 0, 0, closed_gap=FrameGap(seconds=0.4, ended=0.08)))
+
+    assert recorder.episodes == []

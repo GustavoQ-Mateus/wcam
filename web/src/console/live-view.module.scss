@@ -1,0 +1,22 @@
+.layout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-6);
+}
+
+.main {
+  display: flex;
+  flex: 999 1 40rem;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.aside {
+  display: flex;
+  flex: 1 1 var(--console-aside);
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}

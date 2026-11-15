@@ -2,19 +2,23 @@ import argparse
 import asyncio
 import contextlib
 import io
+import logging
 import sys
+import webbrowser
 from typing import TextIO
 
 import segno
 
 from wcam import __version__
 from wcam.api.console_routes import pairing_url
-from wcam.app import create_servers, phone_page_url, run, stop_signals_handled
+from wcam.app import create_servers, phone_page_url, request_stop, run, stop_signals_handled
 from wcam.config import Settings
+from wcam.diagnostics.dev_events import EpisodeEvents
 from wcam.i18n import Messages, load_messages, resolve_language, system_language_tag
 from wcam.media.camera_format import CameraFormatControl
 from wcam.media.color_correction import IDENTITY_TABLE, CorrectionState, DisplayConvention
-from wcam.media.episodes import open_episode_log
+from wcam.media.decode_timing import time_decoders
+from wcam.media.episodes import EPISODE_LOGGER, open_episode_log
 from wcam.media.peer import aiortc_peer_factory
 from wcam.media.pipeline import FramePipeline
 from wcam.media.quality import QualityMeter, read_y4m_luma
@@ -23,7 +27,8 @@ from wcam.network.lan import NoLanInterfaceError, detect_lan_interface
 from wcam.process_monitor import CpuMonitor
 from wcam.services import AgentServices
 from wcam.sessions.comparisons import ComparisonStore, CorrectionSnapshot
-from wcam.sessions.manager import SessionManager
+from wcam.sessions.manager import SessionManager, SessionState
+from wcam.tray.tray import Tray, windows_tray_icon
 from wcam.virtualcam.factory import FallbackReason, SinkSelection, select_sink
 from wcam.virtualcam.media_foundation_sink import load_native_library
 from wcam.virtualcam.sink import CameraState
@@ -67,14 +72,26 @@ def start(settings: Settings, messages: Messages) -> None:
     pipeline.open()
     comparisons = ComparisonStore(lambda: correction_snapshot(pipeline)) if settings.dev_tools else None
     camera = CameraFormatControl(pipeline)
-    manager = SessionManager(aiortc_peer_factory(lan.network, pipeline), comparisons=comparisons, camera=camera)
+    manager = SessionManager(
+        aiortc_peer_factory(lan.network, pipeline),
+        comparisons=comparisons,
+        camera=camera,
+        output=pipeline,
+    )
     services = AgentServices(manager, pipeline, CpuMonitor(), camera, comparisons)
+    time_decoders(pipeline.stage_times.record_decode)
+    logging.getLogger(EPISODE_LOGGER).addHandler(EpisodeEvents(services.dev_events))
     print_banner(messages, console_url, phone_url, certificate)
     print_virtual_camera(messages, selection)
     announce_pairing(messages, manager, phone_url, console_url, sys.stdout)
+    hint_confirmation(messages, manager, sys.stdout)
     servers = create_servers(settings, lan, certificate, services)
+    icon = windows_tray_icon()
+    tray = None
+    if icon is not None:
+        tray = Tray(icon, services, messages, lambda: webbrowser.open(console_url), lambda: request_stop(servers))
     with stop_signals_handled(servers):
-        asyncio.run(run(servers, services))
+        asyncio.run(run(servers, services, None if tray is None else tray.run))
 
 
 def use_utf8_output(stream: TextIO) -> None:
@@ -126,6 +143,19 @@ def announce_pairing(
     else:
         print(messages.text("terminal.scan_in_console", url=console_url), file=output)
     print(messages.text("terminal.stop_hint"), file=output)
+
+
+def hint_confirmation(messages: Messages, manager: SessionManager, output: TextIO) -> None:
+    hinted: set[str] = set()
+
+    def hint() -> None:
+        session = manager.status().session
+        if session is None or session.state is not SessionState.AWAITING_CONFIRMATION or session.id in hinted:
+            return
+        hinted.add(session.id)
+        print(messages.text("terminal.confirm_hint"), file=output)
+
+    manager.on_change(hint)
 
 
 def print_pairing_qr(messages: Messages, url: str, output: TextIO) -> None:

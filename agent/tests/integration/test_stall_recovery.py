@@ -182,6 +182,8 @@ async def measure_stall(lan: LanInterface, clip: list[CodedPacket]) -> StallMeas
         armed_at = time.monotonic()
         dropper.armed = True
         await asyncio.sleep(OBSERVE_SECONDS)
+        observed_bytes = dropper.armed_media_bytes
+        observed_seconds = time.monotonic() - armed_at
         receiver = next(t.receiver for t in peer.connection.getTransceivers() if t.kind == "video")
         buffer = video_jitter_buffer(receiver)
     finally:
@@ -189,7 +191,7 @@ async def measure_stall(lan: LanInterface, clip: list[CodedPacket]) -> StallMeas
         await connection.close()
         delivering.cancel()
         await asyncio.gather(delivering, return_exceptions=True)
-    bitrate = dropper.armed_media_bytes * BITS_PER_BYTE / OBSERVE_SECONDS
+    bitrate = observed_bytes * BITS_PER_BYTE / observed_seconds
     return StallMeasurement(
         longest_gap_after(pipeline.submitted_at, armed_at),
         dropper.dropped,

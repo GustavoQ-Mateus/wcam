@@ -1,0 +1,23 @@
+.cover {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: var(--space-4);
+  padding: var(--margin-top) calc(var(--margin-right) + var(--control-size) + var(--space-4)) var(--margin-bottom)
+    var(--margin-left);
+  background: var(--ground);
+  transition: opacity var(--duration-state) var(--ease-out);
+
+  @starting-style {
+    opacity: 0;
+  }
+}
+
+.title {
+  font-size: var(--text-title);
+  font-weight: var(--weight-strong);
+  line-height: var(--line-tight);
+}

@@ -2,7 +2,7 @@ import json
 
 from tests.conftest import console_app, console_client
 from tests.fakes import FakePeerFactory
-from tests.unit.test_session_manager import connected_manager
+from tests.unit.test_session_manager import confirm_on_both_sides, connected_manager
 from wcam.config import Settings
 
 CAPABILITIES: dict[str, object] = {
@@ -20,6 +20,7 @@ CONTINUOUS_MODES = {"exposureMode": "continuous", "whiteBalanceMode": "continuou
 async def status_capabilities(settings: Settings, capabilities: dict[str, object]) -> dict[str, object]:
     factory = FakePeerFactory()
     manager = await connected_manager(factory)
+    confirm_on_both_sides(manager, factory)
     factory.last.events.on_message(json.dumps(capabilities))
     async with console_client(console_app(settings, manager)) as console:
         session = (await console.get("/api/status")).json()["session"]

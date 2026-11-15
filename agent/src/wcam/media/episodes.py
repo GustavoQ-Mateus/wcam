@@ -29,6 +29,12 @@ class EpisodeAction(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class FrameGap:
+    seconds: float
+    ended: float
+
+
+@dataclass(frozen=True, slots=True)
 class LinkSample:
     at: float
     frame_age: float
@@ -36,6 +42,7 @@ class LinkSample:
     rtp_bytes: int
     keyframe_requests: int
     stalls: int
+    closed_gap: FrameGap | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +72,7 @@ class EpisodeTracker:
     def observe(self, sample: LinkSample) -> None:
         episode = self._open
         if episode is None:
+            self._record_closed_gap(sample)
             self._watch_for_start(sample)
             return
         episode.black |= sample.black
@@ -74,6 +82,12 @@ class EpisodeTracker:
     def finish(self, sample: LinkSample) -> None:
         if self._open is not None:
             self._close(self._open, sample, sample.at)
+
+    def _record_closed_gap(self, sample: LinkSample) -> None:
+        gap = sample.closed_gap
+        if gap is None or gap.seconds <= EPISODE_SECONDS:
+            return
+        self._close(OpenEpisode(gap.ended - gap.seconds, self._calm or sample, sample.black), sample, gap.ended)
 
     def _watch_for_start(self, sample: LinkSample) -> None:
         if sample.frame_age <= EPISODE_SECONDS:

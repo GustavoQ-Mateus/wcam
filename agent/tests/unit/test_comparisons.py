@@ -14,7 +14,7 @@ from av import VideoFrame
 
 from tests.conftest import LAN, console_app, console_client, opened_pipeline
 from tests.fakes import FakePeerFactory
-from tests.unit.test_session_manager import connected_manager, session_request
+from tests.unit.test_session_manager import confirm_on_both_sides, connected_manager, session_request
 from tests.unit.test_video_format import live_manager
 from wcam.app import create_console_app, phone_page_url
 from wcam.config import Settings
@@ -405,7 +405,7 @@ async def test_starting_a_comparison_needs_a_live_session_and_asks_the_phone() -
 
     with pytest.raises(NoLiveSessionError):
         manager.start_comparison()
-    manager.confirm()
+    confirm_on_both_sides(manager, factory)
     comparison_id = manager.start_comparison()
 
     assert factory.last.sent[-1] == {"type": "snapshot_request", "id": comparison_id}
@@ -441,7 +441,7 @@ async def test_dev_routes_report_a_comparison_with_dev_tools(settings: Settings)
     manager = SessionManager(factory, comparisons=comparisons)
     await manager.create_session(session_request_for(manager))
     factory.last.events.on_connected()
-    manager.confirm()
+    confirm_on_both_sides(manager, factory)
     pipeline = opened_pipeline()
     services = AgentServices(manager, pipeline, CpuMonitor(), CameraFormatControl(pipeline), comparisons)
     app = create_console_app(settings, services, phone_page_url(settings, LAN))

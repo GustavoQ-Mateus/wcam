@@ -2,7 +2,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
 from wcam.media.color_correction import ColorCorrection
-from wcam.media.metrics import VideoStats
+from wcam.media.metrics import ReceiveStats, VideoStats
 from wcam.sessions.manager import MediaPeer, PeerEvents
 
 START = datetime(2026, 11, 1, 18, 0, tzinfo=UTC)
@@ -38,6 +38,8 @@ class FakePeer:
         self.events = events
         self.sent: list[Mapping[str, object]] = []
         self.gate_open = False
+        self.rtp_packets_before_live = 0
+        self.received: ReceiveStats | None = None
         self.closed = False
         self.video: VideoStats | None = None
         self.max_bitrate_bps: int | None = None
@@ -49,6 +51,9 @@ class FakePeer:
 
     def open_gate(self) -> None:
         self.gate_open = True
+
+    async def receive_stats(self) -> ReceiveStats | None:
+        return self.received
 
     def limit_bitrate(self, max_bitrate_bps: int) -> None:
         self.max_bitrate_bps = max_bitrate_bps

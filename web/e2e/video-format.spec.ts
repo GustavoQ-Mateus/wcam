@@ -23,7 +23,7 @@ test("a resolution chosen on the phone shows on the console in under 300 ms", as
   await goLive(page, request);
   await expect.poll(async () => (await status(request)).videoFormat.available).toContain(SMALL_FORMAT.key);
   const consolePage = await openConsole(page);
-  await page.getByRole("button", { name: translate("en", "format.label") }).click();
+  await page.getByRole("button", { name: translate("en", "format.label"), exact: true }).click();
   await recordClick(page);
 
   const checkedAt = whenChecked(consolePage, SMALL_FORMAT.resolution);
@@ -37,7 +37,7 @@ test("a resolution chosen on the console shows on the phone in under 300 ms", as
   await goLive(page, request);
   await expect.poll(async () => (await status(request)).videoFormat.available).toContain(SMALL_FORMAT.key);
   const consolePage = await openConsole(page);
-  await page.getByRole("button", { name: translate("en", "format.label") }).click();
+  await page.getByRole("button", { name: translate("en", "format.label"), exact: true }).click();
   await recordClick(consolePage);
 
   const checkedAt = whenChecked(page, SMALL_FORMAT.resolution);

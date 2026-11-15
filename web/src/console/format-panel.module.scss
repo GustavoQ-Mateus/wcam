@@ -2,18 +2,13 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: var(--space-5);
-  max-width: var(--measure);
-  padding: var(--space-6);
-  border-radius: var(--radius-box);
+  gap: var(--space-4);
+  padding: var(--space-5);
   background: var(--surface);
 }
 
 .title {
-  font-size: var(--text-title);
   font-weight: var(--weight-strong);
-  line-height: var(--line-tight);
-  letter-spacing: var(--tracking-title);
   font-variant-numeric: tabular-nums;
 }
 
@@ -35,17 +30,16 @@
 }
 
 .choices {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: var(--space-4) var(--space-5);
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .label {
   display: flex;
   align-items: center;
-  min-height: calc(var(--hit-min) + var(--space-1) * 2);
   color: var(--muted);
+  font-size: var(--text-meta);
 }
 
 .control {

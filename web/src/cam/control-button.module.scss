@@ -13,6 +13,11 @@
     transform: scale(var(--scale-press));
   }
 
+  &[aria-pressed="true"] {
+    background: var(--ink);
+    color: var(--ground);
+  }
+
   svg {
     width: var(--icon-size);
     height: var(--icon-size);

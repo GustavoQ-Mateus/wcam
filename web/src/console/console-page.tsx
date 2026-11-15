@@ -1,64 +1,54 @@
 import { comparisonAvailable } from "../data/console-format";
+import { consoleMode, isLiveMode, stateBadge } from "../data/console-view";
 import { errorMessageKey } from "../data/i18n";
 import { t } from "../data/language";
 import { useConsole } from "../data/use-console";
-import { useHealth, type HealthState } from "../data/use-health";
-import styles from "./console-page.module.scss";
 import { ComparisonPanel } from "./comparison-panel";
-import { PairingPanel } from "./pairing-panel";
-import { FormatPanel } from "./format-panel";
-import { SessionPanel } from "./session-panel";
+import { ConfirmView } from "./confirm-view";
+import { ConnectingView } from "./connecting-view";
+import { ConsoleHeader } from "./console-header";
+import styles from "./console-page.module.scss";
+import { LiveView } from "./live-view";
 import { useComparison } from "./use-comparison";
-import { VirtualCameraPanel } from "./virtual-camera-panel";
+import { WaitingView } from "./waiting-view";
 
 export default function ConsolePage() {
-  const health = useHealth();
   const data = useConsole();
-  const session = data.status?.session ?? null;
   const comparison = useComparison();
-  const canCompare = comparisonAvailable(data.status);
+  const { status } = data;
+  const mode = status ? consoleMode(status) : null;
   return (
     <main className={styles.page}>
-      <h1 className={styles.name}>{t("app.name")}</h1>
-      <p className={styles.status} data-state={health.kind} role="status">
-        <span className={styles.indicator} aria-hidden="true" />
-        {statusText(health)}
-      </p>
-      {data.status && <VirtualCameraPanel virtualCamera={data.status.virtualCamera} process={data.status.process} />}
-      {session ? (
-        <SessionPanel
-          session={session}
-          onConfirm={data.confirm}
-          onReject={data.reject}
-          onDisconnect={data.disconnect}
-          onCompare={canCompare ? comparison.capture : undefined}
-        />
-      ) : (
-        <PairingPanel
-          qrSvg={data.qrSvg}
-          expiresAt={data.status?.pairing?.expiresAt ?? null}
-          receivedAt={data.receivedAt}
-          onNewPairing={data.newPairing}
-        />
-      )}
-      {data.status?.devTools && <ComparisonPanel view={comparison.view} onAddScreen={comparison.addScreen} />}
-      {data.status && <FormatPanel videoFormat={data.status.videoFormat} onChoose={data.chooseVideoFormat} />}
+      <ConsoleHeader badge={status ? stateBadge(status) : null} />
       {data.errorCode && (
         <p className={styles.error} role="alert">
           {t(errorMessageKey(data.errorCode))}
         </p>
       )}
+      {status && mode === "waiting" && (
+        <WaitingView
+          qrSvg={data.qrSvg}
+          expiresAt={status.pairing?.expiresAt ?? null}
+          receivedAt={data.receivedAt}
+          onNewPairing={data.newPairing}
+        />
+      )}
+      {status?.session && mode === "connecting" && <ConnectingView session={status.session} />}
+      {status?.session && mode === "confirming" && (
+        <ConfirmView session={status.session} onConfirm={data.confirm} onReject={data.reject} />
+      )}
+      {status && mode && isLiveMode(mode) && (
+        <LiveView
+          status={status}
+          receivedAt={data.receivedAt}
+          mode={mode}
+          onChange={data.changeControls}
+          onDisconnect={data.disconnect}
+          onChooseFormat={data.chooseVideoFormat}
+          onCompare={comparisonAvailable(status) ? comparison.capture : undefined}
+        />
+      )}
+      {status?.devTools && <ComparisonPanel view={comparison.view} onAddScreen={comparison.addScreen} />}
     </main>
   );
-}
-
-function statusText(health: HealthState): string {
-  switch (health.kind) {
-    case "checking":
-      return t("console.status_checking");
-    case "running":
-      return t("console.status_running", { version: health.version });
-    case "failed":
-      return t(errorMessageKey(health.code));
-  }
 }

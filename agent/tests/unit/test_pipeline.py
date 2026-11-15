@@ -332,3 +332,18 @@ def test_portrait_frame_reports_portrait_orientation() -> None:
 
     assert video_body(stats).orientation == "portrait"
     assert VideoStats(1920, 1080, 30.0, 9000).orientation is Orientation.LANDSCAPE
+
+
+def test_longest_gap_between_phone_frames_is_kept_until_read() -> None:
+    clock = SteppingClock()
+    pipeline, _ = live_pipeline(clock)
+    pipeline.deliver(phone_frame())
+    for step in (0.2, 0.6, 0.1):
+        clock.now += step
+        pipeline.deliver(phone_frame())
+
+    longest = pipeline.take_longest_gap()
+
+    assert longest is not None
+    assert longest.seconds == pytest.approx(0.6)
+    assert pipeline.take_longest_gap() is None

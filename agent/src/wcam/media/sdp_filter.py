@@ -33,6 +33,10 @@ def is_publishable_offer(sdp: str) -> bool:
     return media_kinds(sdp) >= REQUIRED_MEDIA and sha256_fingerprint(sdp) is not None
 
 
+def has_video(sdp: str) -> bool:
+    return "video" in media_kinds(sdp)
+
+
 def media_kinds(sdp: str) -> set[str]:
     return {line[len(MEDIA_PREFIX) :].split(" ", 1)[0] for line in sdp.splitlines() if line.startswith(MEDIA_PREFIX)}
 

@@ -39,6 +39,7 @@ class AnnouncedFormat:
     fps: int
     pending: bool
     running: bool
+    streaming_apps: int | None = None
 
 
 def frame_size(frame: I420Frame) -> tuple[int, int]:

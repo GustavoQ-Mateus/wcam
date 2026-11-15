@@ -31,9 +31,18 @@ export async function reachConfirmation(page: Page, request: APIRequestContext):
   return fragment;
 }
 
+export async function confirmOnComputer(request: APIRequestContext): Promise<void> {
+  expect((await request.post(consoleUrl("/api/sessions/current/confirm"))).status()).toBe(NO_CONTENT_STATUS);
+}
+
+export async function confirmOnPhone(page: Page): Promise<void> {
+  await page.getByRole("button", { name: translate("en", "cam.confirm_same") }).click();
+}
+
 export async function goLive(page: Page, request: APIRequestContext): Promise<void> {
   await reachConfirmation(page, request);
-  expect((await request.post(consoleUrl("/api/sessions/current/confirm"))).status()).toBe(NO_CONTENT_STATUS);
+  await confirmOnPhone(page);
+  await confirmOnComputer(request);
   await expect(page.getByText(translate("en", "cam.live")).first()).toBeVisible();
 }
 

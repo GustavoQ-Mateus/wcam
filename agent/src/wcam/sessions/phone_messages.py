@@ -19,12 +19,61 @@ from pydantic.alias_generators import to_camel
 from wcam.media.color_correction import CameraColorSpace
 from wcam.media.color_difference import RgbSpace
 from wcam.media.video_format import VideoFormat
+from wcam.sessions.controls import ControlsChange, Facing
 
 SNAPSHOT_CHUNK_BYTES = 45_000
 
 
 class PhoneMessage(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, strict=True, frozen=True)
+
+
+class ConfirmCodeMessage(PhoneMessage):
+    type: Literal["confirm_code"]
+
+
+class RejectCodeMessage(PhoneMessage):
+    type: Literal["reject_code"]
+
+
+class SetControlsMessage(PhoneMessage):
+    type: Literal["set_controls"]
+    frozen: bool | None = None
+    camera_off: bool | None = None
+    mirror: bool | None = None
+    facing: Facing | None = None
+
+    def to_change(self) -> ControlsChange:
+        return ControlsChange(self.frozen, self.camera_off, self.mirror, self.facing)
+
+
+class OutboundStatsMessage(PhoneMessage):
+    frames_per_second: float | None = None
+    frames_sent: int | None = None
+    frames_encoded: int | None = None
+    key_frames_encoded: int | None = None
+    bytes_sent: int | None = None
+    quality_limitation_reason: str | None = None
+    nack_count: int | None = None
+    pli_count: int | None = None
+    frame_width: int | None = None
+    frame_height: int | None = None
+
+
+class RemoteInboundStatsMessage(PhoneMessage):
+    round_trip_time: float | None = None
+    jitter: float | None = None
+    packets_lost: int | None = None
+
+
+class StatsMessage(PhoneMessage):
+    type: Literal["stats"]
+    at: float
+    outbound: OutboundStatsMessage | None = None
+    remote_inbound: RemoteInboundStatsMessage | None = None
+
+    def without_type(self) -> dict[str, object]:
+        return self.model_dump(by_alias=True, exclude={"type"})
 
 
 class SetVideoFormatMessage(PhoneMessage):
@@ -108,7 +157,11 @@ class ScreenshotChunkMessage(ChunkMessage):
 
 
 type AnyPhoneMessage = (
-    SetVideoFormatMessage
+    ConfirmCodeMessage
+    | RejectCodeMessage
+    | SetControlsMessage
+    | StatsMessage
+    | SetVideoFormatMessage
     | CameraCapabilitiesMessage
     | SnapshotBeginMessage
     | SnapshotChunkMessage
@@ -118,7 +171,11 @@ type AnyPhoneMessage = (
 
 PHONE_MESSAGE = TypeAdapter[AnyPhoneMessage](
     Annotated[
-        SetVideoFormatMessage
+        ConfirmCodeMessage
+        | RejectCodeMessage
+        | SetControlsMessage
+        | StatsMessage
+        | SetVideoFormatMessage
         | CameraCapabilitiesMessage
         | SnapshotBeginMessage
         | SnapshotChunkMessage

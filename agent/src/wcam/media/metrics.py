@@ -27,6 +27,12 @@ class VideoStats:
     color_correction: ColorCorrection | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ReceiveStats:
+    packets_lost: int
+    jitter_ms: float
+
+
 class VideoMeter:
     def __init__(self) -> None:
         self._stats: VideoStats | None = None
