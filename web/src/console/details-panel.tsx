@@ -1,4 +1,4 @@
-import { cpuPercentValue } from "../data/console-format";
+import { cpuPercentValue, currentDecoder, decoderKey } from "../data/console-format";
 import type { LibraryVideo, Status } from "../data/contract";
 import { formatName } from "../data/format-name";
 import type { MessageKey } from "../data/i18n";
@@ -41,6 +41,7 @@ function detailRows(status: Status): DetailRow[] {
   const { videoFormat, process } = status;
   return [
     ...sourceRows(status),
+    ...decoderRows(status),
     { labelKey: "console.detail_camera_format", value: formatName(videoFormat.camera) },
     {
       labelKey: "console.detail_cpu",
@@ -69,6 +70,11 @@ function sourceRows(status: Status): DetailRow[] {
     },
     { labelKey: "console.detail_codec", value: video && video.codec },
   ];
+}
+
+function decoderRows(status: Status): DetailRow[] {
+  const decoder = currentDecoder(status);
+  return decoder ? [{ labelKey: "console.detail_decoder", value: t(decoderKey(decoder)) }] : [];
 }
 
 function playingVideo({ videoSource }: Status): LibraryVideo | null {
