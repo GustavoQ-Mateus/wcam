@@ -1,6 +1,6 @@
 # Spec v0.9.0, Vídeo como câmera
 
-Status: Aprovada (revisão 2, 2026-11-15; a revisão 1 foi aprovada no mesmo dia e substituída depois da bateria)
+Status: Entregue (2026-11-15; revisão 2, aprovada no mesmo dia depois da bateria da revisão 1)
 Branch de integração: `feature/video`
 Sessões: `agent`, `web`
 Referências: `docs/planejamento.md` §1 (CA-1, CA-2, CA-4), §5.4 (controles); spec v0.8.0 (console, prévia, bandeja); ADR 0011 (câmera nativa); ADR 0015 (prévia); ADR 0016 (vídeo como origem, substituída em parte pela ADR 0017). Pedido do usuário em 2026-11-13.
@@ -151,6 +151,9 @@ O orquestrador põe em `locales/` antes do código: editor (biblioteca, adiciona
 - 2026-11-15, ícones: o `lucide-react` fica. A troca dos ícones é pedido do usuário e cumpre o limite de JS (`/` de 88,9 para 90,2 KB gzip).
 - 2026-11-15, bateria da revisão 1: linha do tempo de editor e vídeo só com celular conectado entram nesta versão (decisão do usuário); o vídeo continua se o celular desconectar.
 
+- 2026-11-15, tira de miniaturas (§1.1): feita dos quadros-chave mais próximos de pontos espaçados por igual, até 60, porque quadros exatos levavam 51 s no 4K HEVC contra 2,3 s. Vídeo com poucos quadros-chave tem menos miniaturas (`filmstripFrames` informa quantas).
+- 2026-11-15, leitura adiante (§1.3): Congelar não esvazia a fila (os quadros nela são os próximos); pular, editar e desativar recomeçam a fila sem entregar quadro velho.
+
 ## Fora do escopo
 
 - Mais de uma faixa, transições, textos, sobreposições, velocidade, áudio, mudar posição ou tamanho do vídeo no quadro, desfazer e refazer.
@@ -171,3 +174,26 @@ O orquestrador põe em `locales/` antes do código: editor (biblioteca, adiciona
 10. Arquivo que não é vídeo é recusado com texto próprio, sem deixar arquivo no disco.
 11. CA-2 do celular mantido (SSIM de pelo menos 0,98 no e2e com o vídeo desativado).
 12. Verificação completa do CLAUDE.md e `npm run test:e2e`; `version` 0.9.0 em `agent/pyproject.toml` e `web/package.json`.
+
+## Changelog
+
+Entregue em 2026-11-15, revisão 2. Bateria do usuário com o WCam rodando no Windows (câmera nativa, celular real), todos os itens validados.
+
+- CA 1: dois vídeos do iPhone (IMG_0641 e IMG_0642, 4K HEVC) montados e cortados na linha do tempo, em sequência e em repetição no OBS, no app Câmera e no Meet, sem câmera lenta nem preto. Validado pelo usuário.
+- CA 2: sem celular, o console não oferece vídeo; o agente responde `409 no_live_session` ao envio e à ativação (testes). Validado pelo usuário.
+- CA 3: Usar vídeo desliga a câmera do celular sem desconectar; Voltar à câmera no console, na bandeja e no celular, sem novo QR. Validado pelo usuário.
+- CA 4: celular desconectado com o vídeo rodando; o vídeo continua e o console oferece o QR. Validado pelo usuário.
+- CA 5: editor com adicionar, ordenar, cortar, dividir, excluir, zoom e régua. Validado pelo usuário.
+- CA 6: vídeo em pé com faixas (e2e com `E2E_TEST_VIDEO_2` e bateria).
+- CA 7: linhas verdes e azuis corrigidas. Causa: o swscale multithread do FFmpeg 8 deixava uma linha de croma sem escrever em cada borda de fatia ao converter no mesmo tamanho. Quadro já no formato da câmera é copiado sem swscale; conversão no mesmo tamanho em uma thread. Varredura de 60 quadros do IMG_0641 em 4K: 60 com linhas zeradas antes, 0 depois. Validado pelo usuário em 4K.
+- CA 8: quadros repetidos ou pulados por atraso em 2 min, mesma carga (i5-8500, 6 núcleos, 16 a 27% de CPU antes): vídeo de teste em 1080p30 0,25%; IMG_0641 em 1080p30 0,58% (revisão 1: 4,3%); IMG_0641 com a câmera em 4K 0,19%, p99 de 37 ms (revisão 1: 4,0%). Nenhum salto ao quadro-chave. CPU do processo com HEVC 4K em cerca de 240%, quase toda na decodificação (base da 0.10.0).
+- CA 9: interface refeita, sem controle repetido, direção em `docs/design-v0.9.0.md`. Validada pelo usuário.
+- CA 10: arquivo que não é vídeo recusado com `video_unsupported`, arquivo apagado (testes e bateria).
+- CA 11: SSIM 0,9836 no e2e com o vídeo desativado.
+- CA 12: pytest 512 passados e 1 pulado, ruff, format e pyright limpos; build, lint e 209 testes Vitest; e2e 33 de 33; CI verde em todos os jobs; `version` 0.9.0 nos dois lados.
+
+Achados:
+- Uma falha intermitente no pytest (1 em 7 execuções completas, durante o e2e subindo na mesma máquina), sem o nome do teste; não voltou em 35 execuções, nem com 5 de 6 núcleos ocupados.
+- `comparison.spec` instável com a máquina carregada (A/B igual com o agent das duas revisões).
+- O zoom da linha do tempo só tem botões; atalho de teclado e Ctrl com a roda do mouse ficam como melhoria.
+- Ícones em `lucide-react`; gráficos do `/dev` continuam em SVG próprio (uPlot não reduziu a CPU).
