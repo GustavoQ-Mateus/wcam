@@ -1,4 +1,13 @@
-import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type PointerEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+} from "react";
 import type { LibraryVideo, TimelineClip } from "../data/contract";
 import { t } from "../data/language";
 import {
@@ -11,8 +20,10 @@ import {
   timelineLength,
   trimEnd,
   trimStart,
+  wheelZoom,
 } from "../data/timeline";
 import { clampedSeek } from "../data/video-position";
+import { useCtrlWheel } from "../media/use-ctrl-wheel";
 import { useElementWidth } from "../media/use-element-width";
 import { useFrameLoop } from "../media/use-frame-loop";
 import styles from "./editor-timeline.module.scss";
@@ -23,6 +34,11 @@ type Gesture =
   | { kind: "move"; index: number; startX: number; offset: number; moved: boolean }
   | { kind: "trim"; index: number; edge: ClipEdge; startX: number; original: TimelineClip; clips: TimelineClip[] }
   | { kind: "seek"; seconds: number };
+
+interface ZoomAnchor {
+  seconds: number;
+  viewportX: number;
+}
 
 interface EditorTimelineProps {
   videos: readonly LibraryVideo[];
@@ -36,6 +52,7 @@ interface EditorTimelineProps {
   onInsertVideo: (videoId: string, index: number) => void;
   onDropFiles: (files: File[]) => void;
   onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
+  onZoom: (direction: 1 | -1) => boolean;
 }
 
 const DRAG_THRESHOLD_PIXELS = 4;
@@ -54,9 +71,13 @@ export function EditorTimeline({
   onInsertVideo,
   onDropFiles,
   onKeyDown,
+  onZoom,
 }: EditorTimelineProps) {
-  const [attachViewport, viewportWidth] = useElementWidth<HTMLDivElement>();
+  const [observeViewport, viewportWidth] = useElementWidth<HTMLDivElement>();
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const zoomAnchorRef = useRef<ZoomAnchor | null>(null);
+  const wheelDeltaRef = useRef(0);
   const playheadRef = useRef<HTMLDivElement>(null);
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const [dropAt, setDropAt] = useState<number | null>(null);
@@ -81,6 +102,25 @@ export function EditorTimeline({
     };
   }, [instant]);
 
+  const attachViewport = useCallback(
+    (element: HTMLDivElement | null) => {
+      viewportRef.current = element;
+      observeViewport(element);
+    },
+    [observeViewport],
+  );
+
+  useLayoutEffect(() => {
+    const anchor = zoomAnchorRef.current;
+    const viewport = viewportRef.current;
+    const track = trackRef.current;
+    zoomAnchorRef.current = null;
+    if (!anchor || !viewport || !track) {
+      return;
+    }
+    viewport.scrollLeft = track.offsetLeft + anchor.seconds * pixelsPerSecond - anchor.viewportX;
+  }, [pixelsPerSecond]);
+
   useFrameLoop((now) => {
     const playhead = playheadRef.current;
     if (!playhead) {
@@ -96,6 +136,19 @@ export function EditorTimeline({
     const left = trackRef.current?.getBoundingClientRect().left ?? 0;
     return pixelsPerSecond > 0 ? (clientX - left) / pixelsPerSecond : 0;
   };
+
+  useCtrlWheel(trackRef, (event) => {
+    const zoom = wheelZoom(wheelDeltaRef.current, event.deltaY, event.deltaMode);
+    wheelDeltaRef.current = zoom.pendingDelta;
+    if (zoom.direction === 0) {
+      return;
+    }
+    const viewportLeft = viewportRef.current?.getBoundingClientRect().left ?? 0;
+    const anchor = { seconds: secondsAt(event.clientX), viewportX: event.clientX - viewportLeft };
+    if (onZoom(zoom.direction)) {
+      zoomAnchorRef.current = anchor;
+    }
+  });
   const capture = (event: PointerEvent<HTMLElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId);
   };
