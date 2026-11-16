@@ -7,6 +7,7 @@ import { endSession, goLive } from "./session-helpers";
 
 const METRICS_TIMEOUT_MS = 15_000;
 const CSV_HEADER_START = "at,received_fps,received_kbps";
+const TRANSFER_COLUMN = "transfer_median_ms";
 
 test.use({ hasTouch: true, viewport: PHONE_LANDSCAPE });
 
@@ -37,5 +38,6 @@ test("the developer console charts live numbers, pauses them and exports csv", a
   const csv = await readFile(await (await download).path(), "utf-8");
   const lines = csv.split("\n");
   expect(lines[0]?.startsWith(CSV_HEADER_START)).toBe(true);
+  expect(lines[0]?.split(",")).toContain(TRANSFER_COLUMN);
   expect(lines.length).toBeGreaterThan(1);
 });

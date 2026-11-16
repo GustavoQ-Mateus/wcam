@@ -15,7 +15,7 @@ test.afterEach(async ({ request }) => {
   await endSession(request);
 });
 
-test("frames delivered to the virtual camera keep an ssim of at least 0.98 with the console preview on", async ({
+test("frames decoded by the processor keep an ssim of at least 0.98 with the console preview on", async ({
   page,
   request,
 }) => {
@@ -39,5 +39,6 @@ test("frames delivered to the virtual camera keep an ssim of at least 0.98 with 
   test.info().annotations.push({ type: "quality", description: measured });
   console.log(`quality ${measured}`);
 
+  expect(session?.video?.decoder).toBe("software");
   expect(quality?.ssim ?? 0).toBeGreaterThanOrEqual(MINIMUM_SSIM);
 });
