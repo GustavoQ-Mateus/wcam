@@ -13,6 +13,7 @@ interface ControlBarProps {
   onTogglePreview: () => void;
   onDisconnect: () => void;
   onCompare?: (() => void) | undefined;
+  onUseVideo: () => void;
 }
 
 export function ControlBar({
@@ -24,6 +25,7 @@ export function ControlBar({
   onTogglePreview,
   onDisconnect,
   onCompare,
+  onUseVideo,
 }: ControlBarProps) {
   const other = otherFacing(facing);
   return (
@@ -78,6 +80,9 @@ export function ControlBar({
           {t("console.dev_compare")}
         </button>
       )}
+      <button type="button" className={styles.useVideo} onClick={onUseVideo}>
+        {t("controls.use_video")}
+      </button>
       <button type="button" className={styles.disconnect} onClick={onDisconnect}>
         {t("controls.disconnect")}
       </button>

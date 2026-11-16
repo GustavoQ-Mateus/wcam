@@ -42,11 +42,13 @@ from wcam.sessions.phone_messages import (
     ScreenshotChunkMessage,
     SetControlsMessage,
     SetVideoFormatMessage,
+    SetVideoSourceMessage,
     SnapshotBeginMessage,
     SnapshotChunkMessage,
     StatsMessage,
     parse_phone_message,
 )
+from wcam.video.errors import VideoSourceActiveError
 
 CONFIRMATION_TIMEOUT_SECONDS = 120.0
 ID_BYTES = 16
@@ -56,6 +58,8 @@ MESSAGE_BEFORE_LIVE = "Ignored a phone message sent before both sides confirmed 
 CONFIRMATION_AFTER_LIVE = "Ignored a code confirmation from a phone that is already live"
 UNAVAILABLE_FORMAT_FROM_PHONE = "Ignored a video format the phone camera does not offer"
 PHONE_IMAGE_WITHOUT_DEV_TOOLS = "Ignored a phone image because development tools are off"
+VIDEO_FROM_PHONE = "Ignored a request from the phone to show the video; only the computer chooses it"
+CAMERA_CONTROL_WITH_VIDEO = "Ignored a camera control from the phone while the camera shows the video"
 
 type PhoneImageMessage = SnapshotBeginMessage | SnapshotChunkMessage | ScreenshotBeginMessage | ScreenshotChunkMessage
 PHONE_IMAGE_MESSAGES = (SnapshotBeginMessage, SnapshotChunkMessage, ScreenshotBeginMessage, ScreenshotChunkMessage)
@@ -125,6 +129,7 @@ class OutputControls(Protocol):
 
 
 type PeerFactory = Callable[[str, PeerEvents], Awaitable[MediaPeer]]
+type BackToCamera = Callable[[], Coroutine[Any, Any, None]]
 type EventListener = Callable[[str, Mapping[str, object]], None]
 
 
@@ -231,7 +236,9 @@ class SessionManager:
         self._controls = Controls()
         self._event_listeners: list[EventListener] = []
         self._stats_wanted = False
+        self._video_source_active = False
         self._phone_stats: dict[str, object] | None = None
+        self._back_to_camera: BackToCamera | None = None
         if camera is not None:
             camera.on_change(self._send_video_format)
 
@@ -244,6 +251,9 @@ class SessionManager:
 
     def on_event(self, listener: EventListener) -> None:
         self._event_listeners.append(listener)
+
+    def on_back_to_camera(self, listener: BackToCamera) -> None:
+        self._back_to_camera = listener
 
     def want_phone_stats(self, wanted: bool) -> None:
         if wanted == self._stats_wanted:
@@ -279,10 +289,31 @@ class SessionManager:
         )
 
     def change_controls(self, change: ControlsChange) -> None:
-        session = self._session
-        if change.needs_live_session and (session is None or session.state is not SessionState.LIVE):
+        if self._video_source_active and change.changes_camera():
+            raise VideoSourceActiveError
+        if change.needs_live_session(self._video_source_active) and self._live_session() is None:
             raise NoLiveSessionError
         self._set_controls(changed_controls(self._controls, change))
+
+    def ensure_live(self) -> None:
+        if self._live_session() is None:
+            raise NoLiveSessionError
+
+    def start_video_source(self) -> None:
+        session = self._live_session()
+        if session is None:
+            raise NoLiveSessionError
+        self._video_source_active = True
+        session.peer.send(video_source_message(True))
+        self._notify_change()
+
+    def stop_video_source(self) -> None:
+        self._video_source_active = False
+        self._set_controls(replace(self._controls, frozen=False))
+        session = self._live_session()
+        if session is not None:
+            session.peer.send(video_source_message(False))
+        self._notify_change()
 
     def set_video_format(self, video_format: VideoFormat) -> None:
         if video_format not in self._available_formats:
@@ -400,6 +431,8 @@ class SessionManager:
             self._apply_phone_format(message.format)
         elif isinstance(message, SetControlsMessage):
             self._receive_phone_controls(session, message)
+        elif isinstance(message, SetVideoSourceMessage):
+            self._receive_phone_video_source(message)
         elif isinstance(message, StatsMessage):
             self._phone_stats = message.without_type()
         else:
@@ -430,6 +463,8 @@ class SessionManager:
         session.peer.open_gate()
         session.peer.send(state_message(SessionState.LIVE))
         session.peer.send(controls_message(self._controls))
+        if self._video_source_active:
+            session.peer.send(video_source_message(True))
         self._send_video_format()
         if self._stats_wanted:
             session.peer.send(stats_request_message(True))
@@ -458,9 +493,20 @@ class SessionManager:
 
     def _receive_phone_controls(self, session: Session, message: SetControlsMessage) -> None:
         before = self._controls
-        self._set_controls(changed_controls(before, message.to_change()))
+        change = message.to_change()
+        if self._video_source_active and change.changes_camera():
+            logger.warning(CAMERA_CONTROL_WITH_VIDEO)
+        else:
+            self._set_controls(changed_controls(before, change))
         if self._controls == before:
             session.peer.send(controls_message(self._controls))
+
+    def _receive_phone_video_source(self, message: SetVideoSourceMessage) -> None:
+        if message.active:
+            logger.warning(VIDEO_FROM_PHONE)
+            return
+        if self._back_to_camera is not None:
+            self._run_in_background(self._back_to_camera())
 
     def _set_controls(self, controls: Controls) -> None:
         if controls == self._controls:
@@ -535,7 +581,7 @@ class SessionManager:
         self._session = None
         self._cancel_confirmation_timer()
         self._last_ended = LastEnded(reason, self._clock(), session.peer.rtp_packets_before_live)
-        self._set_controls(after_session(self._controls))
+        self._set_controls(self._controls_after_session())
         self._phone_stats = None
         self._record_event("session_state", {"state": "ended", "reason": reason})
         self._notify_change()
@@ -543,6 +589,15 @@ class SessionManager:
             self._comparisons.end_session()
         session.peer.send({"type": "session_state", "state": "ended", "reason": reason})
         await session.peer.close()
+
+    def _controls_after_session(self) -> Controls:
+        if self._video_source_active:
+            return replace(self._controls, camera_off=False)
+        return after_session(self._controls)
+
+    def _live_session(self) -> Session | None:
+        session = self._session
+        return session if session is not None and session.state is SessionState.LIVE else None
 
     def _awaiting_session(self) -> Session:
         session = self._session
@@ -608,6 +663,10 @@ def controls_message(controls: Controls) -> dict[str, object]:
         "mirror": controls.mirror,
         "facing": controls.facing,
     }
+
+
+def video_source_message(active: bool) -> dict[str, object]:
+    return {"type": "video_source", "active": active}
 
 
 def stats_request_message(enabled: bool) -> dict[str, object]:

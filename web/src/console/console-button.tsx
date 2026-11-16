@@ -5,11 +5,12 @@ interface ConsoleButtonProps {
   variant: "primary" | "secondary";
   onClick: () => void;
   children: ReactNode;
+  disabled?: boolean;
 }
 
-export function ConsoleButton({ variant, onClick, children }: ConsoleButtonProps) {
+export function ConsoleButton({ variant, onClick, children, disabled = false }: ConsoleButtonProps) {
   return (
-    <button type="button" className={styles.button} data-variant={variant} onClick={onClick}>
+    <button type="button" className={styles.button} data-variant={variant} disabled={disabled} onClick={onClick}>
       {children}
     </button>
   );

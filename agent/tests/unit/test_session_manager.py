@@ -7,9 +7,11 @@ import pytest
 from tests.fakes import AGENT_FINGERPRINT, OFFER_SDP, PHONE_FINGERPRINT, FakeClock, FakePeerFactory
 from wcam.pairing.confirmation_code import confirmation_code
 from wcam.pairing.errors import PairingTokenInvalidError, PairingWindowClosedError
+from wcam.sessions.controls import ControlsChange
 from wcam.sessions.errors import (
     InvalidOfferError,
     NoActiveSessionError,
+    NoLiveSessionError,
     NoSessionAwaitingConfirmationError,
     SessionAlreadyActiveError,
     TooManyAttemptsError,
@@ -18,12 +20,14 @@ from wcam.sessions.manager import (
     CONFIRMATION_AFTER_LIVE,
     CONFIRMATION_TIMEOUT_SECONDS,
     MESSAGE_BEFORE_LIVE,
+    VIDEO_FROM_PHONE,
     Confirmations,
     EndReason,
     SessionManager,
     SessionRequest,
     SessionState,
 )
+from wcam.video.errors import VideoSourceActiveError
 
 PHONE_IP = "192.168.0.23"
 SHORT_TIMEOUT = 0.01
@@ -363,3 +367,135 @@ async def test_busy_rejection_does_not_count_as_failure() -> None:
     await manager.disconnect()
 
     await manager.create_session(session_request(manager.open_pairing().token))
+
+
+async def live_manager(factory: FakePeerFactory) -> SessionManager:
+    manager = await connected_manager(factory)
+    confirm_on_both_sides(manager, factory)
+    return manager
+
+
+async def test_video_source_keeps_the_phone_live_and_tells_it_to_turn_the_camera_off() -> None:
+    factory = FakePeerFactory()
+    manager = await live_manager(factory)
+
+    manager.start_video_source()
+
+    session = manager.status().session
+    assert session is not None
+    assert session.state is SessionState.LIVE
+    assert factory.last.sent[-1] == {"type": "video_source", "active": True}
+    assert not factory.last.closed
+
+
+async def test_video_source_needs_a_live_phone() -> None:
+    manager = SessionManager(FakePeerFactory())
+
+    with pytest.raises(NoLiveSessionError):
+        manager.start_video_source()
+
+
+async def test_stopping_the_video_source_tells_the_phone_to_turn_the_camera_on() -> None:
+    factory = FakePeerFactory()
+    manager = await live_manager(factory)
+    manager.start_video_source()
+
+    manager.stop_video_source()
+
+    assert factory.last.sent[-1] == {"type": "video_source", "active": False}
+
+
+async def test_phone_leaving_with_the_video_on_keeps_the_video_and_its_freeze() -> None:
+    factory = FakePeerFactory()
+    manager = await live_manager(factory)
+    manager.start_video_source()
+    manager.change_controls(ControlsChange(frozen=True))
+
+    await manager.disconnect()
+
+    assert manager.status().controls.frozen
+    assert manager.open_pairing().token
+
+
+async def test_phone_reaching_live_with_the_video_on_is_told_about_it() -> None:
+    factory = FakePeerFactory()
+    manager = await live_manager(factory)
+    manager.start_video_source()
+    await manager.disconnect()
+
+    await manager.create_session(session_request(manager.open_pairing().token))
+    factory.last.events.on_connected()
+    confirm_on_both_sides(manager, factory)
+
+    assert {"type": "video_source", "active": True} in factory.last.sent
+
+
+async def test_video_source_allows_freezing_without_a_phone_but_not_the_phone_camera() -> None:
+    factory = FakePeerFactory()
+    manager = await live_manager(factory)
+    manager.start_video_source()
+    await manager.disconnect()
+
+    manager.change_controls(ControlsChange(frozen=True))
+
+    assert manager.status().controls.frozen
+    with pytest.raises(VideoSourceActiveError):
+        manager.change_controls(ControlsChange(camera_off=True))
+    with pytest.raises(VideoSourceActiveError):
+        manager.change_controls(ControlsChange(facing="user"))
+
+
+async def test_phone_camera_controls_are_ignored_while_the_video_is_on() -> None:
+    factory = FakePeerFactory()
+    manager = await live_manager(factory)
+    manager.start_video_source()
+
+    factory.last.events.on_message(json.dumps({"type": "set_controls", "cameraOff": True}))
+
+    assert not manager.status().controls.camera_off
+    assert factory.last.sent[-1]["type"] == "controls"
+
+
+async def test_stopping_the_video_source_unfreezes() -> None:
+    factory = FakePeerFactory()
+    manager = await live_manager(factory)
+    manager.start_video_source()
+    manager.change_controls(ControlsChange(frozen=True))
+
+    manager.stop_video_source()
+
+    assert not manager.status().controls.frozen
+
+
+async def test_phone_back_to_camera_asks_to_turn_the_video_off() -> None:
+    factory = FakePeerFactory()
+    manager = await live_manager(factory)
+    requests: list[bool] = []
+
+    async def back_to_camera() -> None:
+        requests.append(True)
+
+    manager.on_back_to_camera(back_to_camera)
+
+    factory.last.events.on_message(json.dumps({"type": "set_video_source", "active": False}))
+    await asyncio.sleep(0)
+
+    assert requests == [True]
+
+
+async def test_phone_asking_to_show_the_video_is_ignored_and_logged(caplog: pytest.LogCaptureFixture) -> None:
+    factory = FakePeerFactory()
+    manager = await live_manager(factory)
+    requests: list[bool] = []
+
+    async def back_to_camera() -> None:
+        requests.append(True)
+
+    manager.on_back_to_camera(back_to_camera)
+
+    with caplog.at_level(logging.WARNING):
+        factory.last.events.on_message(json.dumps({"type": "set_video_source", "active": True}))
+        await asyncio.sleep(0)
+
+    assert requests == []
+    assert VIDEO_FROM_PHONE in caplog.text

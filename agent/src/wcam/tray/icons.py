@@ -21,6 +21,8 @@ def tray_icon(state: TrayState) -> Image.Image:
     low, high = MARGIN, ICON_SIZE - MARGIN
     if state is TrayState.LIVE:
         draw.ellipse((low, low, high, high), fill=DATA)
+    elif state is TrayState.VIDEO:
+        draw.polygon(((low, low), (high, ICON_SIZE / 2), (low, high)), fill=DATA_2)
     elif state is TrayState.FROZEN:
         draw.rectangle((low, low, high, high), fill=DATA_2)
     elif state is TrayState.CAMERA_OFF:

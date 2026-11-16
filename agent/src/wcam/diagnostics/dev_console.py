@@ -57,6 +57,7 @@ class DevConsole:
         session = status.session
         window = self._pipeline.stage_times.take()
         live = session is not None and session.state is SessionState.LIVE
+        delivering = live or self._pipeline.video_active
         now = time.monotonic()
         elapsed = max(now - self._previous_at, MINIMUM_WINDOW_SECONDS)
         delivered = self._pipeline.frames_delivered
@@ -69,9 +70,9 @@ class DevConsole:
             "at": iso_milliseconds(self._clock()),
             "session": None if session is None else self._session(session, status),
             "received": received,
-            "delivered": self._delivered(delivered_fps) if live else None,
-            "stages": stages(window) if live else None,
-            "frameTimesMs": [round(value, 2) for value in window.of(Stage.TOTAL)] if live else None,
+            "delivered": self._delivered(delivered_fps) if delivering else None,
+            "stages": stages(window) if delivering else None,
+            "frameTimesMs": [round(value, 2) for value in window.of(Stage.TOTAL)] if delivering else None,
             "budgetMs": round(MILLISECONDS_PER_SECOND / output.fps, 1),
             "ceilingKbps": camera_format.size.max_bitrate_bps // BITS_PER_KILOBIT,
             "virtualCamera": {

@@ -4,6 +4,7 @@ import type { CamEvent } from "../data/cam-state";
 import { confirmationCode, sdpFingerprint } from "../data/confirmation-code";
 import type { ControlMessage, Controls, ControlsPatch } from "../data/contract";
 import {
+  backToCameraMessage,
   cameraCapabilitiesData,
   parseControlMessage,
   setControlsMessage,
@@ -28,7 +29,9 @@ export interface Publisher {
   videoFormat: VideoFormatMessage | null;
   snapshotRequest: SnapshotRequest | null;
   controls: Controls | null;
+  videoSourceActive: boolean;
   changeControls: (patch: ControlsPatch) => void;
+  backToCamera: () => void;
   chooseVideoFormat: (format: VideoFormat) => void;
   sendPaced: (messages: readonly string[]) => Promise<void>;
   confirmCode: () => void;
@@ -45,6 +48,7 @@ export interface SnapshotRequest {
 interface PublisherSession {
   replaceTrack: (track: MediaStreamTrack | null) => void;
   changeControls: (patch: ControlsPatch) => void;
+  backToCamera: () => void;
   chooseVideoFormat: (format: VideoFormat) => void;
   sendPaced: (messages: readonly string[]) => Promise<void>;
   confirmCode: () => void;
@@ -57,6 +61,7 @@ interface SessionCallbacks {
   onVideoFormat: (message: VideoFormatMessage) => void;
   onSnapshotRequest: (request: SnapshotRequest) => void;
   onControls: (controls: Controls) => void;
+  onVideoSource: (active: boolean) => void;
   readVideo: () => HTMLVideoElement | null;
 }
 
@@ -86,6 +91,7 @@ export function usePublisher({
   const [videoFormat, setVideoFormat] = useState<VideoFormatMessage | null>(null);
   const [snapshotRequest, setSnapshotRequest] = useState<SnapshotRequest | null>(null);
   const [controls, setControls] = useState<Controls | null>(null);
+  const [videoSourceActive, setVideoSourceActive] = useState(false);
   const sendPaced = useCallback((messages: readonly string[]) => {
     return sessionRef.current?.sendPaced(messages) ?? Promise.resolve();
   }, []);
@@ -104,6 +110,7 @@ export function usePublisher({
       onVideoFormat: setVideoFormat,
       onSnapshotRequest: setSnapshotRequest,
       onControls: setControls,
+      onVideoSource: setVideoSourceActive,
       readVideo: () => videoRef.current,
     });
   }, [shouldStart, track, takeToken, onEvent, videoRef]);
@@ -131,8 +138,12 @@ export function usePublisher({
     videoFormat,
     snapshotRequest,
     controls,
+    videoSourceActive,
     changeControls: (patch) => {
       sessionRef.current?.changeControls(patch);
+    },
+    backToCamera: () => {
+      sessionRef.current?.backToCamera();
     },
     chooseVideoFormat: (format) => {
       sessionRef.current?.chooseVideoFormat(format);
@@ -150,7 +161,7 @@ export function usePublisher({
 function startSession(
   track: MediaStreamTrack,
   token: string,
-  { onEvent, onVideoFormat, onSnapshotRequest, onControls, readVideo }: SessionCallbacks,
+  { onEvent, onVideoFormat, onSnapshotRequest, onControls, onVideoSource, readVideo }: SessionCallbacks,
 ): PublisherSession {
   const connection = new RTCPeerConnection({ iceServers: [] });
   const channel = connection.createDataChannel(CONTROL_CHANNEL);
@@ -252,6 +263,12 @@ function startSession(
       }
       return;
     }
+    if (message.type === "video_source") {
+      if (isActive()) {
+        onVideoSource(message.active);
+      }
+      return;
+    }
     if (message.type === "stats_request") {
       requestStats(isActive() && message.enabled);
       return;
@@ -297,6 +314,9 @@ function startSession(
     },
     changeControls: (patch) => {
       gate.send(setControlsMessage(patch));
+    },
+    backToCamera: () => {
+      gate.send(backToCameraMessage());
     },
     sendPaced: async (messages) => {
       for (const message of messages) {

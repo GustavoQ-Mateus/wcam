@@ -12,7 +12,7 @@ services:
     command:
       - sh
       - -c
-      - /app/agent/.venv/bin/python -m wcam.tools.make_reference /reference/reference.y4m && exec /app/agent/.venv/bin/wcam
+      - /app/agent/.venv/bin/python -m wcam.tools.make_reference /reference/reference.y4m && /app/agent/.venv/bin/python -m wcam.tools.make_test_video /reference/test-video.mp4 && /app/agent/.venv/bin/python -m wcam.tools.make_test_video /reference/test-video-2.mp4 portrait && exec /app/agent/.venv/bin/wcam
     volumes:
       - reference:/reference
     ports:
@@ -50,6 +50,8 @@ services:
       E2E_CONSOLE_URL: http://agent:8080
       E2E_PHONE_URL: https://agent:8443
       E2E_QUALITY_REFERENCE: /reference/reference.y4m
+      E2E_TEST_VIDEO: /reference/test-video.mp4
+      E2E_TEST_VIDEO_2: /reference/test-video-2.mp4
     volumes:
       - reference:/reference:ro
     depends_on:

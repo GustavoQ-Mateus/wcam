@@ -5,6 +5,7 @@
 }
 
 .control,
+.useVideo,
 .disconnect {
   display: inline-flex;
   align-items: center;
@@ -44,8 +45,18 @@
   }
 }
 
-.disconnect {
+.useVideo {
   margin-left: auto;
+  background: var(--raised);
+
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      background: var(--raised-hover);
+    }
+  }
+}
+
+.disconnect {
   color: var(--negative);
 
   @media (hover: hover) and (pointer: fine) {

@@ -66,7 +66,7 @@ export interface VirtualCamera {
   backend: "media_foundation" | "obs" | "fake";
   reason: VirtualCameraUnavailableReason | null;
   output: { width: number; height: number; fps: number };
-  source: "phone" | "frozen" | "held" | "camera_off" | "placeholder";
+  source: "phone" | "frozen" | "held" | "camera_off" | "placeholder" | "video";
   streamingApps: number | null;
 }
 
@@ -95,6 +95,37 @@ export interface Status {
   quality: Quality | null;
   devTools: boolean;
   controls: Controls;
+  videoSource: VideoSource;
+}
+
+export interface LibraryVideo {
+  id: string;
+  name: string;
+  durationSeconds: number;
+  width: number;
+  height: number;
+  fps: number;
+  codec: string;
+  filmstripFrames: number;
+}
+
+export interface TimelineClip {
+  id: string;
+  videoId: string;
+  inSeconds: number;
+  outSeconds: number;
+}
+
+export interface Timeline {
+  clips: TimelineClip[];
+  durationSeconds: number;
+}
+
+export interface VideoSource {
+  videos: LibraryVideo[];
+  timeline: Timeline;
+  active: boolean;
+  positionSeconds: number | null;
 }
 
 export interface VideoFormatStatus {
@@ -148,6 +179,7 @@ export type ControlMessage =
   | { type: "confirmation"; pc: boolean; phone: boolean }
   | ({ type: "controls" } & Controls)
   | { type: "stats_request"; enabled: boolean }
+  | { type: "video_source"; active: boolean }
   | {
       type: "video_format";
       format: VideoFormat;

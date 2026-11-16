@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from wcam.media.color_correction import ColorCorrection, CorrectionState, DisplayConvention
@@ -11,7 +11,12 @@ from wcam.media.video_format import VideoFormat
 from wcam.sessions.controls import Controls, ControlsChange, Facing
 from wcam.sessions.manager import LastEnded, SessionOffer, SessionView, Status, VideoFormatState
 from wcam.sessions.phone_messages import CameraCapabilitiesMessage, CameraColorSpaceMessage, CameraModesMessage
+from wcam.video.library import LibraryVideo
+from wcam.video.source import VideoSourceView
+from wcam.video.timeline import MAX_CLIP_ID_LENGTH, Clip, Timeline
 from wcam.virtualcam.sink import CameraState
+
+SECONDS_DECIMALS = 3
 
 
 class CamelModel(BaseModel):
@@ -146,6 +151,66 @@ class ControlsRequest(CamelModel):
         return ControlsChange(self.frozen, self.camera_off, self.mirror, self.facing)
 
 
+class LibraryVideoBody(CamelModel):
+    id: str
+    name: str
+    duration_seconds: float
+    width: int
+    height: int
+    fps: float
+    codec: str
+    filmstrip_frames: int
+
+
+class ClipBody(CamelModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=False, strict=True, extra="forbid")
+
+    id: str = Field(min_length=1, max_length=MAX_CLIP_ID_LENGTH)
+    video_id: str
+    in_seconds: float
+    out_seconds: float
+
+    def to_clip(self) -> Clip:
+        return Clip(self.id, self.video_id, self.in_seconds, self.out_seconds)
+
+
+class TimelineRequest(CamelModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    clips: list[ClipBody]
+
+
+class ClipEntryBody(CamelModel):
+    id: str
+    video_id: str
+    in_seconds: float
+    out_seconds: float
+
+
+class TimelineBody(CamelModel):
+    clips: list[ClipEntryBody]
+    duration_seconds: float
+
+
+class VideoSourceBody(CamelModel):
+    videos: list[LibraryVideoBody]
+    timeline: TimelineBody
+    active: bool
+    position_seconds: float | None
+
+
+class VideoSourceRequest(CamelModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    active: bool
+
+
+class VideoPositionRequest(CamelModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    seconds: float
+
+
 class StatusResponse(CamelModel):
     pairing: PairingBody | None
     session: SessionBody | None
@@ -156,6 +221,7 @@ class StatusResponse(CamelModel):
     quality: QualityBody | None
     dev_tools: bool
     controls: ControlsBody
+    video_source: VideoSourceBody
 
 
 class VideoFormatRequest(CamelModel):
@@ -185,7 +251,13 @@ def iso_utc(moment: datetime) -> str:
     return moment.replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def status_response(status: Status, pipeline: FramePipeline, cpu_percent: float, dev_tools: bool) -> StatusResponse:
+def status_response(
+    status: Status,
+    pipeline: FramePipeline,
+    cpu_percent: float,
+    dev_tools: bool,
+    video: VideoSourceView,
+) -> StatusResponse:
     expires_at = status.pairing_expires_at
     quality = pipeline.quality_report
     return StatusResponse(
@@ -198,6 +270,46 @@ def status_response(status: Status, pipeline: FramePipeline, cpu_percent: float,
         quality=None if quality is None else quality_body(quality),
         dev_tools=dev_tools,
         controls=controls_body(status.controls),
+        video_source=video_source_body(video),
+    )
+
+
+def library_video_body(video: LibraryVideo) -> LibraryVideoBody:
+    info = video.info
+    return LibraryVideoBody(
+        id=video.id,
+        name=info.name,
+        duration_seconds=info.duration_seconds,
+        width=info.width,
+        height=info.height,
+        fps=info.fps,
+        codec=info.codec,
+        filmstrip_frames=video.filmstrip_frames,
+    )
+
+
+def timeline_body(timeline: Timeline) -> TimelineBody:
+    return TimelineBody(
+        clips=[
+            ClipEntryBody(
+                id=clip.id,
+                video_id=clip.video_id,
+                in_seconds=clip.in_seconds,
+                out_seconds=clip.out_seconds,
+            )
+            for clip in timeline.clips
+        ],
+        duration_seconds=round(timeline.duration_seconds, SECONDS_DECIMALS),
+    )
+
+
+def video_source_body(video: VideoSourceView) -> VideoSourceBody:
+    position = video.position_seconds
+    return VideoSourceBody(
+        videos=[library_video_body(item) for item in video.videos],
+        timeline=timeline_body(video.timeline),
+        active=video.active,
+        position_seconds=None if not video.active or position is None else round(position, SECONDS_DECIMALS),
     )
 
 

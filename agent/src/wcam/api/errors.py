@@ -20,6 +20,13 @@ AGENT_ERRORS = {
     "no_live_session": (409, "No session is live."),
     "comparison_not_found": (404, "The comparison does not exist."),
     "comparison_not_ready": (409, "The comparison is not ready."),
+    "video_too_large": (413, "The video is larger than 20 GB."),
+    "video_unsupported": (422, "The file has no video the agent can decode."),
+    "video_library_full": (409, "The library already holds 20 videos."),
+    "video_not_found": (404, "The video does not exist."),
+    "timeline_empty": (409, "The timeline has no clip."),
+    "video_source_active": (409, "The camera is showing the timeline."),
+    "video_source_inactive": (409, "The camera is not showing the timeline."),
 }
 
 

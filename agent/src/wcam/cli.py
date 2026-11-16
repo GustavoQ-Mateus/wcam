@@ -24,6 +24,7 @@ from wcam.media.pipeline import FramePipeline
 from wcam.media.quality import QualityMeter, read_y4m_luma
 from wcam.network.certificates import TlsCertificate, load_or_create_certificate
 from wcam.network.lan import NoLanInterfaceError, detect_lan_interface
+from wcam.persistence.database import open_database
 from wcam.process_monitor import CpuMonitor
 from wcam.services import AgentServices
 from wcam.sessions.comparisons import ComparisonStore, CorrectionSnapshot
@@ -34,6 +35,7 @@ from wcam.virtualcam.media_foundation_sink import load_native_library
 from wcam.virtualcam.sink import CameraState
 
 EXIT_NO_LAN = 2
+VIDEO_FOLDER = "video"
 OBS_FALLBACK_REASONS = (
     FallbackReason.NATIVE_NOT_REGISTERED,
     FallbackReason.WINDOWS_TOO_OLD,
@@ -78,7 +80,15 @@ def start(settings: Settings, messages: Messages) -> None:
         camera=camera,
         output=pipeline,
     )
-    services = AgentServices(manager, pipeline, CpuMonitor(), camera, comparisons)
+    services = AgentServices(
+        manager,
+        pipeline,
+        CpuMonitor(),
+        camera,
+        comparisons,
+        video_folder=settings.data_dir / VIDEO_FOLDER,
+        database=open_database(settings.data_dir),
+    )
     time_decoders(pipeline.stage_times.record_decode)
     logging.getLogger(EPISODE_LOGGER).addHandler(EpisodeEvents(services.dev_events))
     print_banner(messages, console_url, phone_url, certificate)

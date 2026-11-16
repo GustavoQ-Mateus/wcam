@@ -21,6 +21,7 @@ interface LiveViewProps {
   onDisconnect: () => void;
   onChooseFormat: (format: VideoFormat) => void;
   onCompare?: (() => void) | undefined;
+  onUseVideo: () => void;
 }
 
 export function LiveView({
@@ -31,6 +32,7 @@ export function LiveView({
   onDisconnect,
   onChooseFormat,
   onCompare,
+  onUseVideo,
 }: LiveViewProps) {
   const [previewOn, setPreviewOn] = useState(true);
   const preview = usePreview(previewOn);
@@ -46,12 +48,6 @@ export function LiveView({
           attachPreview={preview.attach}
           previewState={preview.state}
           frozenSince={frozenSince}
-          onUnfreeze={() => {
-            onChange({ frozen: false });
-          }}
-          onCameraOn={() => {
-            onChange({ cameraOff: false });
-          }}
           onShowPreviewAgain={preview.showAgain}
         />
         <ControlBar
@@ -65,6 +61,7 @@ export function LiveView({
           }}
           onDisconnect={onDisconnect}
           onCompare={onCompare}
+          onUseVideo={onUseVideo}
         />
       </section>
       <aside className={styles.aside}>

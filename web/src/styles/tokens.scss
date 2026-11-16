@@ -67,6 +67,7 @@
   --radius-pill: 999px;
   --radius-box: 0.5rem;
   --qr-size: 18rem;
+  --qr-size-compact: 12rem;
   --console-max: 90rem;
   --console-aside: 22rem;
   --console-intro: 28rem;
@@ -74,6 +75,16 @@
   --code-cell-height: 7rem;
   --code-group-gap: var(--space-6);
   --progress-height: 4px;
+  --timeline-track: 3.5rem;
+  --ruler-height: 1.75rem;
+  --clip-gap: 2px;
+  --edge-width: 0.75rem;
+  --playhead-width: 2px;
+  --playhead-head: 0.75rem;
+  --library-thumb: 4rem;
+  --library-thumb-height: 2.5rem;
+  --library-max-height: 20rem;
+  --clock-width: 7.5rem;
   --mark-size: 0.625rem;
   --badge-height: 2rem;
   --radius-label: 0.25rem;
@@ -82,6 +93,7 @@
   --portrait-notice-room: 3.5rem;
   --comparison-image-min: 24rem;
   --icon-size: 24px;
+  --icon-size-small: 18px;
   --icon-stroke: 2px;
   --illustration-size: 48px;
 
@@ -96,4 +108,5 @@
   --scale-press: 0.97;
   --scale-enter: 0.96;
   --opacity-dimmed: 0.4;
+  --opacity-lifted: 0.85;
 }

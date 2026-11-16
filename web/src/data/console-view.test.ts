@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { Controls, Session, Status, VirtualCamera } from "./contract";
+import type { Controls, Session, Status, VideoSource, VirtualCamera } from "./contract";
 import {
   consoleMode,
   currentFacing,
   otherFacing,
+  phoneFlowMode,
   problemKey,
   signalPath,
   stateBadge,
@@ -18,6 +19,29 @@ const VIRTUAL_CAMERA: VirtualCamera = {
   output: { width: 1920, height: 1080, fps: 30 },
   source: "phone",
   streamingApps: 1,
+};
+const VIDEO_SOURCE: VideoSource = {
+  videos: [],
+  timeline: { clips: [], durationSeconds: 0 },
+  active: false,
+  positionSeconds: null,
+};
+const ACTIVE_VIDEO: VideoSource = {
+  videos: [
+    {
+      id: "v1",
+      name: "loop.mp4",
+      durationSeconds: 6,
+      width: 1280,
+      height: 720,
+      fps: 30,
+      codec: "h264",
+      filmstripFrames: 60,
+    },
+  ],
+  timeline: { clips: [{ id: "c1", videoId: "v1", inSeconds: 0, outSeconds: 6 }], durationSeconds: 6 },
+  active: true,
+  positionSeconds: 2,
 };
 const SESSION: Session = {
   id: "s1",
@@ -36,6 +60,7 @@ function statusWith(changes: {
   session?: Partial<Session> | null;
   controls?: Partial<Controls>;
   virtualCamera?: Partial<VirtualCamera>;
+  videoSource?: VideoSource;
 }): Status {
   return {
     pairing: null,
@@ -47,6 +72,7 @@ function statusWith(changes: {
     quality: null,
     devTools: false,
     controls: { ...CONTROLS, ...changes.controls },
+    videoSource: changes.videoSource ?? VIDEO_SOURCE,
   };
 }
 
@@ -79,6 +105,24 @@ describe("console view", () => {
     expect(consoleMode(statusWith({ virtualCamera: { source: "frozen" } }))).toBe("lost");
   });
 
+  it("an active video is the video mode even without a phone", () => {
+    expect(consoleMode(statusWith({ session: null, videoSource: ACTIVE_VIDEO }))).toBe("video");
+  });
+
+  it("a phone arriving while the video plays shows its own step under the video", () => {
+    const flows = [null, { state: "connecting" as const }, { state: "awaiting_confirmation" as const }, {}].map(
+      (session) => phoneFlowMode(statusWith({ session, videoSource: ACTIVE_VIDEO })),
+    );
+
+    expect(flows).toEqual(["waiting", "connecting", "confirming", null]);
+  });
+
+  it("an active video frozen by the user is frozen", () => {
+    expect(consoleMode(statusWith({ session: null, videoSource: ACTIVE_VIDEO, controls: { frozen: true } }))).toBe(
+      "frozen",
+    );
+  });
+
   it("each state has its own badge text, colour and shape", () => {
     const badges = [
       statusWith({ session: null }),
@@ -87,6 +131,7 @@ describe("console view", () => {
       statusWith({ controls: { frozen: true } }),
       statusWith({ controls: { cameraOff: true } }),
       statusWith({ virtualCamera: { source: "frozen" } }),
+      statusWith({ session: null, videoSource: ACTIVE_VIDEO }),
     ].map(stateBadge);
 
     expect(badges).toEqual([
@@ -96,6 +141,7 @@ describe("console view", () => {
       { key: "state.frozen", tone: "still", shape: "square" },
       { key: "state.camera_off", tone: "warning", shape: "bars" },
       { key: "state.lost", tone: "negative", shape: "triangle" },
+      { key: "state.video", tone: "still", shape: "play" },
     ]);
   });
 
