@@ -1,9 +1,11 @@
 import asyncio
+import time
 
 import numpy as np
 import pytest
 from av import VideoFrame
 
+from tests.integration.test_webrtc import wait_until
 from wcam.api.schemas import video_body
 from wcam.media.color_correction import CameraColorSpace, DisplayConvention, color_correction
 from wcam.media.color_range import LUMA_TABLE
@@ -14,8 +16,9 @@ from wcam.virtualcam.fake_sink import FakeSink
 from wcam.virtualcam.sink import OUTPUT_FPS, OUTPUT_HEIGHT, OUTPUT_WIDTH, I420Frame
 
 SEED = 7
-RUN_SECONDS = 0.5
-MINIMUM_PLACEHOLDERS_IN_RUN = 10
+PLACEHOLDERS_TO_WAIT_FOR = 10
+PLACEHOLDER_WAIT_SECONDS = 3.0
+SPARE_FRAMES = 2
 FREEZE_TOLERANCE_SECONDS = 0.2
 STANDARD = DisplayConvention.STANDARD
 PORTRAIT_WIDTH = 1080
@@ -278,12 +281,16 @@ async def test_running_pipeline_feeds_placeholders_continuously() -> None:
     pipeline = FramePipeline(sink)
     pipeline.open()
 
+    started = time.perf_counter()
     task = asyncio.create_task(pipeline.run())
-    await asyncio.sleep(RUN_SECONDS)
+    async with asyncio.timeout(PLACEHOLDER_WAIT_SECONDS):
+        await wait_until(lambda: sink.frames_sent >= PLACEHOLDERS_TO_WAIT_FOR)
+    elapsed = time.perf_counter() - started
+    sent = sink.frames_sent
     task.cancel()
     await asyncio.gather(task, return_exceptions=True)
 
-    assert MINIMUM_PLACEHOLDERS_IN_RUN <= sink.frames_sent <= RUN_SECONDS * OUTPUT_FPS + 2
+    assert sent <= elapsed * OUTPUT_FPS + SPARE_FRAMES
     assert sink.status.state == "unavailable"
 
 
