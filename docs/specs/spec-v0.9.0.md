@@ -193,7 +193,7 @@ Entregue em 2026-11-15, revisão 2. Bateria do usuário com o WCam rodando no Wi
 - CA 12: pytest 512 passados e 1 pulado, ruff, format e pyright limpos; build, lint e 209 testes Vitest; e2e 33 de 33; CI verde em todos os jobs; `version` 0.9.0 nos dois lados.
 
 Achados:
-- Uma falha intermitente no pytest (1 em 7 execuções completas, durante o e2e subindo na mesma máquina), sem o nome do teste; não voltou em 35 execuções, nem com 5 de 6 núcleos ocupados.
+- Falha intermitente no pytest (1 em 7 execuções completas) identificada: `test_running_pipeline_feeds_placeholders_continuously`, de 2026-11-01, exigia 10 quadros em 0,5 s de relógio, e o timer do Windows (degraus de 15,6 ms) sob carga entregava 9. Corrida no teste, não no código; o teste passou a esperar os 10 quadros com teto de 3 s e limite superior pelo tempo decorrido (PR #50), 12 de 12 com os 6 núcleos ocupados.
 - `comparison.spec` instável com a máquina carregada (A/B igual com o agent das duas revisões).
 - O zoom da linha do tempo só tem botões; atalho de teclado e Ctrl com a roda do mouse ficam como melhoria.
 - Ícones em `lucide-react`; gráficos do `/dev` continuam em SVG próprio (uPlot não reduziu a CPU).
