@@ -15,6 +15,7 @@ import {
 
 const STAGES: NonNullable<DevMetrics["stages"]> = {
   decode: { median: 3.1, p95: 4.8 },
+  transfer: { median: 1.2, p95: 1.7 },
   color: { median: 2, p95: 2.9 },
   deliver: { median: 0.6, p95: 1.1 },
   total: { median: 5.9, p95: 8.2 },
@@ -156,5 +157,14 @@ describe("dev metrics", () => {
     expect(header?.startsWith("at,received_fps,received_kbps")).toBe(true);
     expect(live?.split(",").slice(0, 3)).toEqual(["2026-11-12T18:00:01.000Z", "30", "9400"]);
     expect(idle?.split(",")[1]).toBe("");
+  });
+
+  it("csv has the graphics copy stage right after decoding", () => {
+    const [header, live] = metricsCsv([LIVE]).split("\n");
+    const columns = header?.split(",") ?? [];
+    const transfer = columns.indexOf("transfer_median_ms");
+
+    expect([columns[transfer - 1], columns[transfer + 1]]).toEqual(["decode_p95_ms", "transfer_p95_ms"]);
+    expect(live?.split(",").slice(transfer, transfer + 2)).toEqual(["1.2", "1.7"]);
   });
 });

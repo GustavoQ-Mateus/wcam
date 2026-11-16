@@ -10,6 +10,7 @@ function sample(second: number, packetsLost = 0): DevMetrics {
     delivered: { fps: 29, frames: 1, dropped: 0 },
     stages: {
       decode: { median: 3, p95: 4 },
+      transfer: { median: 0, p95: 0 },
       color: { median: 2, p95: 3 },
       deliver: { median: 1, p95: 1.5 },
       total: { median: 6, p95: 8 },
@@ -57,6 +58,27 @@ describe("dev view", () => {
     expect(stageMedians(latest).map((stage) => stage.milliseconds)).toEqual([null, 10, 3, 2, 1, null]);
   });
 
+  it("the frame path shows the graphics copy after decoding only when the graphics card is decoding", () => {
+    const hardware: DevMetrics = {
+      ...sample(0),
+      stages: { ...sample(0).stages, transfer: { median: 1.5, p95: 2 } } as DevMetrics["stages"],
+    };
+
+    expect([stageMedians(sample(0)), stageMedians(hardware)].map((path) => path.map((step) => step.stage))).toEqual([
+      ["phone", "wifi", "decode", "color", "deliver", "apps"],
+      ["phone", "wifi", "decode", "transfer", "color", "deliver", "apps"],
+    ]);
+  });
+
+  it("the graphics copy band takes the stage p95 and is zero with processor decoding", () => {
+    const hardware: DevMetrics = {
+      ...sample(1),
+      stages: { ...sample(1).stages, transfer: { median: 1.5, p95: 2 } } as DevMetrics["stages"],
+    };
+
+    expect(devCharts([sample(0), hardware], [], 2).transfer).toEqual([0, 2]);
+  });
+
   it("live duration shows minutes and two-digit seconds", () => {
     expect(liveDuration("2026-11-12T17:58:00Z", "2026-11-12T18:00:05.400Z")).toBe("2:05");
   });
@@ -64,7 +86,7 @@ describe("dev view", () => {
   it("a stage without frames in the window is left empty instead of breaking the charts", () => {
     const early: DevMetrics = {
       ...sample(0),
-      stages: { decode: null, color: { median: 2, p95: 3 }, deliver: null, total: null },
+      stages: { decode: null, transfer: null, color: { median: 2, p95: 3 }, deliver: null, total: null },
     };
 
     const charts = devCharts([early], [], 1);

@@ -36,6 +36,7 @@ export interface DevMetrics {
   delivered: { fps: number; frames: number; dropped: number } | null;
   stages: {
     decode: StageTimes | null;
+    transfer: StageTimes | null;
     color: StageTimes | null;
     deliver: StageTimes | null;
     total: StageTimes | null;
@@ -91,6 +92,8 @@ const CSV_COLUMNS = [
   "dropped_frames",
   "decode_median_ms",
   "decode_p95_ms",
+  "transfer_median_ms",
+  "transfer_p95_ms",
   "color_median_ms",
   "color_p95_ms",
   "deliver_median_ms",
@@ -244,6 +247,8 @@ function csvRow(sample: DevMetrics): (string | number | null)[] {
     delivered?.dropped ?? null,
     stages?.decode?.median ?? null,
     stages?.decode?.p95 ?? null,
+    stages?.transfer?.median ?? null,
+    stages?.transfer?.p95 ?? null,
     stages?.color?.median ?? null,
     stages?.color?.p95 ?? null,
     stages?.deliver?.median ?? null,
