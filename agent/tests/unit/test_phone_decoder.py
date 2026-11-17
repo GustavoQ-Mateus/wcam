@@ -1,16 +1,28 @@
+from collections.abc import Buffer
+from fractions import Fraction
+from typing import cast
+
+import av
 from aiortc import rtcrtpreceiver
 from aiortc.codecs.vpx import Vp8Decoder
 from aiortc.jitterbuffer import JitterFrame
 from aiortc.rtcrtpparameters import RTCRtpCodecParameters
 from av import VideoFrame
+from av.video.codeccontext import VideoCodecContext
 
 from wcam.decoding.hardware import HardwareDecodeError, HardwareDecoder, HardwareFrames, HardwareStream
 from wcam.decoding.messages import EncodedPacket
 from wcam.decoding.source import SourceDecoding
 from wcam.decoding.status import DecoderChange, DecoderKind, DecoderStatus, DecodingSource, FallbackReason
 from wcam.diagnostics.stage_times import Stage
-from wcam.media.phone_decoder import PhoneDecoding, PhoneH264Decoder, contains_idr, install_phone_decoder
-from wcam.tools.synthetic_h264 import encode, h264_encoder, moving_frames
+from wcam.media.phone_decoder import (
+    PhoneDecoding,
+    PhoneH264Decoder,
+    SoftwareOnlyDecoder,
+    contains_idr,
+    install_phone_decoder,
+)
+from wcam.tools.synthetic_h264 import VideoEncoder, encode, h264_encoder, moving_frames
 
 WIDTH = 64
 HEIGHT = 48
@@ -177,4 +189,34 @@ def test_installed_factory_gives_h264_to_the_phone_decoder_and_keeps_vp8() -> No
         setattr(rtcrtpreceiver, GET_DECODER_ATTRIBUTE, original)
 
     assert isinstance(h264, PhoneH264Decoder)
-    assert isinstance(vp8, Vp8Decoder)
+    assert isinstance(vp8, SoftwareOnlyDecoder)
+
+
+def vp8_frames() -> list[JitterFrame]:
+    encoder = cast(VideoEncoder, av.CodecContext.create("libvpx", "w"))
+    context = cast(VideoCodecContext, encoder)
+    context.width, context.height, context.pix_fmt = WIDTH, HEIGHT, "yuv420p"
+    context.time_base = Fraction(1, FPS)
+    context.bit_rate = BITRATE_BPS
+    packets = encode(moving_frames(WIDTH, HEIGHT, FRAME_COUNT), encoder)
+    return [JitterFrame(bytes(cast(Buffer, packet)), index * FRAME_STEP) for index, packet in enumerate(packets)]
+
+
+def test_vp8_session_reports_software_because_the_video_card_has_no_path_for_it() -> None:
+    recorder = Recorder()
+    decoder = decoding_with(FakeHardware(), recorder).software_only(Vp8Decoder())
+
+    decoded = [frame for encoded in vp8_frames() for frame in decoder.decode(encoded)]
+
+    assert len(decoded) == FRAME_COUNT
+    assert recorder.changes == [DecoderChange(DecodingSource.PHONE, DecoderKind.SOFTWARE, FallbackReason.UNSUPPORTED)]
+
+
+def test_vp8_frames_record_a_zero_transfer() -> None:
+    recorder = Recorder()
+    decoder = decoding_with(FakeHardware(), recorder).software_only(Vp8Decoder())
+
+    for encoded in vp8_frames():
+        decoder.decode(encoded)
+
+    assert recorder.recorded(Stage.TRANSFER) == [0.0] * FRAME_COUNT

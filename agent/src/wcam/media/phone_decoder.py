@@ -16,6 +16,7 @@ from wcam.decoding.status import DecoderKind, DecoderStatus, FallbackReason
 from wcam.diagnostics.stage_times import Stage
 
 H264_MIME_TYPE = "video/h264"
+VIDEO_MIME_PREFIX = "video/"
 H264_CODEC = "h264"
 START_CODE = b"\x00\x00\x01"
 NAL_TYPE_MASK = 0x1F
@@ -95,6 +96,21 @@ class PhoneH264Decoder(Decoder):
         self._request_keyframe()
 
 
+class SoftwareOnlyDecoder(Decoder):
+    def __init__(self, software: Decoder, status: DecoderStatus, record_stage: StageRecorder) -> None:
+        self._software = software
+        self._status = status
+        self._record_stage = record_stage
+
+    def decode(self, encoded_frame: JitterFrame) -> list[Frame]:
+        frames = self._software.decode(encoded_frame)
+        for _ in frames:
+            self._record_stage(Stage.TRANSFER, 0.0)
+        if frames:
+            self._status.report(DecoderKind.SOFTWARE, FallbackReason.UNSUPPORTED)
+        return frames
+
+
 class PhoneDecoding:
     def __init__(self, source: SourceDecoding, record_stage: StageRecorder) -> None:
         self.status = source.status
@@ -117,6 +133,9 @@ class PhoneDecoding:
             return PhoneH264Decoder(None, opened, self.status, self._record_stage, request_keyframe)
         return PhoneH264Decoder(opened, None, self.status, self._record_stage, request_keyframe)
 
+    def software_only(self, software: Decoder) -> Decoder:
+        return SoftwareOnlyDecoder(software, self.status, self._record_stage)
+
 
 def install_phone_decoder(decoding: PhoneDecoding) -> None:
     # aiortc 1.15 picks the decoder by calling the get_decoder it imported, with no option to supply one.
@@ -126,8 +145,11 @@ def install_phone_decoder(decoding: PhoneDecoding) -> None:
         raise UnexpectedAiortcReceiverError("aiortc no longer picks the decoder through get_decoder")
 
     def get_decoder(codec: RTCRtpCodecParameters) -> Decoder:
-        if codec.mimeType.lower() == H264_MIME_TYPE:
+        mime_type = codec.mimeType.lower()
+        if mime_type == H264_MIME_TYPE:
             return decoding.create_decoder()
+        if mime_type.startswith(VIDEO_MIME_PREFIX):
+            return decoding.software_only(original(codec))
         return original(codec)
 
     setattr(get_decoder, PHONE_DECODER_MARK, True)

@@ -5,10 +5,10 @@ from typing import cast
 
 import av
 import pytest
-from aiortc import RTCSessionDescription
+from aiortc import RTCConfiguration, RTCPeerConnection, RTCRtpSender, RTCSessionDescription
 
 from tests.integration.test_stall_recovery import RecordingPipeline, offer, phone_sender
-from tests.integration.test_webrtc import wait_until
+from tests.integration.test_webrtc import SyntheticVideo, wait_until
 from wcam.decoding.hardware import HardwareDecodeError, HardwareDecoder, HardwareFrames, HardwareStream
 from wcam.decoding.messages import EncodedPacket
 from wcam.decoding.source import SourceDecoding
@@ -27,6 +27,7 @@ CLIP_FRAMES = 90
 WORKING_PACKETS = 20
 FRAMES_AFTER_FAILURE = 20
 WAIT_SECONDS = 20.0
+VP8_MIME_TYPE = "video/VP8"
 
 type DecoderPath = tuple[DecoderKind, FallbackReason | None]
 
@@ -131,3 +132,34 @@ async def test_video_card_failing_mid_stream_reports_software_with_the_stream_er
     await run_until(lan, session, lambda: len(session.changes) == 2)
 
     assert session.changes == [(DecoderKind.HARDWARE, None), (DecoderKind.SOFTWARE, FallbackReason.STREAM_ERROR)]
+
+
+async def test_vp8_session_reports_software_with_the_video_card_lacking_the_codec(lan: LanInterface) -> None:
+    session = FailingSession()
+    status = DecoderStatus(DecodingSource.PHONE)
+    status.on_change(session.record)
+    decoding = PhoneDecoding(SourceDecoding("auto", status, session.start_hardware), lambda _stage, _milliseconds: None)
+    pipeline = session.pipeline
+    delivering = asyncio.create_task(pipeline.run())
+    channel_open = asyncio.Event()
+    events = PeerEvents(channel_open.set, lambda _: None, lambda _: None)
+    connection = RTCPeerConnection(RTCConfiguration(iceServers=[]))
+    connection.createDataChannel("control")
+    transceiver = connection.addTransceiver(SyntheticVideo(), direction="sendonly")
+    capabilities = RTCRtpSender.getCapabilities("video")
+    transceiver.setCodecPreferences([codec for codec in capabilities.codecs if codec.mimeType == VP8_MIME_TYPE])
+    peer = await aiortc_peer_factory(lan.network, pipeline, decoding)(await offer(connection), events)
+    assert isinstance(peer, AiortcPeer)
+    try:
+        await connection.setRemoteDescription(RTCSessionDescription(peer.answer_sdp, "answer"))
+        await asyncio.wait_for(channel_open.wait(), WAIT_SECONDS)
+        await wait_until(lambda: peer.gate.received > 0)
+        peer.open_gate()
+        await wait_until(lambda: bool(session.changes))
+    finally:
+        await peer.close()
+        await connection.close()
+        delivering.cancel()
+        await asyncio.gather(delivering, return_exceptions=True)
+
+    assert session.changes == [(DecoderKind.SOFTWARE, FallbackReason.UNSUPPORTED)]
