@@ -58,7 +58,7 @@ Se o PyAV não tiver um caminho usável, o spike lista as alternativas com custo
 ## 3. Contrato (`docs/contrato.md` vai para 0.10.0)
 
 - `session.video.decoder` e `videoSource.decoder`: `hardware` ou `software` (`null` sem quadro); mudança conta para o SSE do console.
-- `GET /api/dev/events`: etapa `transfer` nos tempos por etapa (cópia da placa de vídeo e passagem para I420; 0 em software); evento `decoder` (`{"source": "phone" | "video", "decoder", "reason"}`) quando o caminho muda, com o motivo do fallback.
+- `GET /api/dev/events`: etapa `transfer` nos tempos por etapa (passagem para I420 e cópia entre processos; a cópia da placa entra em `decode`, porque o PyAV a faz dentro da decodificação; 0 em software; emenda de 2026-11-16); evento `decoder` (`{"source": "phone" | "video", "decoder", "reason"}`) quando o caminho muda, com o motivo do fallback.
 - `WCAM_HW_DECODE` na tabela de variáveis.
 - Troca de formato: só muda se a ADR da §1.4 decidir pela troca imediata; nesse caso o orquestrador emenda o contrato antes do código.
 
