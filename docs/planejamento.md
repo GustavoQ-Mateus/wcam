@@ -429,6 +429,8 @@ Cada linha vira uma spec `docs/specs/spec-vX.Y.Z.md` com CA verificáveis. Uma s
 | 2.0.0 (proposta) | Imagem na placa de vídeo | decodificação, tradução de cor (shader) e entrega ao `vcam` por textura D3D11 compartilhada, sem passar a imagem pela memória (a opção que a ADR 0018 deixou para depois); muda a arquitetura, por isso MAJOR | CPU do caminho do quadro perto de zero em 2160p; CA-2 mantido |
 | 1.x | Futuro | Linux, macOS | cada uma com ADR própria |
 
+Ideias ainda não validadas (vários celulares, microfone do celular, efeitos com IA, gravação, integrações, engenharia e entrega) ficam em `docs/backlog.md`, com os princípios e a validação de cada uma antes de entrar nesta tabela.
+
 ## 7. ADRs iniciais (escritas na spec 0.1.0, após aprovação deste plano)
 
 1. 0001 Monorepo com `agent` e `web`.
