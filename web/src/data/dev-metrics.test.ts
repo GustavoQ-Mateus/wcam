@@ -159,7 +159,7 @@ describe("dev metrics", () => {
     expect(idle?.split(",")[1]).toBe("");
   });
 
-  it("csv has the graphics copy stage right after decoding", () => {
+  it("csv has the transfer stage right after decoding", () => {
     const [header, live] = metricsCsv([LIVE]).split("\n");
     const columns = header?.split(",") ?? [];
     const transfer = columns.indexOf("transfer_median_ms");

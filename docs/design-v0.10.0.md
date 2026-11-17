@@ -8,7 +8,7 @@ Spec: `docs/specs/spec-v0.10.0.md` §2. Skills: `impeccable` (audit do que mudou
 
 ## `/dev`
 
-- Etapa "Cópia da placa" (`transfer`) no gráfico de tempos por etapa, logo acima de "Decodificar", porque é parte do mesmo caminho na placa de vídeo. Sem token novo (decisão do orquestrador): `--data` com hachura a 45 graus, a mesma hachura na legenda. A forma diferencia a faixa da decodificação, então a cor não é o único sinal.
+- Etapa "Transferência" (`transfer`: passagem de NV12 para I420 e cópia entre processos; a cópia da placa para a memória entra em "Decodificar", contrato 0.10.0) no gráfico de tempos por etapa, logo acima de "Decodificar", porque só existe no caminho da placa de vídeo. Sem token novo (decisão do orquestrador): `--data` com hachura a 45 graus, a mesma hachura na legenda. A forma diferencia a faixa da decodificação, então a cor não é o único sinal.
 - Com decodificação no processador `transfer` é 0: a faixa não tem altura e a legenda some (só aparece com algum valor acima de 0 na janela), sem deixar espaço.
 - No caminho do quadro, a etapa aparece entre "Decodificar" e "Cor" só com mediana acima de 0.
 - Lista de eventos: rótulos para `decoder`, `video_source` e `timeline`.

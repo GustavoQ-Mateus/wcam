@@ -58,7 +58,7 @@ describe("dev view", () => {
     expect(stageMedians(latest).map((stage) => stage.milliseconds)).toEqual([null, 10, 3, 2, 1, null]);
   });
 
-  it("the frame path shows the graphics copy after decoding only when the graphics card is decoding", () => {
+  it("the frame path shows the transfer after decoding only when the graphics card is decoding", () => {
     const hardware: DevMetrics = {
       ...sample(0),
       stages: { ...sample(0).stages, transfer: { median: 1.5, p95: 2 } } as DevMetrics["stages"],
@@ -70,7 +70,7 @@ describe("dev view", () => {
     ]);
   });
 
-  it("the graphics copy band takes the stage p95 and is zero with processor decoding", () => {
+  it("the transfer band takes the stage p95 and is zero with processor decoding", () => {
     const hardware: DevMetrics = {
       ...sample(1),
       stages: { ...sample(1).stages, transfer: { median: 1.5, p95: 2 } } as DevMetrics["stages"],
