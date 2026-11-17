@@ -21,6 +21,7 @@ from wcam.media.color_range import (
 )
 from wcam.media.episodes import FrameGap
 from wcam.media.placeholder import black_i420, camera_off_i420
+from wcam.media.plane_translation import PlaneTranslator
 from wcam.media.quality import QualityMeter, QualityReport
 from wcam.media.video_format import DEFAULT_VIDEO_FORMAT
 from wcam.virtualcam.sink import AnnouncedFormat, CameraState, I420Frame, VirtualCameraSink, frame_size
@@ -40,7 +41,6 @@ DEFAULT_OUTPUT = AnnouncedFormat(
 )
 QUALITY_WORKER_NAME = "wcam-quality"
 MILLISECONDS_PER_SECOND = 1000
-ALL_COLUMNS = slice(None)
 MIRRORED_COLUMNS = slice(None, None, -1)
 
 
@@ -100,6 +100,7 @@ class FramePipeline:
         self.frames_dropped = 0
         self._gap_lock = threading.Lock()
         self._longest_gap: FrameGap | None = None
+        self._translator = PlaneTranslator()
 
     @property
     def last_sent(self) -> I420Frame | None:
@@ -341,7 +342,10 @@ class FramePipeline:
         return canvas
 
     def _converted(self, frame: VideoFrame, width: int, height: int) -> I420Frame:
-        return i420_array(frame, width, height, self.color_range, self.color_tables(), mirror=self.mirror)
+        tables = self.color_tables()
+        return i420_array(
+            frame, width, height, self.color_range, tables, mirror=self.mirror, translator=self._translator
+        )
 
 
 def mirrored_i420(image: I420Frame) -> I420Frame:
@@ -358,10 +362,11 @@ def i420_array(
     tables: ColorTables | None = None,
     *,
     mirror: bool = False,
+    translator: PlaneTranslator | None = None,
 ) -> I420Frame:
     source = reformatted(frame, width, height, color_range)
     if tables is not None or mirror:
-        return copied_i420(source, tables, mirror=mirror)
+        return (translator or PlaneTranslator()).translated(source, tables, mirror=mirror)
     array: I420Frame = np.ascontiguousarray(source.to_ndarray(), dtype=np.uint8)
     return array
 
@@ -378,25 +383,6 @@ def reformatted(frame: VideoFrame, width: int, height: int, color_range: ColorRa
         src_color_range=kept_range,
         dst_color_range=kept_range,
     )
-
-
-def copied_i420(frame: VideoFrame, tables: ColorTables | None, *, mirror: bool) -> I420Frame:
-    output = np.empty(frame.width * frame.height * 3 // 2, dtype=np.uint8)
-    columns = MIRRORED_COLUMNS if mirror else ALL_COLUMNS
-    offset = 0
-    for plane, table in zip(frame.planes, plane_tables(tables), strict=True):
-        size = plane.width * plane.height
-        rows = plane_rows(plane, table)[: plane.height, : plane.width]
-        output[offset : offset + size].reshape(plane.height, plane.width)[:] = rows[:, columns]
-        offset += size
-    return output.reshape(frame.height * 3 // 2, frame.width)
-
-
-def plane_tables(tables: ColorTables | None) -> tuple[bytes | None, bytes | None, bytes | None]:
-    if tables is None:
-        return None, None, None
-    luma_table, chroma_table = tables
-    return luma_table, chroma_table, chroma_table
 
 
 def plane_rows(plane: VideoPlane, table: bytes | None) -> I420Frame:

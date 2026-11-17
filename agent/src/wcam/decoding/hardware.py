@@ -146,15 +146,9 @@ class HardwareDecoderProcess:
         return reply
 
     def _frame(self, image: DecodedImage) -> VideoFrame:
-        frame = VideoFrame(image.width, image.height, I420_FORMAT)
         size = i420_bytes(image.width, image.height)
         source = np.ndarray((size,), np.uint8, self._memory.buf, image.slot * SLOT_BYTES)
-        offset = 0
-        for plane in frame.planes:
-            plane_size = plane.width * plane.height
-            rows = np.frombuffer(plane, np.uint8).reshape(-1, plane.line_size)[: plane.height, : plane.width]
-            np.copyto(rows, source[offset : offset + plane_size].reshape(plane.height, plane.width))
-            offset += plane_size
+        frame = copied_frame(source, image.width, image.height)
         frame.pts = image.pts
         cast(KeyFrameFlag, frame).key_frame = image.keyframe
         frame.color_range = image.color_range
@@ -168,3 +162,14 @@ class HardwareDecoderProcess:
         if self._process.is_alive():
             self._process.kill()
             self._process.join(STOP_TIMEOUT_SECONDS)
+
+
+def copied_frame(source: np.ndarray[tuple[int], np.dtype[np.uint8]], width: int, height: int) -> VideoFrame:
+    frame = VideoFrame(width, height, I420_FORMAT)
+    offset = 0
+    for plane in frame.planes:
+        plane_size = plane.width * plane.height
+        rows = np.frombuffer(plane, np.uint8).reshape(-1, plane.line_size)[: plane.height, : plane.width]
+        np.copyto(rows, source[offset : offset + plane_size].reshape(plane.height, plane.width))
+        offset += plane_size
+    return frame
