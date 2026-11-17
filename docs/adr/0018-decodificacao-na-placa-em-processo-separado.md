@@ -32,8 +32,9 @@ Escolha do usuário em 2026-11-16: processo separado.
 - A decodificação na placa de vídeo roda num processo filho do agente, um por fonte (celular e vídeo da biblioteca), com dono e encerramento explícitos. Os pacotes entram por fila; os quadros saem por memória compartilhada, com o processo do agente lendo fora do event loop.
 - Caminho no filho: `dxva2`, com cópia para a memória no próprio filho. Sem placa, sem o codec ou o perfil, ou com o filho falhando ao abrir, a fonte usa o software do PyAV no processo do agente, como na v0.9.0.
 - Encaixe no aiortc pela troca de `get_decoder` importado por `aiortc.rtcrtpreceiver`: uma fábrica devolve o decodificador do WCam para `video/H264` e o original para os outros codecs, com verificação na partida. O aiortc não é copiado.
-- Falha no meio do fluxo (erro do FFmpeg ou o filho caindo): a fonte passa para software no próximo quadro-chave, e o decodificador pede um PLI ao receptor da sessão atual (`_send_rtcp_pli` por `run_coroutine_threadsafe`). A sessão não cai e o vídeo não para.
+- Falha no meio do fluxo (erro do FFmpeg ou o filho caindo): a fonte passa para software no próximo quadro-chave, e o celular recebe um PLI. Na implementação (2026-11-16), o decodificador marca o pedido de quadro-chave no jitter buffer da sessão e o próprio aiortc envia o PLI no event loop, com o SSRC certo, sem chamar método privado. A sessão não cai e o vídeo não para.
 - `WCAM_HW_DECODE=off` não cria o processo filho.
+- HEVC Main 10 da biblioteca fica em software (`unsupported`), para garantir a igualdade de bytes; a placa decodifica Main 10, mas em 10 bits (p010).
 - A CPU do WCam (`process.cpuPercent` e o CA 2 da spec) soma o agente e os processos filhos.
 - Sem dependência nova: `multiprocessing` e `multiprocessing.shared_memory` da biblioteca padrão.
 
