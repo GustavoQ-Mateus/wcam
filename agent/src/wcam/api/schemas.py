@@ -198,6 +198,7 @@ class VideoSourceBody(CamelModel):
     timeline: TimelineBody
     active: bool
     position_seconds: float | None
+    decoder: str | None
 
 
 class VideoSourceRequest(CamelModel):
@@ -311,6 +312,7 @@ def video_source_body(video: VideoSourceView) -> VideoSourceBody:
         timeline=timeline_body(video.timeline),
         active=video.active,
         position_seconds=None if not video.active or position is None else round(position, SECONDS_DECIMALS),
+        decoder=video.decoder,
     )
 
 

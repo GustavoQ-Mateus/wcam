@@ -1,7 +1,5 @@
-import threading
 import time
 from collections.abc import Callable
-from typing import Literal
 
 from aiortc import codecs as aiortc_codecs
 from aiortc import rtcrtpreceiver
@@ -11,8 +9,9 @@ from aiortc.jitterbuffer import JitterFrame
 from aiortc.rtcrtpparameters import RTCRtpCodecParameters
 from av.frame import Frame
 
-from wcam.decoding.hardware import HardwareDecodeError, HardwareDecoder
+from wcam.decoding.hardware import HardwareDecodeError, HardwareStream
 from wcam.decoding.messages import EncodedPacket
+from wcam.decoding.source import SourceDecoding
 from wcam.decoding.status import DecoderKind, DecoderStatus, FallbackReason
 from wcam.diagnostics.stage_times import Stage
 
@@ -25,9 +24,7 @@ MILLISECONDS_PER_SECOND = 1000
 PHONE_DECODER_MARK = "_wcam_phone_decoder"
 GET_DECODER_ATTRIBUTE = "get_decoder"
 
-type HardwareDecodeMode = Literal["auto", "off"]
 type StageRecorder = Callable[[Stage, float], None]
-type HardwareFactory = Callable[[], HardwareDecoder]
 type GetDecoder = Callable[[RTCRtpCodecParameters], Decoder]
 
 
@@ -52,7 +49,7 @@ def elapsed_since(started: float) -> float:
 class PhoneH264Decoder(Decoder):
     def __init__(
         self,
-        hardware: HardwareDecoder | None,
+        hardware: HardwareStream | None,
         fallback_reason: FallbackReason | None,
         status: DecoderStatus,
         record_stage: StageRecorder,
@@ -75,7 +72,7 @@ class PhoneH264Decoder(Decoder):
             self._status.report(DecoderKind.SOFTWARE, self._fallback_reason)
         return frames
 
-    def _decoded_in_hardware(self, encoded_frame: JitterFrame, hardware: HardwareDecoder) -> list[Frame]:
+    def _decoded_in_hardware(self, encoded_frame: JitterFrame, hardware: HardwareStream) -> list[Frame]:
         started = time.perf_counter()
         packet = EncodedPacket(encoded_frame.data, encoded_frame.timestamp, contains_idr(encoded_frame.data))
         try:
@@ -91,7 +88,7 @@ class PhoneH264Decoder(Decoder):
         frames: list[Frame] = [*decoded.frames]
         return frames
 
-    def _fall_back(self, hardware: HardwareDecoder, reason: FallbackReason) -> None:
+    def _fall_back(self, hardware: HardwareStream, reason: FallbackReason) -> None:
         self._hardware = None
         self._fallback_reason = reason
         hardware.close()
@@ -99,50 +96,26 @@ class PhoneH264Decoder(Decoder):
 
 
 class PhoneDecoding:
-    def __init__(
-        self,
-        mode: HardwareDecodeMode,
-        status: DecoderStatus,
-        record_stage: StageRecorder,
-        start_hardware: HardwareFactory,
-    ) -> None:
-        self.status = status
-        self._mode = mode
+    def __init__(self, source: SourceDecoding, record_stage: StageRecorder) -> None:
+        self.status = source.status
+        self._source = source
         self._record_stage = record_stage
-        self._start_hardware = start_hardware
-        self._lock = threading.Lock()
-        self._prepared: HardwareDecoder | None = None
-        self._owned: list[HardwareDecoder] = []
         self._request_keyframe: Callable[[], None] = lambda: None
 
     def start_session(self, request_keyframe: Callable[[], None]) -> None:
-        with self._lock:
-            self._request_keyframe = request_keyframe
-            if self._mode == "off" or self._prepared is not None:
-                return
-            self._prepared = self._start_hardware()
-            self._owned.append(self._prepared)
+        self._request_keyframe = request_keyframe
+        self._source.start()
 
     def end_session(self) -> None:
-        with self._lock:
-            owned, self._owned, self._prepared = self._owned, [], None
-            self._request_keyframe = lambda: None
-        for hardware in owned:
-            hardware.close()
-        self.status.clear()
+        self._request_keyframe = lambda: None
+        self._source.stop()
 
     def create_decoder(self) -> Decoder:
-        with self._lock:
-            hardware, self._prepared = self._prepared, None
-            request_keyframe = self._request_keyframe
-        if hardware is None:
-            reason = FallbackReason.DISABLED if self._mode == "off" else FallbackReason.OPEN_FAILED
-            return PhoneH264Decoder(None, reason, self.status, self._record_stage, request_keyframe)
-        failure = hardware.open(H264_CODEC, None)
-        if failure is not None:
-            hardware.close()
-            return PhoneH264Decoder(None, failure, self.status, self._record_stage, request_keyframe)
-        return PhoneH264Decoder(hardware, None, self.status, self._record_stage, request_keyframe)
+        request_keyframe = self._request_keyframe
+        opened = self._source.open(H264_CODEC, None)
+        if isinstance(opened, FallbackReason):
+            return PhoneH264Decoder(None, opened, self.status, self._record_stage, request_keyframe)
+        return PhoneH264Decoder(opened, None, self.status, self._record_stage, request_keyframe)
 
 
 def install_phone_decoder(decoding: PhoneDecoding) -> None:

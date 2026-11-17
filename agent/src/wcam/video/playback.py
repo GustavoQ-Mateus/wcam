@@ -4,11 +4,11 @@ import math
 import threading
 import time
 from collections import deque
-from collections.abc import Awaitable, Callable, Iterator, Mapping
+from collections.abc import Awaitable, Buffer, Callable, Iterator, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 import av
 from av import VideoFrame
@@ -16,6 +16,10 @@ from av.container import InputContainer
 from av.error import FFmpegError
 from av.video.stream import VideoStream
 
+from wcam.decoding.hardware import HardwareDecodeError, HardwareFrames, HardwareStream
+from wcam.decoding.messages import EncodedPacket
+from wcam.decoding.source import SourceDecoding, software_decoding
+from wcam.decoding.status import DecoderKind, DecodingSource, FallbackReason
 from wcam.diagnostics.stage_times import Stage
 from wcam.media.pipeline import elapsed_since
 from wcam.video.frames import fitted_i420
@@ -32,6 +36,8 @@ NEAREST_FRAME_SHARE = 0.5
 MAX_FRAMES_BEHIND = 2
 TIME_TOLERANCE_SECONDS = 1e-6
 SETTLE_TIMEOUT_SECONDS = 10.0
+RESUME_STEP_SECONDS = 1e-3
+DRAIN_PACKET = EncodedPacket(b"", None, keyframe=False)
 
 type Sleep = Callable[[float], Awaitable[None]]
 
@@ -72,6 +78,7 @@ class TimelineFrame:
     play_seconds: float
     image: I420Frame
     decode_milliseconds: float
+    transfer_milliseconds: float
     convert_milliseconds: float
 
 
@@ -153,16 +160,34 @@ class ReadAhead:
         return self._request is not None and self._request.generation != generation
 
 
+@dataclass(frozen=True, slots=True)
+class DecodedFrame:
+    offset_seconds: float
+    frame: VideoFrame
+    decode_milliseconds: float
+    transfer_milliseconds: float
+    decoder: DecoderKind
+    reason: FallbackReason | None
+
+
 class ClipDecoder:
-    def __init__(self, path: Path, clip: Clip) -> None:
+    def __init__(self, path: Path, clip: Clip, decoding: SourceDecoding) -> None:
         self.clip = clip
+        self._decoding = decoding
         self._container: InputContainer = av.open(str(path))
         self._stream: VideoStream = self._container.streams.video[0]
         self._stream.thread_type = STREAM_THREADING
         self._start = self._stream.start_time or 0
         self._time_base = float(self._stream.time_base or 0)
         self._from = clip.in_seconds
-        self._frames: Iterator[VideoFrame] = iter(())
+        self._last_seconds: float | None = None
+        self._hardware: HardwareStream | None = None
+        self._reason: FallbackReason | None = None
+        self._frames: Iterator[tuple[VideoFrame, float]] = iter(())
+
+    @property
+    def decoder(self) -> DecoderKind:
+        return DecoderKind.SOFTWARE if self._hardware is None else DecoderKind.HARDWARE
 
     def start_at(self, offset_seconds: float) -> None:
         self._from = self.clip.in_seconds + offset_seconds
@@ -176,25 +201,75 @@ class ClipDecoder:
             return False
         return True
 
-    def decoded(self) -> Iterator[tuple[float, VideoFrame, float]]:
+    def decoded(self) -> Iterator[DecodedFrame]:
         while True:
             started = time.perf_counter()
-            frame = next(self._frames, None)
-            if frame is None:
+            try:
+                item = next(self._frames, None)
+            except HardwareDecodeError as error:
+                self._fall_back(error.reason)
+                continue
+            if item is None:
                 return
+            frame, transfer_milliseconds = item
             seconds = self._seconds(frame)
             if seconds >= self.clip.out_seconds - TIME_TOLERANCE_SECONDS:
                 return
             if seconds >= self._from - TIME_TOLERANCE_SECONDS:
-                yield seconds - self.clip.in_seconds, frame, elapsed_since(started)
+                self._last_seconds = seconds
+                decode_milliseconds = elapsed_since(started) - transfer_milliseconds
+                offset = seconds - self.clip.in_seconds
+                yield DecodedFrame(
+                    offset, frame, decode_milliseconds, transfer_milliseconds, self.decoder, self._reason
+                )
 
     def close(self) -> None:
+        self._close_hardware()
         self._container.close()
 
     def _seek(self, seconds: float, *, backward: bool) -> None:
         target = self._start + round(seconds / self._time_base)
         self._container.seek(target, stream=self._stream, backward=backward, any_frame=False)
-        self._frames = self._container.decode(self._stream)
+        self._frames = self._new_frames()
+
+    def _new_frames(self) -> Iterator[tuple[VideoFrame, float]]:
+        self._close_hardware()
+        if self._reason is None:
+            context = self._stream.codec_context
+            opened = self._decoding.open(context.name, context.extradata)
+            if not isinstance(opened, FallbackReason):
+                self._hardware = opened
+                return self._hardware_frames(opened)
+            self._reason = opened
+        return ((frame, 0.0) for frame in self._container.decode(self._stream))
+
+    def _hardware_frames(self, hardware: HardwareStream) -> Iterator[tuple[VideoFrame, float]]:
+        for packet in self._container.demux(self._stream):
+            if packet.size == 0:
+                yield from self._drained(hardware)
+                return
+            encoded = EncodedPacket(bytes(cast(Buffer, packet)), packet.pts, packet.is_keyframe)
+            yield from self._timed(hardware.decode(encoded))
+
+    def _drained(self, hardware: HardwareStream) -> Iterator[tuple[VideoFrame, float]]:
+        while frames := hardware.decode(DRAIN_PACKET).frames:
+            yield from self._timed(HardwareFrames(frames, 0.0, 0.0))
+
+    def _timed(self, decoded: HardwareFrames) -> Iterator[tuple[VideoFrame, float]]:
+        for frame in decoded.frames:
+            frame.time_base = self._stream.time_base
+            yield frame, decoded.transfer_milliseconds / len(decoded.frames)
+
+    def _fall_back(self, reason: FallbackReason) -> None:
+        self._reason = reason
+        if self._last_seconds is not None:
+            self._from = max(self._from, self._last_seconds + RESUME_STEP_SECONDS)
+        self._seek(self._from, backward=True)
+
+    def _close_hardware(self) -> None:
+        hardware, self._hardware = self._hardware, None
+        if hardware is not None:
+            hardware.close()
 
     def _seconds(self, frame: VideoFrame) -> float:
         pts = frame.pts if frame.pts is not None else self._start
@@ -204,22 +279,22 @@ class ClipDecoder:
 @dataclass(slots=True)
 class PreparedClip:
     decoder: ClipDecoder
-    frames: Iterator[tuple[float, VideoFrame, float]]
-    first: tuple[float, VideoFrame, float] | None
+    frames: Iterator[DecodedFrame]
+    first: DecodedFrame | None
     image: I420Frame | None
     size: tuple[int, int]
     convert_milliseconds: float
 
 
-def prepared_clip(path: Path, clip: Clip, size: tuple[int, int]) -> PreparedClip:
-    decoder = ClipDecoder(path, clip)
+def prepared_clip(path: Path, clip: Clip, size: tuple[int, int], decoding: SourceDecoding) -> PreparedClip:
+    decoder = ClipDecoder(path, clip, decoding)
     decoder.start_at(0.0)
     frames = decoder.decoded()
     first = next(frames, None)
     if first is None:
         return PreparedClip(decoder, frames, None, None, size, 0.0)
     started = time.perf_counter()
-    image = fitted_i420(first[1], *size)
+    image = fitted_i420(first.frame, *size)
     return PreparedClip(decoder, frames, first, image, size, elapsed_since(started))
 
 
@@ -236,11 +311,13 @@ class TimelineReader:
         output: VideoOutput,
         preparer: ThreadPoolExecutor,
         target: Callable[[], float | None],
+        decoding: SourceDecoding,
     ) -> None:
         self._read_ahead = read_ahead
         self._output = output
         self._preparer = preparer
         self._target = target
+        self._decoding = decoding
         self._last_emitted = -math.inf
         self.late_jumps = 0
 
@@ -271,13 +348,14 @@ class TimelineReader:
 
     def _opened(self, request: PlayRequest, index: int, offset: float) -> PreparedClip:
         clip = request.timeline.clips[index]
-        decoder = ClipDecoder(request.paths[clip.video_id], clip)
+        decoder = ClipDecoder(request.paths[clip.video_id], clip, self._decoding)
         decoder.start_at(offset)
         return PreparedClip(decoder, decoder.decoded(), None, None, self._size(), 0.0)
 
     def _prepare(self, request: PlayRequest, index: int) -> Future[PreparedClip]:
         clip = request.timeline.clips[index % len(request.timeline.clips)]
-        return self._preparer.submit(prepared_clip, request.paths[clip.video_id], clip, self._size())
+        path = request.paths[clip.video_id]
+        return self._preparer.submit(prepared_clip, path, clip, self._size(), self._decoding)
 
     def _play_clip(self, request: PlayRequest, prepared: PreparedClip, clip_start: float) -> None:
         if prepared.first is not None:
@@ -292,18 +370,27 @@ class TimelineReader:
         self,
         request: PlayRequest,
         clip_start: float,
-        decoded: tuple[float, VideoFrame, float],
+        decoded: DecodedFrame,
         ready: I420Frame | None = None,
         ready_milliseconds: float = 0.0,
     ) -> None:
-        offset, frame, decode_milliseconds = decoded
-        play_seconds = clip_start + offset
+        play_seconds = clip_start + decoded.offset_seconds
         if not self._wanted(play_seconds):
             return
+        self._decoding.status.report(decoded.decoder, decoded.reason)
         started = time.perf_counter()
-        image = fitted_i420(frame, *self._size()) if ready is None else ready
+        image = fitted_i420(decoded.frame, *self._size()) if ready is None else ready
         convert_milliseconds = elapsed_since(started) if ready is None else ready_milliseconds
-        self._emit(TimelineFrame(request.generation, play_seconds, image, decode_milliseconds, convert_milliseconds))
+        self._emit(
+            TimelineFrame(
+                request.generation,
+                play_seconds,
+                image,
+                decoded.decode_milliseconds,
+                decoded.transfer_milliseconds,
+                convert_milliseconds,
+            )
+        )
 
     def _wanted(self, play_seconds: float) -> bool:
         period = 1 / self._output.output.fps
@@ -342,7 +429,9 @@ class VideoPlayback:
         output: VideoOutput,
         clock: Callable[[], float] = time.monotonic,
         sleep: Sleep = precise_sleep,
+        decoding: SourceDecoding | None = None,
     ) -> None:
+        self._decoding = decoding or software_decoding(DecodingSource.VIDEO)
         self._timeline = timeline
         self._paths = paths
         self._output = output
@@ -378,7 +467,10 @@ class VideoPlayback:
         loop = asyncio.get_running_loop()
         producer = ThreadPoolExecutor(max_workers=1, thread_name_prefix=PRODUCER_NAME)
         preparer = ThreadPoolExecutor(max_workers=1, thread_name_prefix=PREPARER_NAME)
-        self._reader = TimelineReader(self._read_ahead, self._output, preparer, lambda: self._play_seconds)
+        self._reader = TimelineReader(
+            self._read_ahead, self._output, preparer, lambda: self._play_seconds, self._decoding
+        )
+        await loop.run_in_executor(producer, self._decoding.start)
         producing = loop.run_in_executor(producer, self._reader.run)
         try:
             await self._play(producing)
@@ -388,6 +480,7 @@ class VideoPlayback:
                 await producing
             producer.shutdown(wait=False)
             preparer.shutdown(wait=False, cancel_futures=True)
+            await asyncio.to_thread(self._decoding.stop)
 
     async def _play(self, producing: asyncio.Future[None]) -> None:
         previous = self._clock()
@@ -434,6 +527,7 @@ class VideoPlayback:
 
     def _show(self, frame: TimelineFrame, *, replace_held: bool) -> None:
         self._output.record_stage(Stage.DECODE, frame.decode_milliseconds)
+        self._output.record_stage(Stage.TRANSFER, frame.transfer_milliseconds)
         self._output.record_stage(Stage.COLOR, frame.convert_milliseconds)
         self._position = frame.play_seconds % self._timeline.duration_seconds
         self._output.submit_video(frame.image, replace_held=replace_held)

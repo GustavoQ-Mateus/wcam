@@ -1,4 +1,5 @@
 import contextlib
+import itertools
 import multiprocessing
 import threading
 import time
@@ -12,12 +13,15 @@ from av import VideoFrame
 from wcam.decoding.child import i420_bytes, serve
 from wcam.decoding.messages import (
     ChildReply,
+    ChildRequest,
+    CloseStream,
     DecodedImage,
     DecodeFailed,
     EncodedPacket,
     OpenStream,
     PacketDecoded,
     StreamOpened,
+    StreamPacket,
 )
 from wcam.decoding.status import FallbackReason
 
@@ -50,12 +54,28 @@ class KeyFrameFlag(Protocol):
     key_frame: bool
 
 
-class HardwareDecoder(Protocol):
-    def open(self, codec: str, extradata: bytes | None) -> FallbackReason | None: ...
-
+class HardwareStream(Protocol):
     def decode(self, packet: EncodedPacket) -> HardwareFrames: ...
 
     def close(self) -> None: ...
+
+
+class HardwareDecoder(Protocol):
+    def open(self, codec: str, extradata: bytes | None) -> HardwareStream | FallbackReason: ...
+
+    def close(self) -> None: ...
+
+
+class ProcessStream:
+    def __init__(self, process: "HardwareDecoderProcess", stream_id: int) -> None:
+        self._process = process
+        self._stream_id = stream_id
+
+    def decode(self, packet: EncodedPacket) -> HardwareFrames:
+        return self._process.decode(self._stream_id, packet)
+
+    def close(self) -> None:
+        self._process.close_stream(self._stream_id)
 
 
 class HardwareDecoderProcess:
@@ -63,6 +83,7 @@ class HardwareDecoderProcess:
         context = multiprocessing.get_context("spawn")
         self._lock = threading.Lock()
         self._closed = False
+        self._stream_ids = itertools.count()
         self._memory = SharedMemory(create=True, size=SLOT_BYTES * SLOT_COUNT)
         self._connection, child_end = context.Pipe()
         self._process = context.Process(
@@ -74,17 +95,20 @@ class HardwareDecoderProcess:
         self._process.start()
         child_end.close()
 
-    def open(self, codec: str, extradata: bytes | None) -> FallbackReason | None:
+    def open(self, codec: str, extradata: bytes | None) -> HardwareStream | FallbackReason:
         with self._lock:
+            stream_id = next(self._stream_ids)
             try:
-                reply = self._exchange(OpenStream(codec, extradata), OPEN_TIMEOUT_SECONDS)
+                reply = self._exchange(OpenStream(stream_id, codec, extradata), OPEN_TIMEOUT_SECONDS)
             except HardwareDecodeError:
                 return FallbackReason.OPEN_FAILED
-        return reply.failure if isinstance(reply, StreamOpened) else FallbackReason.OPEN_FAILED
+        if not isinstance(reply, StreamOpened):
+            return FallbackReason.OPEN_FAILED
+        return ProcessStream(self, stream_id) if reply.failure is None else reply.failure
 
-    def decode(self, packet: EncodedPacket) -> HardwareFrames:
+    def decode(self, stream_id: int, packet: EncodedPacket) -> HardwareFrames:
         with self._lock:
-            reply = self._exchange(packet, REPLY_TIMEOUT_SECONDS)
+            reply = self._exchange(StreamPacket(stream_id, packet), REPLY_TIMEOUT_SECONDS)
             if isinstance(reply, DecodeFailed):
                 raise HardwareDecodeError(reply.failure)
             if not isinstance(reply, PacketDecoded):
@@ -93,6 +117,10 @@ class HardwareDecoderProcess:
             frames = [self._frame(image) for image in reply.images]
         copy_milliseconds = (time.perf_counter() - started) * MILLISECONDS_PER_SECOND
         return HardwareFrames(frames, reply.decode_milliseconds, reply.transfer_milliseconds + copy_milliseconds)
+
+    def close_stream(self, stream_id: int) -> None:
+        with self._lock, contextlib.suppress(HardwareDecodeError):
+            self._exchange(CloseStream(stream_id), REPLY_TIMEOUT_SECONDS)
 
     def close(self) -> None:
         with self._lock:
@@ -104,7 +132,7 @@ class HardwareDecoderProcess:
             self._memory.close()
             self._memory.unlink()
 
-    def _exchange(self, request: OpenStream | EncodedPacket, timeout_seconds: float) -> ChildReply:
+    def _exchange(self, request: ChildRequest, timeout_seconds: float) -> ChildReply:
         if self._closed:
             raise HardwareDecodeError(FallbackReason.STREAM_ERROR)
         try:

@@ -15,6 +15,7 @@ from wcam.api.console_routes import pairing_url
 from wcam.app import create_servers, phone_page_url, request_stop, run, stop_signals_handled
 from wcam.config import Settings
 from wcam.decoding.hardware import HardwareDecoderProcess
+from wcam.decoding.source import SourceDecoding
 from wcam.decoding.status import DecoderStatus, DecodingSource
 from wcam.diagnostics.dev_events import EpisodeEvents
 from wcam.i18n import Messages, load_messages, resolve_language, system_language_tag
@@ -79,12 +80,8 @@ def start(settings: Settings, messages: Messages) -> None:
     pipeline.open()
     comparisons = ComparisonStore(lambda: correction_snapshot(pipeline)) if settings.dev_tools else None
     camera = CameraFormatControl(pipeline)
-    decoding = PhoneDecoding(
-        settings.hw_decode,
-        DecoderStatus(DecodingSource.PHONE),
-        pipeline.stage_times.record,
-        HardwareDecoderProcess,
-    )
+    phone_source = SourceDecoding(settings.hw_decode, DecoderStatus(DecodingSource.PHONE), HardwareDecoderProcess)
+    decoding = PhoneDecoding(phone_source, pipeline.stage_times.record)
     manager = SessionManager(
         aiortc_peer_factory(lan.network, pipeline, decoding),
         comparisons=comparisons,
@@ -100,6 +97,7 @@ def start(settings: Settings, messages: Messages) -> None:
         video_folder=settings.data_dir / VIDEO_FOLDER,
         database=open_database(settings.data_dir),
         phone_decoder=decoding.status,
+        video_decoding=SourceDecoding(settings.hw_decode, DecoderStatus(DecodingSource.VIDEO), HardwareDecoderProcess),
     )
     time_decoders(pipeline.stage_times.record_decode)
     logging.getLogger(EPISODE_LOGGER).addHandler(EpisodeEvents(services.dev_events))

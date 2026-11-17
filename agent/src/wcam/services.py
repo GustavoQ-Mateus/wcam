@@ -6,6 +6,7 @@ from pathlib import Path
 
 from wcam.change_feed import ChangeFeed
 from wcam.clock import utc_now
+from wcam.decoding.source import SourceDecoding, software_decoding
 from wcam.decoding.status import DecoderChange, DecoderStatus, DecodingSource
 from wcam.diagnostics.dev_console import DevConsole
 from wcam.diagnostics.dev_events import DevEventLog
@@ -47,12 +48,15 @@ class AgentServices:
     database: sqlite3.Connection = field(default_factory=memory_database)
     video: VideoSource = field(init=False)
     phone_decoder: DecoderStatus = field(default_factory=lambda: DecoderStatus(DecodingSource.PHONE))
+    video_decoding: SourceDecoding = field(default_factory=lambda: software_decoding(DecodingSource.VIDEO))
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "preview", Preview(self.pipeline))
         library = VideoLibrary(self.video_folder, self.database)
         library.load()
-        video = VideoSource(library, TimelineStore(self.database), self.pipeline, self.manager)
+        video = VideoSource(
+            library, TimelineStore(self.database), self.pipeline, self.manager, decoding=self.video_decoding
+        )
         object.__setattr__(self, "video", video)
         self.manager.on_back_to_camera(video.deactivate)
         object.__setattr__(
@@ -70,8 +74,9 @@ class AgentServices:
         self.camera.on_change(self._record_virtual_camera)
         self.preview.on_change(self._record_preview)
         self.dev_events.on_subscribers_change(self.dev_console.collect)
-        self.phone_decoder.on_change(self._record_decoder)
-        self.phone_decoder.on_clear(self.status_changes.publish)
+        for status in (self.phone_decoder, self.video_decoding.status):
+            status.on_change(self._record_decoder)
+            status.on_clear(self.status_changes.publish)
 
     def _record_virtual_camera(self) -> None:
         state = self.pipeline.sink.status.state

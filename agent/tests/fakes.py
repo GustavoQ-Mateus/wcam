@@ -1,8 +1,8 @@
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
-from wcam.decoding.hardware import HardwareDecoder
-from wcam.decoding.status import DecoderStatus, DecodingSource
+from wcam.decoding.source import software_decoding as software_source
+from wcam.decoding.status import DecodingSource
 from wcam.media.color_correction import ColorCorrection
 from wcam.media.metrics import ReceiveStats, VideoStats
 from wcam.media.phone_decoder import PhoneDecoding
@@ -86,10 +86,4 @@ class FakePeerFactory:
 
 
 def software_decoding() -> PhoneDecoding:
-    return PhoneDecoding(
-        "off", DecoderStatus(DecodingSource.PHONE), lambda _stage, _milliseconds: None, unused_hardware
-    )
-
-
-def unused_hardware() -> HardwareDecoder:
-    raise AssertionError("software decoding never starts the hardware decoder")
+    return PhoneDecoding(software_source(DecodingSource.PHONE), lambda _stage, _milliseconds: None)

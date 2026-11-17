@@ -4,8 +4,9 @@ from aiortc.jitterbuffer import JitterFrame
 from aiortc.rtcrtpparameters import RTCRtpCodecParameters
 from av import VideoFrame
 
-from wcam.decoding.hardware import HardwareDecodeError, HardwareDecoder, HardwareFrames
+from wcam.decoding.hardware import HardwareDecodeError, HardwareDecoder, HardwareFrames, HardwareStream
 from wcam.decoding.messages import EncodedPacket
+from wcam.decoding.source import SourceDecoding
 from wcam.decoding.status import DecoderChange, DecoderKind, DecoderStatus, DecodingSource, FallbackReason
 from wcam.diagnostics.stage_times import Stage
 from wcam.media.phone_decoder import PhoneDecoding, PhoneH264Decoder, contains_idr, install_phone_decoder
@@ -27,8 +28,8 @@ class FakeHardware:
         self.packets: list[EncodedPacket] = []
         self.closed = False
 
-    def open(self, codec: str, extradata: bytes | None) -> FallbackReason | None:
-        return self.open_failure
+    def open(self, codec: str, extradata: bytes | None) -> HardwareStream | FallbackReason:
+        return self if self.open_failure is None else self.open_failure
 
     def decode(self, packet: EncodedPacket) -> HardwareFrames:
         self.packets.append(packet)
@@ -70,7 +71,8 @@ def decoding_with(hardware: HardwareDecoder | None, recorder: Recorder, mode: st
             raise AssertionError("the hardware decoder must not start")
         return hardware
 
-    decoding = PhoneDecoding("off" if mode == "off" else "auto", status, recorder.stage, start_hardware)
+    source = SourceDecoding("off" if mode == "off" else "auto", status, start_hardware)
+    decoding = PhoneDecoding(source, recorder.stage)
     decoding.start_session(recorder.request_keyframe)
     return decoding
 
@@ -128,7 +130,6 @@ def test_hardware_failing_to_open_decodes_in_software_with_the_reason() -> None:
     decoded = [frame for encoded in h264_frames() for frame in decoder.decode(encoded)]
 
     assert len(decoded) == FRAME_COUNT
-    assert hardware.closed
     assert recorder.changes == [DecoderChange(DecodingSource.PHONE, DecoderKind.SOFTWARE, FallbackReason.UNSUPPORTED)]
 
 

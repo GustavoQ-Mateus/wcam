@@ -232,3 +232,15 @@ async def test_stages_include_the_transfer_from_the_video_card() -> None:
     metrics = await agent.dev_console.metrics()
 
     assert metrics["stages"]["transfer"] == {"median": 6.0, "p95": 6.0}  # type: ignore[index]
+
+
+async def test_video_decoder_change_becomes_an_event_from_the_video() -> None:
+    agent = await live_agent(FakePeerFactory())
+    queue = agent.dev_events.subscribe()
+    while not queue.empty():
+        queue.get_nowait()
+
+    agent.video_decoding.status.report(DecoderKind.HARDWARE, None)
+
+    event = queue.get_nowait()
+    assert (event.kind, event.data) == ("decoder", {"source": "video", "decoder": "hardware", "reason": None})

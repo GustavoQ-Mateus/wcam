@@ -9,8 +9,9 @@ import pytest
 from av import VideoFrame
 from av.video.codeccontext import VideoCodecContext
 
-from wcam.decoding.hardware import HardwareDecoderProcess
+from wcam.decoding.hardware import HardwareDecoderProcess, HardwareStream
 from wcam.decoding.messages import EncodedPacket
+from wcam.decoding.status import FallbackReason
 from wcam.media.phone_decoder import contains_idr
 from wcam.tools.make_reference import FRAME_MARKER, HEIGHT, WIDTH, reference_frame
 from wcam.tools.synthetic_h264 import VideoEncoder, encode
@@ -59,17 +60,17 @@ def planes(frame: VideoFrame) -> list[bytes]:
 
 
 @pytest.fixture
-def hardware() -> Iterator[HardwareDecoderProcess]:
+def hardware() -> Iterator[HardwareStream]:
     decoder = HardwareDecoderProcess()
-    failure = decoder.open("h264", None)
-    if failure is not None:
+    opened = decoder.open("h264", None)
+    if isinstance(opened, FallbackReason):
         decoder.close()
-        pytest.skip(f"no hardware decoder on this computer: {failure}")
-    yield decoder
+        pytest.skip(f"no hardware decoder on this computer: {opened}")
+    yield opened
     decoder.close()
 
 
-def test_hardware_frames_equal_software_frames_byte_for_byte(hardware: HardwareDecoderProcess) -> None:
+def test_hardware_frames_equal_software_frames_byte_for_byte(hardware: HardwareStream) -> None:
     software = av.CodecContext.create("h264", "r")
     hardware_frames: list[VideoFrame] = []
     software_frames: list[VideoFrame] = []
@@ -81,7 +82,7 @@ def test_hardware_frames_equal_software_frames_byte_for_byte(hardware: HardwareD
     assert all(planes(a) == planes(b) for a, b in zip(hardware_frames, software_frames, strict=True))
 
 
-def test_hardware_frames_keep_the_declared_range_and_matrix(hardware: HardwareDecoderProcess) -> None:
+def test_hardware_frames_keep_the_declared_range_and_matrix(hardware: HardwareStream) -> None:
     software = av.CodecContext.create("h264", "r")
     data = reference_packets()[0]
 

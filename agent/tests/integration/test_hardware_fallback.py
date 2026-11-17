@@ -9,8 +9,9 @@ from aiortc import RTCSessionDescription
 
 from tests.integration.test_stall_recovery import RecordingPipeline, offer, phone_sender
 from tests.integration.test_webrtc import wait_until
-from wcam.decoding.hardware import HardwareDecodeError, HardwareDecoder, HardwareFrames
+from wcam.decoding.hardware import HardwareDecodeError, HardwareDecoder, HardwareFrames, HardwareStream
 from wcam.decoding.messages import EncodedPacket
+from wcam.decoding.source import SourceDecoding
 from wcam.decoding.status import DecoderChange, DecoderKind, DecoderStatus, DecodingSource, FallbackReason
 from wcam.media.peer import AiortcPeer, aiortc_peer_factory
 from wcam.media.phone_decoder import PhoneDecoding
@@ -36,8 +37,8 @@ class FailingHardware:
         self.decoded_packets = 0
         self.closed = False
 
-    def open(self, codec: str, extradata: bytes | None) -> FallbackReason | None:
-        return None
+    def open(self, codec: str, extradata: bytes | None) -> HardwareStream | FallbackReason:
+        return self
 
     def decode(self, packet: EncodedPacket) -> HardwareFrames:
         if self.decoded_packets >= WORKING_PACKETS:
@@ -69,7 +70,8 @@ class FailingSession:
 async def run_until(lan: LanInterface, session: FailingSession, done: Callable[[], bool]) -> None:
     status = DecoderStatus(DecodingSource.PHONE)
     status.on_change(session.record)
-    decoding = PhoneDecoding("auto", status, lambda _stage, _milliseconds: None, session.start_hardware)
+    source = SourceDecoding("auto", status, session.start_hardware)
+    decoding = PhoneDecoding(source, lambda _stage, _milliseconds: None)
     delivering = asyncio.create_task(session.pipeline.run())
     channel_open = asyncio.Event()
     events = PeerEvents(channel_open.set, lambda _: None, lambda _: None)
