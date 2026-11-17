@@ -24,6 +24,7 @@ from av.packet import Packet
 from av.video.stream import VideoStream
 
 from tests.conftest import opened_pipeline
+from tests.fakes import software_decoding
 from tests.integration.test_webrtc import wait_until
 from wcam.media import peer as peer_module
 from wcam.media.episodes import EPISODE_LOGGER, open_episode_log
@@ -169,7 +170,7 @@ async def measure_stall(lan: LanInterface, clip: list[CodedPacket]) -> StallMeas
     channel_open = asyncio.Event()
     events = PeerEvents(channel_open.set, lambda _: None, lambda _: None)
     connection, transceiver, _ = phone_sender(clip)
-    peer = await aiortc_peer_factory(lan.network, pipeline)(await offer(connection), events)
+    peer = await aiortc_peer_factory(lan.network, pipeline, software_decoding())(await offer(connection), events)
     assert isinstance(peer, AiortcPeer)
     try:
         await connection.setRemoteDescription(RTCSessionDescription(peer.answer_sdp, "answer"))

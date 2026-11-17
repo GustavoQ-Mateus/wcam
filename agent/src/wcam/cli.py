@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import io
 import logging
+import multiprocessing
 import sys
 import webbrowser
 from typing import TextIO
@@ -13,6 +14,8 @@ from wcam import __version__
 from wcam.api.console_routes import pairing_url
 from wcam.app import create_servers, phone_page_url, request_stop, run, stop_signals_handled
 from wcam.config import Settings
+from wcam.decoding.hardware import HardwareDecoderProcess
+from wcam.decoding.status import DecoderStatus, DecodingSource
 from wcam.diagnostics.dev_events import EpisodeEvents
 from wcam.i18n import Messages, load_messages, resolve_language, system_language_tag
 from wcam.media.camera_format import CameraFormatControl
@@ -20,6 +23,7 @@ from wcam.media.color_correction import IDENTITY_TABLE, CorrectionState, Display
 from wcam.media.decode_timing import time_decoders
 from wcam.media.episodes import EPISODE_LOGGER, open_episode_log
 from wcam.media.peer import aiortc_peer_factory
+from wcam.media.phone_decoder import PhoneDecoding
 from wcam.media.pipeline import FramePipeline
 from wcam.media.quality import QualityMeter, read_y4m_luma
 from wcam.network.certificates import TlsCertificate, load_or_create_certificate
@@ -44,6 +48,7 @@ OBS_FALLBACK_REASONS = (
 
 
 def main() -> None:
+    multiprocessing.freeze_support()
     parser = argparse.ArgumentParser(prog="wcam")
     parser.add_argument("--version", action="version", version=f"wcam {__version__}")
     parser.parse_args()
@@ -74,8 +79,14 @@ def start(settings: Settings, messages: Messages) -> None:
     pipeline.open()
     comparisons = ComparisonStore(lambda: correction_snapshot(pipeline)) if settings.dev_tools else None
     camera = CameraFormatControl(pipeline)
+    decoding = PhoneDecoding(
+        settings.hw_decode,
+        DecoderStatus(DecodingSource.PHONE),
+        pipeline.stage_times.record,
+        HardwareDecoderProcess,
+    )
     manager = SessionManager(
-        aiortc_peer_factory(lan.network, pipeline),
+        aiortc_peer_factory(lan.network, pipeline, decoding),
         comparisons=comparisons,
         camera=camera,
         output=pipeline,
@@ -88,6 +99,7 @@ def start(settings: Settings, messages: Messages) -> None:
         comparisons,
         video_folder=settings.data_dir / VIDEO_FOLDER,
         database=open_database(settings.data_dir),
+        phone_decoder=decoding.status,
     )
     time_decoders(pipeline.stage_times.record_decode)
     logging.getLogger(EPISODE_LOGGER).addHandler(EpisodeEvents(services.dev_events))

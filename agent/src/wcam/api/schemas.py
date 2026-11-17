@@ -45,6 +45,7 @@ class VideoBody(CamelModel):
     fps: float
     bitrate_kbps: int
     codec: str | None
+    decoder: str | None
     frames_scaled: int
     orientation: str
     color_range: str
@@ -402,6 +403,7 @@ def video_body(video: VideoStats) -> VideoBody:
         fps=video.fps,
         bitrate_kbps=video.bitrate_kbps,
         codec=video.codec,
+        decoder=video.decoder,
         frames_scaled=video.frames_scaled,
         orientation=video.orientation,
         color_range=video.color_range,

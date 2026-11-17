@@ -30,6 +30,7 @@ from aiortc.rtp import RtpPacket
 from av import VideoFrame
 
 from tests.conftest import console_app, console_client, opened_pipeline, phone_app, phone_client, services
+from tests.fakes import software_decoding
 from wcam.app import create_servers, serve
 from wcam.config import Settings
 from wcam.media import peer as peer_module
@@ -114,7 +115,7 @@ class DetailedVideo(VideoStreamTrack):
 
 class RecordingPeerFactory:
     def __init__(self, network: LanInterface, pipeline: FramePipeline) -> None:
-        self._create = aiortc_peer_factory(network.network, pipeline)
+        self._create = aiortc_peer_factory(network.network, pipeline, software_decoding())
         self.peers: list[AiortcPeer] = []
 
     async def __call__(self, offer_sdp: str, events: PeerEvents) -> MediaPeer:
@@ -588,7 +589,7 @@ async def test_peer_connection_has_no_ice_servers(lan: LanInterface, monkeypatch
 
     monkeypatch.setattr(peer_module, "RTCPeerConnection", RecordingConnection)
     client = phone_client_peer()
-    create = aiortc_peer_factory(lan.network, opened_pipeline())
+    create = aiortc_peer_factory(lan.network, opened_pipeline(), software_decoding())
     peer = await create(await client.offer(), silent_events())
     await peer.close()
     await client.connection.close()

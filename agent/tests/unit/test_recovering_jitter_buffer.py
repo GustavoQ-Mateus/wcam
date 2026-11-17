@@ -105,3 +105,24 @@ def test_received_payload_bytes_are_counted() -> None:
     frames_from(buffer, [rtp(0, 0), rtp(1, 0)])
 
     assert buffer.received_bytes == 2 * len(PAYLOAD)
+
+
+def test_requested_keyframe_is_asked_on_the_next_packet_and_holds_frames_until_it() -> None:
+    buffer = RecoveringJitterBuffer(CAPACITY, clock=SteppingClock())
+    buffer.request_keyframe()
+
+    request, _ = buffer.add(rtp(0, 0))
+
+    assert request
+    assert (buffer.keyframe_requests, buffer.awaiting_keyframe) == (1, True)
+    assert not buffer.admits_decoded(is_keyframe=False)
+
+
+def test_requested_keyframe_is_asked_only_once() -> None:
+    buffer = RecoveringJitterBuffer(CAPACITY, clock=SteppingClock())
+    buffer.request_keyframe()
+    buffer.add(rtp(0, 0))
+
+    request, _ = buffer.add(rtp(1, 0))
+
+    assert not request
