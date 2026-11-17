@@ -386,7 +386,7 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
 - `session.video.decoder` (spec v0.10.0 §1.1): como o PC decodifica a faixa do celular, `hardware` (placa de vídeo) ou `software` (PyAV no processador); `null` antes do primeiro quadro. Mudança conta para o SSE do console.
 - `session.cameraCapabilities`: a última mensagem `camera_capabilities` do celular, sem o `type`; `null` até chegar a primeira.
 - `session.video.codec`: o codec negociado (`H264` ou `VP8`). `framesScaled`: quantos quadros foram reduzidos na sessão; só quadros de retrato (faixas laterais, spec v0.7.0 §2), 0 em paisagem. `orientation`: `landscape` ou `portrait`, do quadro mais recente. `width` e `height` são os do quadro recebido (em retrato, altura maior que largura). `virtualCamera.output` é o formato anunciado pela câmera (`videoFormat.camera`).
-- `process.cpuPercent`: uso de CPU do processo do agente, média da última janela de 1 s, via psutil.
+- `process.cpuPercent`: uso de CPU do processo do agente somado ao dos processos filhos de decodificação (ADR 0018, spec v0.10.0), média da última janela de 1 s, via psutil.
 - `quality`: só existe com `WCAM_QUALITY_REFERENCE` definido (desenvolvimento e e2e); fora disso é sempre `null`. Ver "Qualidade".
 
 Variáveis de ambiente (somam-se à tabela abaixo):
