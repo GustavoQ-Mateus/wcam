@@ -20,6 +20,7 @@ Base para medir: PC do usuário (i5-8500, 6 núcleos, Intel UHD 630), iPhone do 
 - CA-2: a decodificação de H.264 é exata pela norma, então o quadro na placa de vídeo tem que ser igual, byte a byte, ao quadro em software. Teste com o vídeo de referência do e2e no Windows: mesmos planos Y, U e V nos dois caminhos.
 - A cópia da placa de vídeo para a memória e a passagem para I420 (de NV12, quando for o caso) ficam fora do event loop e são medidas como etapa própria no `/dev`.
 - `WCAM_HW_DECODE` (`auto` padrão, `off` força software) para medir os dois caminhos e para o CI, que não tem placa de vídeo.
+- Emenda de 2026-11-18 (ADR 0019, medição com o celular real): com `auto`, o celular ao vivo é decodificado no processador e só o vídeo da biblioteca usa a placa de vídeo; `on` força a placa também no celular. Limite de atraso nos dois caminhos: quadro do celular mais de 200 ms atrás do relógio é descartado até o próximo quadro-chave, com pedido de quadro-chave ao celular. Teste: fila que não cresce com decodificação mais lenta que o tempo do quadro.
 
 ### 1.2 Tradução de cor
 
@@ -85,7 +86,7 @@ Chaves novas antes do código: o rótulo e os dois valores do decodificador nos 
 
 ## Critérios de aceitação
 
-1. Celular em 2160p30, reunião de 30 min no Meet: p95 do processamento por quadro abaixo de 33,3 ms e nenhuma queda do fps entregue abaixo de 25 por mais de 1 s causada pelo PC (as do celular ou da rede ficam explicadas no relatório).
+1. Celular em 2160p30, reunião de 30 min no Meet (medida em 15 min por decisão do usuário em 2026-11-18): p95 do processamento por quadro abaixo de 33,3 ms e nenhuma queda do fps entregue abaixo de 25 por mais de 1 s causada pelo PC (as do celular ou da rede ficam explicadas no relatório).
 2. CPU do WCam com o celular em 2160p30 e com o `IMG_0641.MOV` em 4K pelo menos 50% menor que a da v0.9.0, medida no mesmo PC e com o mesmo procedimento.
 3. Com `WCAM_HW_DECODE=off`, ou com a placa de vídeo falhando, tudo continua funcionando em software, sem queda da sessão.
 4. CA-2: quadro da placa de vídeo igual ao de software, byte a byte, no vídeo de referência; SSIM de pelo menos 0,98 no e2e.
