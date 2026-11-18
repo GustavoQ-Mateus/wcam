@@ -262,7 +262,7 @@ Evento `event`, a cada acontecimento; o agente guarda os últimos 50 em memória
 {"at": "2026-11-12T18:00:01.200Z", "kind": "controls", "data": {"frozen": true}}
 ```
 
-`kind`: `session_state` (`{"state", "reason"}`), `controls` (só os campos que mudaram), `video_format` (`{"format"}`), `camera_capabilities` (`{"facingMode", "width", "height", "frameRate"}`), `virtual_camera` (`{"state", "source", "format"}`), `episode` (o registro de episódio da v0.6.0), `preview` (`{"open": bool}`), `video_source` (`{"active"}`), `timeline` (`{"clips": <n>, "durationSeconds"}`), `decoder` (`{"source": "phone" | "video", "decoder": "hardware" | "software", "reason"}`, quando o caminho muda; `reason` é `null` ao abrir na placa de vídeo, e no fallback `unsupported` (placa sem o codec ou o perfil), `open_failed`, `stream_error` (falha no meio do fluxo) ou `disabled` (`WCAM_HW_DECODE=off`); spec v0.10.0). Com o vídeo ativo, `delivered` e os tempos por etapa valem para os quadros do vídeo.
+`kind`: `session_state` (`{"state", "reason"}`), `controls` (só os campos que mudaram), `video_format` (`{"format"}`), `camera_capabilities` (`{"facingMode", "width", "height", "frameRate"}`), `virtual_camera` (`{"state", "source", "format"}`), `episode` (o registro de episódio da v0.6.0), `preview` (`{"open": bool}`), `video_source` (`{"active"}`), `timeline` (`{"clips": <n>, "durationSeconds"}`), `decoder` (`{"source": "phone" | "video", "decoder": "hardware" | "software", "reason"}`, quando o caminho muda; `reason` é `null` ao abrir na placa de vídeo, e no fallback `unsupported` (placa sem o codec ou o perfil), `open_failed`, `stream_error` (falha no meio do fluxo) `disabled` (`WCAM_HW_DECODE=off`) ou `live_phone` (celular ao vivo no processador com `auto`, ADR 0019); spec v0.10.0). Com o vídeo ativo, `delivered` e os tempos por etapa valem para os quadros do vídeo.
 
 ## Celular (`<ip-da-lan>:8443`)
 
@@ -397,7 +397,7 @@ Variáveis de ambiente (somam-se à tabela abaixo):
 | `WCAM_VCAM_DLL` | `%ProgramFiles%\WCam\Wcam.VirtualCamera.dll` | caminho da DLL da câmera nativa |
 | `WCAM_QUALITY_REFERENCE` | vazio | caminho de um arquivo `.y4m` de referência; liga a medição de SSIM |
 | `WCAM_DEV_TOOLS` | vazio | `1` liga a comparação lado a lado no console (spec v0.6.0 §6); qualquer outro valor deixa desligada |
-| `WCAM_HW_DECODE` | `auto` | `auto` decodifica na placa de vídeo quando ela suporta o codec e o perfil, com fallback para software; `off` força software (medição e CI); spec v0.10.0 §1.1 |
+| `WCAM_HW_DECODE` | `auto` | `auto` decodifica o vídeo da biblioteca na placa de vídeo quando ela suporta o codec e o perfil, com fallback para software, e o celular ao vivo no processador (ADR 0019); `on` usa a placa também no celular; `off` força software (medição e CI); spec v0.10.0 §1.1 |
 
 ## Qualidade (`quality`)
 
