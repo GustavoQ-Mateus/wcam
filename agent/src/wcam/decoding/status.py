@@ -14,6 +14,7 @@ class FallbackReason(StrEnum):
     OPEN_FAILED = "open_failed"
     STREAM_ERROR = "stream_error"
     DISABLED = "disabled"
+    LIVE_PHONE = "live_phone"
 
 
 class DecodingSource(StrEnum):

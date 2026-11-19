@@ -80,7 +80,9 @@ def start(settings: Settings, messages: Messages) -> None:
     pipeline.open()
     comparisons = ComparisonStore(lambda: correction_snapshot(pipeline)) if settings.dev_tools else None
     camera = CameraFormatControl(pipeline)
-    phone_source = SourceDecoding(settings.hw_decode, DecoderStatus(DecodingSource.PHONE), HardwareDecoderProcess)
+    phone_source = SourceDecoding(
+        settings.hw_decode, DecoderStatus(DecodingSource.PHONE), HardwareDecoderProcess, live=True
+    )
     decoding = PhoneDecoding(phone_source, pipeline.stage_times.record)
     manager = SessionManager(
         aiortc_peer_factory(lan.network, pipeline, decoding),

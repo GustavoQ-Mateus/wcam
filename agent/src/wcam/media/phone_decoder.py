@@ -14,6 +14,7 @@ from wcam.decoding.messages import EncodedPacket
 from wcam.decoding.source import SourceDecoding
 from wcam.decoding.status import DecoderKind, DecoderStatus, FallbackReason
 from wcam.diagnostics.stage_times import Stage
+from wcam.media.latency_limit import Clock, LatencyLimit
 
 H264_MIME_TYPE = "video/h264"
 VIDEO_MIME_PREFIX = "video/"
@@ -55,17 +56,22 @@ class PhoneH264Decoder(Decoder):
         status: DecoderStatus,
         record_stage: StageRecorder,
         request_keyframe: Callable[[], None],
+        latency: LatencyLimit,
     ) -> None:
         self._hardware = hardware
         self._fallback_reason = fallback_reason
         self._status = status
         self._record_stage = record_stage
         self._request_keyframe = request_keyframe
+        self._latency = latency
         self._software = H264Decoder()
 
     def decode(self, encoded_frame: JitterFrame) -> list[Frame]:
+        keyframe = contains_idr(encoded_frame.data)
+        if not self._latency.admits(encoded_frame.timestamp, keyframe):
+            return []
         if self._hardware is not None:
-            return self._decoded_in_hardware(encoded_frame, self._hardware)
+            return self._decoded_in_hardware(encoded_frame, self._hardware, keyframe)
         frames = self._software.decode(encoded_frame)
         for _ in frames:
             self._record_stage(Stage.TRANSFER, 0.0)
@@ -73,9 +79,9 @@ class PhoneH264Decoder(Decoder):
             self._status.report(DecoderKind.SOFTWARE, self._fallback_reason)
         return frames
 
-    def _decoded_in_hardware(self, encoded_frame: JitterFrame, hardware: HardwareStream) -> list[Frame]:
+    def _decoded_in_hardware(self, encoded_frame: JitterFrame, hardware: HardwareStream, keyframe: bool) -> list[Frame]:
         started = time.perf_counter()
-        packet = EncodedPacket(encoded_frame.data, encoded_frame.timestamp, contains_idr(encoded_frame.data))
+        packet = EncodedPacket(encoded_frame.data, encoded_frame.timestamp, keyframe)
         try:
             decoded = hardware.decode(packet)
         except HardwareDecodeError as error:
@@ -112,10 +118,11 @@ class SoftwareOnlyDecoder(Decoder):
 
 
 class PhoneDecoding:
-    def __init__(self, source: SourceDecoding, record_stage: StageRecorder) -> None:
+    def __init__(self, source: SourceDecoding, record_stage: StageRecorder, clock: Clock = time.monotonic) -> None:
         self.status = source.status
         self._source = source
         self._record_stage = record_stage
+        self._clock = clock
         self._request_keyframe: Callable[[], None] = lambda: None
 
     def start_session(self, request_keyframe: Callable[[], None]) -> None:
@@ -128,10 +135,11 @@ class PhoneDecoding:
 
     def create_decoder(self) -> Decoder:
         request_keyframe = self._request_keyframe
+        latency = LatencyLimit(request_keyframe, self._clock)
         opened = self._source.open(H264_CODEC, None)
         if isinstance(opened, FallbackReason):
-            return PhoneH264Decoder(None, opened, self.status, self._record_stage, request_keyframe)
-        return PhoneH264Decoder(opened, None, self.status, self._record_stage, request_keyframe)
+            return PhoneH264Decoder(None, opened, self.status, self._record_stage, request_keyframe, latency)
+        return PhoneH264Decoder(opened, None, self.status, self._record_stage, request_keyframe, latency)
 
     def software_only(self, software: Decoder) -> Decoder:
         return SoftwareOnlyDecoder(software, self.status, self._record_stage)

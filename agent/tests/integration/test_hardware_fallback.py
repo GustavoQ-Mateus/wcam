@@ -71,7 +71,7 @@ class FailingSession:
 async def run_until(lan: LanInterface, session: FailingSession, done: Callable[[], bool]) -> None:
     status = DecoderStatus(DecodingSource.PHONE)
     status.on_change(session.record)
-    source = SourceDecoding("auto", status, session.start_hardware)
+    source = SourceDecoding("on", status, session.start_hardware, live=True)
     decoding = PhoneDecoding(source, lambda _stage, _milliseconds: None)
     delivering = asyncio.create_task(session.pipeline.run())
     channel_open = asyncio.Event()
@@ -138,7 +138,9 @@ async def test_vp8_session_reports_software_with_the_video_card_lacking_the_code
     session = FailingSession()
     status = DecoderStatus(DecodingSource.PHONE)
     status.on_change(session.record)
-    decoding = PhoneDecoding(SourceDecoding("auto", status, session.start_hardware), lambda _stage, _milliseconds: None)
+    decoding = PhoneDecoding(
+        SourceDecoding("on", status, session.start_hardware, live=True), lambda _stage, _milliseconds: None
+    )
     pipeline = session.pipeline
     delivering = asyncio.create_task(pipeline.run())
     channel_open = asyncio.Event()

@@ -12,7 +12,7 @@ from av.video.codeccontext import VideoCodecContext
 
 from wcam.decoding.hardware import HardwareDecodeError, HardwareDecoder, HardwareFrames, HardwareStream
 from wcam.decoding.messages import EncodedPacket
-from wcam.decoding.source import SourceDecoding
+from wcam.decoding.source import HardwareDecodeMode, SourceDecoding, software_reason, unused_hardware
 from wcam.decoding.status import DecoderChange, DecoderKind, DecoderStatus, DecodingSource, FallbackReason
 from wcam.diagnostics.stage_times import Stage
 from wcam.media.phone_decoder import (
@@ -31,6 +31,7 @@ BITRATE_BPS = 500_000
 FRAME_COUNT = 6
 FRAME_STEP = 3000
 GET_DECODER_ATTRIBUTE = "get_decoder"
+LATE_SECONDS = 1.0
 
 
 class FakeHardware:
@@ -51,6 +52,14 @@ class FakeHardware:
 
     def close(self) -> None:
         self.closed = True
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
 
 
 class Recorder:
@@ -74,7 +83,9 @@ def h264_frames() -> list[JitterFrame]:
     return [JitterFrame(bytes(packet), index * FRAME_STEP) for index, packet in enumerate(packets)]  # type: ignore[arg-type]
 
 
-def decoding_with(hardware: HardwareDecoder | None, recorder: Recorder, mode: str = "auto") -> PhoneDecoding:
+def decoding_with(
+    hardware: HardwareDecoder | None, recorder: Recorder, mode: HardwareDecodeMode = "on"
+) -> PhoneDecoding:
     status = DecoderStatus(DecodingSource.PHONE)
     status.on_change(recorder.changes.append)
 
@@ -83,7 +94,7 @@ def decoding_with(hardware: HardwareDecoder | None, recorder: Recorder, mode: st
             raise AssertionError("the hardware decoder must not start")
         return hardware
 
-    source = SourceDecoding("off" if mode == "off" else "auto", status, start_hardware)
+    source = SourceDecoding(mode, status, start_hardware, live=True)
     decoding = PhoneDecoding(source, recorder.stage)
     decoding.start_session(recorder.request_keyframe)
     return decoding
@@ -153,6 +164,37 @@ def test_hardware_decoding_off_never_starts_the_hardware_and_reports_disabled() 
 
     assert len(decoded) == FRAME_COUNT
     assert recorder.changes == [DecoderChange(DecodingSource.PHONE, DecoderKind.SOFTWARE, FallbackReason.DISABLED)]
+
+
+def test_automatic_mode_decodes_the_live_phone_in_software_without_starting_the_video_card() -> None:
+    recorder = Recorder()
+    decoder = decoding_with(None, recorder, mode="auto").create_decoder()
+
+    decoded = [frame for encoded in h264_frames() for frame in decoder.decode(encoded)]
+
+    assert len(decoded) == FRAME_COUNT
+    assert recorder.changes == [DecoderChange(DecodingSource.PHONE, DecoderKind.SOFTWARE, FallbackReason.LIVE_PHONE)]
+
+
+def test_automatic_mode_keeps_the_video_card_for_the_library_video() -> None:
+    assert software_reason("auto", live=False) is None
+
+
+def test_frame_far_behind_the_clock_is_skipped_and_asks_for_a_keyframe() -> None:
+    recorder = Recorder()
+    clock = FakeClock()
+    status = DecoderStatus(DecodingSource.PHONE)
+    decoding = PhoneDecoding(SourceDecoding("off", status, unused_hardware), recorder.stage, clock)
+    decoding.start_session(recorder.request_keyframe)
+    decoder = decoding.create_decoder()
+    frames = h264_frames()
+
+    decoder.decode(frames[0])
+    clock.now += LATE_SECONDS
+    skipped = decoder.decode(frames[1])
+
+    assert skipped == []
+    assert recorder.keyframe_requests == 1
 
 
 def test_software_frames_record_a_zero_transfer() -> None:
