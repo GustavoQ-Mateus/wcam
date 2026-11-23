@@ -34,7 +34,7 @@ O resultado vai numa seção da própria ideia abaixo. Aprovada pelo usuário, e
 
 ## Engenharia e qualidade
 
-As da spec futura v0.15.0 (benchmark em PR, OpenTelemetry com o painel do Aspire, ETW no `vcam`, `tc netem`, modelo de ameaças, fuzzing, testes por propriedade, SBOM e proveniência, falhas provocadas) continuam lá. Somam-se:
+As da spec futura v1.5.0 (benchmark em PR, OpenTelemetry com o painel do Aspire, ETW no `vcam`, `tc netem`, modelo de ameaças, fuzzing, testes por propriedade, SBOM e proveniência, falhas provocadas) continuam lá. Somam-se:
 
 | # | Ideia | Notas para validar |
 |---|---|---|

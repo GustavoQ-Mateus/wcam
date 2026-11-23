@@ -1,6 +1,6 @@
-# Spec v0.15.0, Engenharia e observabilidade
+# Spec v1.5.0, Engenharia e observabilidade
 
-Status: Draft (spec futura, registrada em 2026-11-16 a pedido do usuário; revisar antes de aprovar, depois da v0.14.0)
+Status: Draft (spec futura, registrada em 2026-11-16 a pedido do usuário; revisar antes de aprovar, depois da v1.4.0)
 Branch de integração: `feature/engineering`
 Sessões: `agent`, `vcam`, `web` (pouco), `ci`
 Referências: `docs/planejamento.md` §1 (CA-2, CA-4), §6; ADR 0006 (SQLite), ADR 0011 (câmera nativa), ADR 0018 (decodificação em processo separado); spec v0.10.0 (medição manual de desempenho).
