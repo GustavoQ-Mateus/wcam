@@ -91,7 +91,7 @@ describe("appPreviewState", () => {
     expect(appPreviewState("frame")).toBe("showing");
   });
 
-  it("stops while the app has no new frame", () => {
-    expect(appPreviewState("idle")).toBe("stopped");
+  it("waits while the wcam camera delivers no new frame", () => {
+    expect(appPreviewState("idle")).toBe("waiting");
   });
 });

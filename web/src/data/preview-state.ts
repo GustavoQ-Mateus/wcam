@@ -1,4 +1,4 @@
-export type PreviewState = "connecting" | "showing" | "stopped";
+export type PreviewState = "connecting" | "showing" | "waiting" | "stopped";
 
 export type PreviewEvent = "start" | "frame" | "connection_ended" | "no_frame";
 

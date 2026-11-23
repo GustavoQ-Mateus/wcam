@@ -52,7 +52,7 @@ export function appPreviewState(event: AppPreviewEvent): PreviewState {
   if (event === "start") {
     return "connecting";
   }
-  return event === "frame" ? "showing" : "stopped";
+  return event === "frame" ? "showing" : "waiting";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

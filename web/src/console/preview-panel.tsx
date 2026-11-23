@@ -26,13 +26,15 @@ export function PreviewPanel({
 }: PreviewPanelProps) {
   const cameraOff = mode === "camera_off";
   const previewStopped = previewOn && previewState === "stopped";
+  const previewWaiting = previewOn && previewState === "waiting";
   return (
     <div className={styles.frame} data-mode={mode}>
-      {previewOn && !previewStopped && <PreviewPicture surface={previewSurface} hidden={cameraOff} />}
+      {previewOn && !previewStopped && <PreviewPicture surface={previewSurface} hidden={cameraOff || previewWaiting} />}
       {previewState === "showing" && previewOn && !cameraOff && (
         <span className={styles.label}>{t("console.preview_label")}</span>
       )}
       {!previewOn && !cameraOff && <p className={styles.center}>{t("console.preview_hidden")}</p>}
+      {previewWaiting && !cameraOff && <p className={styles.center}>{t("console.preview_waiting")}</p>}
       {previewStopped && !cameraOff && (
         <div className={styles.center}>
           <p>{t("console.preview_stopped")}</p>
