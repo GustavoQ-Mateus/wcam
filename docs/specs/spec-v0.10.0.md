@@ -87,8 +87,8 @@ Chaves novas antes do código: o rótulo e os dois valores do decodificador nos 
 
 ## Critérios de aceitação
 
-1. Celular em 2160p30, reunião de 30 min no Meet (medida em 15 min por decisão do usuário em 2026-11-18): p95 do processamento por quadro abaixo de 33,3 ms e nenhuma queda do fps entregue abaixo de 25 por mais de 1 s causada pelo PC (as do celular ou da rede ficam explicadas no relatório).
-2. CPU do WCam com o celular em 2160p30 e com o `IMG_0641.MOV` em 4K pelo menos 50% menor que a da v0.9.0, medida no mesmo PC e com o mesmo procedimento.
+1. Emenda de 2026-11-23 (ADR 0021): medido em 1080p30; 2160p30 fica como melhor esforço. Texto original: celular em 2160p30, reunião de 30 min no Meet (medida em 15 min por decisão do usuário em 2026-11-18): p95 do processamento por quadro abaixo de 33,3 ms e nenhuma queda do fps entregue abaixo de 25 por mais de 1 s causada pelo PC (as do celular ou da rede ficam explicadas no relatório).
+2. CPU do WCam com o celular em 2160p30 e com o `IMG_0641.MOV` em 4K pelo menos 50% menor que a da v0.9.0, medida no mesmo PC e com o mesmo procedimento. Emenda de 2026-11-23, aceita pelo usuário: cumprido com o `IMG_0641.MOV` (74% menor, placa de vídeo pela ADR 0018); com o celular ao vivo, no processador pela ADR 0019, cerca de 12% menor, entregando mais quadros que a v0.9.0, e o critério fica dado como cumprido para o celular por decisão do usuário.
 3. Com `WCAM_HW_DECODE=off`, ou com a placa de vídeo falhando, tudo continua funcionando em software, sem queda da sessão.
 4. CA-2: quadro da placa de vídeo igual ao de software, byte a byte, no vídeo de referência; SSIM de pelo menos 0,98 no e2e.
 5. Causa das quedas de fps da v0.8.0 explicada com números; as do PC corrigidas.
