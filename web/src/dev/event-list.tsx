@@ -15,6 +15,9 @@ const KIND_KEYS: Readonly<Record<string, MessageKey>> = {
   virtual_camera: "dev.event_virtual_camera",
   episode: "dev.event_episode",
   preview: "dev.event_preview",
+  video_source: "dev.event_video_source",
+  timeline: "dev.event_timeline",
+  decoder: "dev.event_decoder",
 };
 const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit", second: "2-digit" };
 

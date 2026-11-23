@@ -1,4 +1,4 @@
-import { useState, type PointerEvent } from "react";
+import { useId, useState, type PointerEvent } from "react";
 import { lineSegments, stackedBands } from "../data/dev-metrics";
 import type { ChartMark } from "../data/dev-view";
 import styles from "./dev.module.scss";
@@ -12,7 +12,7 @@ export interface ChartSeries {
 export interface ChartBand {
   label: string;
   values: number[];
-  tone: "primary" | "secondary" | "tertiary";
+  tone: "primary" | "hatched" | "secondary" | "tertiary";
 }
 
 export interface ChartReference {
@@ -36,6 +36,7 @@ interface LineChartProps {
 export const CHART_WIDTH = 600;
 export const CHART_HEIGHT = 160;
 const GRID_LINES = [0.25, 0.5, 0.75];
+const HATCH_SPACING = 6;
 
 export function LineChart({
   title,
@@ -50,6 +51,7 @@ export function LineChart({
   endLabel,
 }: LineChartProps) {
   const [hover, setHover] = useState<number | null>(null);
+  const hatchId = useId();
   const count = series[0]?.values.length ?? bands[0]?.values.length ?? 0;
   const keyed = [...bands, ...series];
   const onMove = (event: PointerEvent<SVGSVGElement>) => {
@@ -96,6 +98,17 @@ export function LineChart({
             setHover(null);
           }}
         >
+          <defs>
+            <pattern
+              id={hatchId}
+              width={HATCH_SPACING}
+              height={HATCH_SPACING}
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(45)"
+            >
+              <line className={styles.hatch} x1="0" x2="0" y1="0" y2={HATCH_SPACING} />
+            </pattern>
+          </defs>
           {GRID_LINES.map((share) => (
             <line
               key={share}
@@ -123,7 +136,13 @@ export function LineChart({
             CHART_HEIGHT,
             max,
           ).map((points, index) => (
-            <polygon key={bands[index]?.label} className={styles.band} data-tone={bands[index]?.tone} points={points} />
+            <polygon
+              key={bands[index]?.label}
+              className={styles.band}
+              data-tone={bands[index]?.tone}
+              style={bands[index]?.tone === "hatched" ? { fill: `url(#${hatchId})` } : undefined}
+              points={points}
+            />
           ))}
           {reference && (
             <line

@@ -1,7 +1,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from wcam.virtualcam.sink import I420Frame
+from wcam.virtualcam.sink import Nv12Frame
 
 BLACK_LUMA = 16
 NEUTRAL_CHROMA = 128
@@ -17,14 +17,14 @@ type Grid = NDArray[np.float32]
 type Mask = NDArray[np.bool_]
 
 
-def black_i420(width: int, height: int) -> I420Frame:
+def black_nv12(width: int, height: int) -> Nv12Frame:
     frame = np.full((height * 3 // 2, width), NEUTRAL_CHROMA, dtype=np.uint8)
     frame[:height] = BLACK_LUMA
     return frame
 
 
-def camera_off_i420(width: int, height: int) -> I420Frame:
-    frame = black_i420(width, height)
+def camera_off_nv12(width: int, height: int) -> Nv12Frame:
+    frame = black_nv12(width, height)
     side = min(width, max(1, round(height * ICON_HEIGHT_SHARE)))
     top = (height - side) // 2
     left = (width - side) // 2

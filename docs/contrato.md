@@ -1,6 +1,6 @@
 # Contrato entre web e agent
 
-Versão: 0.9.0
+Versão: 0.10.0
 
 Fonte da verdade da comunicação entre `web` e `agent`. Mudou aqui, muda na spec da versão antes do código.
 
@@ -204,10 +204,11 @@ O console reconecta com o `EventSource` padrão. `GET /api/status` continua.
 `videoSource` no primeiro nível de `GET /api/status`, sempre presente, e no SSE do console:
 
 ```json
-{"videoSource": {"videos": [{"id": "v1", "name": "reuniao.mov", "durationSeconds": 42.5, "width": 1920, "height": 1080, "fps": 30.0, "codec": "hevc", "filmstripFrames": 60}], "timeline": {"clips": [{"id": "c1", "videoId": "v1", "inSeconds": 2.0, "outSeconds": 30.0}], "durationSeconds": 28.0}, "active": true, "positionSeconds": 12.3}}
+{"videoSource": {"videos": [{"id": "v1", "name": "reuniao.mov", "durationSeconds": 42.5, "width": 1920, "height": 1080, "fps": 30.0, "codec": "hevc", "filmstripFrames": 60}], "timeline": {"clips": [{"id": "c1", "videoId": "v1", "inSeconds": 2.0, "outSeconds": 30.0}], "durationSeconds": 28.0}, "active": true, "positionSeconds": 12.3, "decoder": "hardware"}}
 ```
 
 - `videos`: a biblioteca, na ordem de envio. `timeline.clips`: os trechos em ordem, sem espaço entre eles; `timeline.durationSeconds` é a soma. `active`: se a câmera está mostrando a linha do tempo. `positionSeconds`: posição do quadro entregue na linha do tempo, `null` com o vídeo desativado; mudança só de posição não é mudança para o SSE (vai no evento de 1 s).
+- `decoder` (spec v0.10.0 §1.5): como o vídeo em reprodução é decodificado, `hardware` ou `software`; `null` com o vídeo desativado. Mudança conta para o SSE do console.
 - `POST /api/videos`: só com a sessão em `live` (senão `409 no_live_session`, antes de ler o corpo). Corpo bruto `application/octet-stream`, nome original no cabeçalho `X-File-Name` (codificado em URL). O agente grava em partes no diretório de dados, abre com PyAV, decodifica o primeiro quadro e gera a tira de miniaturas. Responde `201` com o objeto do vídeo. Acima de 20 GB: `413 video_too_large`. Com 20 vídeos guardados: `409 video_library_full`. Sem faixa de vídeo decodificável: `422 video_unsupported`, arquivo apagado.
 - `GET /api/videos/{id}/filmstrip`: JPEG com `filmstripFrames` quadros lado a lado (até 60), espaçados por igual na duração, cada um com 160 de largura e a proporção do vídeo com a rotação aplicada.
 - `DELETE /api/videos/{id}`: apaga o arquivo e tira da linha do tempo os trechos que o usam; `204`; `404 video_not_found`.
@@ -233,6 +234,7 @@ Evento `metrics`, a cada 1 s:
   "delivered": {"fps": 30.0, "frames": 3540, "dropped": 2},
   "stages": {
     "decode": {"median": 3.1, "p95": 4.8},
+    "transfer": {"median": 0.0, "p95": 0.0},
     "color": {"median": 2.0, "p95": 2.9},
     "deliver": {"median": 0.6, "p95": 1.1},
     "total": {"median": 5.9, "p95": 8.2}
@@ -249,7 +251,7 @@ Evento `metrics`, a cada 1 s:
 - `session` é `null` sem sessão; `received`, `delivered`, `stages` e `frameTimesMs` vêm `null` fora de `live`.
 - `received`: medido pelo agente na faixa recebida, janela de 1 s. `packetsLost` é o total da janela; `jitterMs`, o do receptor RTP.
 - `delivered`: quadros entregues à câmera virtual na janela (`fps`) e totais da sessão (`frames`, e `dropped` para descartes da fila).
-- `stages`: mediana e p95 em ms dos quadros da janela; cada etapa vem `null` enquanto não tiver amostra na janela (por exemplo, `decode` antes do primeiro quadro); `color` inclui retrato e espelho; `total` vai do quadro decodificado à entrega. `frameTimesMs`: todos os `total` da janela, para o histograma.
+- `stages`: mediana e p95 em ms dos quadros da janela; cada etapa vem `null` enquanto não tiver amostra na janela (por exemplo, `decode` antes do primeiro quadro); `transfer` (spec v0.10.0 §1.1) é a passagem de NV12 para I420 no processo de decodificação e a cópia entre processos pela memória compartilhada, 0 com decodificação em software; a cópia da placa de vídeo para a memória acontece dentro da decodificação do PyAV e entra em `decode`; `color` inclui retrato e espelho; `total` vai do quadro decodificado à entrega. `frameTimesMs`: todos os `total` da janela, para o histograma.
 - `budgetMs` é 1000 / fps do formato anunciado; `ceilingKbps`, a taxa máxima do formato.
 - `virtualCamera.pendingFormat`: chave do formato pedido enquanto `videoFormat.pending`, senão `null`; `streamingApps` vem de `WcamFormatGet` (`null` em outros backends).
 - `phone`: o último `stats` do celular, sem o `type`, ou `null`.
@@ -260,7 +262,7 @@ Evento `event`, a cada acontecimento; o agente guarda os últimos 50 em memória
 {"at": "2026-11-12T18:00:01.200Z", "kind": "controls", "data": {"frozen": true}}
 ```
 
-`kind`: `session_state` (`{"state", "reason"}`), `controls` (só os campos que mudaram), `video_format` (`{"format"}`), `camera_capabilities` (`{"facingMode", "width", "height", "frameRate"}`), `virtual_camera` (`{"state", "source", "format"}`), `episode` (o registro de episódio da v0.6.0), `preview` (`{"open": bool}`), `video_source` (`{"active"}`), `timeline` (`{"clips": <n>, "durationSeconds"}`). Com o vídeo ativo, `delivered` e os tempos por etapa valem para os quadros do vídeo.
+`kind`: `session_state` (`{"state", "reason"}`), `controls` (só os campos que mudaram), `video_format` (`{"format"}`), `camera_capabilities` (`{"facingMode", "width", "height", "frameRate"}`), `virtual_camera` (`{"state", "source", "format"}`), `episode` (o registro de episódio da v0.6.0), `preview` (`{"open": bool}`), `video_source` (`{"active"}`), `timeline` (`{"clips": <n>, "durationSeconds"}`), `decoder` (`{"source": "phone" | "video", "decoder": "hardware" | "software", "reason"}`, quando o caminho muda; `reason` é `null` ao abrir na placa de vídeo, e no fallback `unsupported` (placa sem o codec ou o perfil), `open_failed`, `stream_error` (falha no meio do fluxo) `disabled` (`WCAM_HW_DECODE=off`) ou `live_phone` (celular ao vivo no processador com `auto`, ADR 0019); spec v0.10.0). Com o vídeo ativo, `delivered` e os tempos por etapa valem para os quadros do vídeo.
 
 ## Celular (`<ip-da-lan>:8443`)
 
@@ -366,7 +368,7 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
   },
   "videoFormat": {"selected": "1080p30", "available": ["720p30", "720p60", "1080p30", "1440p30", "2160p30"], "camera": "1080p30", "pending": false},
   "session": {
-    "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800, "codec": "H264", "framesScaled": 0, "orientation": "landscape", "colorRange": "full", "colorMatrix": "unspecified", "colorCorrection": {"state": "applied", "transfer": "bt709", "display": "apple"}},
+    "video": {"width": 1920, "height": 1080, "fps": 30.0, "bitrateKbps": 9800, "codec": "H264", "decoder": "hardware", "framesScaled": 0, "orientation": "landscape", "colorRange": "full", "colorMatrix": "unspecified", "colorCorrection": {"state": "applied", "transfer": "bt709", "display": "apple"}},
     "cameraCapabilities": {"width": 3840, "height": 2160, "frameRate": 60, "facingMode": "environment", "codecs": ["video/H264", "video/VP8"], "colorSpace": null, "modes": {"exposureMode": "continuous", "whiteBalanceMode": "continuous", "focusMode": "continuous"}}
   },
   "process": {"cpuPercent": 12.5},
@@ -381,9 +383,10 @@ Refina a codificação da ADR 0010 (alfabeto de 30 símbolos em vez de Crockford
 - `source`: `video` quando os quadros vêm do vídeo enviado pelo usuário ("Vídeo como câmera"); `held` quando o usuário congelou a imagem (`controls.frozen`), também com o vídeo; `camera_off` com `controls.cameraOff`; `phone` quando os quadros vêm do celular; `frozen` quando a câmera repete o último quadro do celular porque nenhum quadro novo chegou há mais de 0,5 s (até completar 3 s sem quadro; antes de 0,5 s continua `phone`, que é o intervalo normal entre quadros); `placeholder` em qualquer outro momento.
 - `session.video.colorRange`: faixa declarada pelo celular no quadro mais recente, `full`, `limited` ou `unspecified`. `colorMatrix`: matriz declarada, `bt709`, `bt601`, outro nome do FFmpeg ou `unspecified`. A câmera sempre entrega faixa limitada; quadro em faixa cheia é ajustado pelo agente (CA-2, emenda da v0.6.0).
 - `session.video.colorCorrection`: correção de cor da conexão atual, derivada do `colorSpace` declarado pela câmera em `camera_capabilities` (spec v0.6.0 §1.1). `state`: `applied` (curva de exibição aplicada ao Y) ou `default` (só a faixa: sem `colorSpace`, transferência `srgb`, HDR ou convenção `standard`). `transfer`: o declarado, ou `null`. `display`: convenção de exibição do celular pela plataforma do `User-Agent`, `apple` (iPhone, iPad, Safari no macOS) ou `standard`. Recalculada a cada `camera_capabilities`; nada é guardado entre conexões.
+- `session.video.decoder` (spec v0.10.0 §1.1): como o PC decodifica a faixa do celular, `hardware` (placa de vídeo) ou `software` (PyAV no processador); `null` antes do primeiro quadro. Mudança conta para o SSE do console.
 - `session.cameraCapabilities`: a última mensagem `camera_capabilities` do celular, sem o `type`; `null` até chegar a primeira.
 - `session.video.codec`: o codec negociado (`H264` ou `VP8`). `framesScaled`: quantos quadros foram reduzidos na sessão; só quadros de retrato (faixas laterais, spec v0.7.0 §2), 0 em paisagem. `orientation`: `landscape` ou `portrait`, do quadro mais recente. `width` e `height` são os do quadro recebido (em retrato, altura maior que largura). `virtualCamera.output` é o formato anunciado pela câmera (`videoFormat.camera`).
-- `process.cpuPercent`: uso de CPU do processo do agente, média da última janela de 1 s, via psutil.
+- `process.cpuPercent`: uso de CPU do processo do agente somado ao dos processos filhos de decodificação (ADR 0018, spec v0.10.0), média da última janela de 1 s, via psutil.
 - `quality`: só existe com `WCAM_QUALITY_REFERENCE` definido (desenvolvimento e e2e); fora disso é sempre `null`. Ver "Qualidade".
 
 Variáveis de ambiente (somam-se à tabela abaixo):
@@ -394,6 +397,7 @@ Variáveis de ambiente (somam-se à tabela abaixo):
 | `WCAM_VCAM_DLL` | `%ProgramFiles%\WCam\Wcam.VirtualCamera.dll` | caminho da DLL da câmera nativa |
 | `WCAM_QUALITY_REFERENCE` | vazio | caminho de um arquivo `.y4m` de referência; liga a medição de SSIM |
 | `WCAM_DEV_TOOLS` | vazio | `1` liga a comparação lado a lado no console (spec v0.6.0 §6); qualquer outro valor deixa desligada |
+| `WCAM_HW_DECODE` | `auto` | `auto` decodifica o vídeo da biblioteca na placa de vídeo quando ela suporta o codec e o perfil, com fallback para software, e o celular ao vivo no processador (ADR 0019); `on` usa a placa também no celular; `off` força software (medição e CI); spec v0.10.0 §1.1 |
 
 ## Qualidade (`quality`)
 

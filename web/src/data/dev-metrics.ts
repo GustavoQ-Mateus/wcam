@@ -36,6 +36,7 @@ export interface DevMetrics {
   delivered: { fps: number; frames: number; dropped: number } | null;
   stages: {
     decode: StageTimes | null;
+    transfer: StageTimes | null;
     color: StageTimes | null;
     deliver: StageTimes | null;
     total: StageTimes | null;
@@ -75,7 +76,6 @@ export const MAX_EVENTS = 50;
 const KILOBITS_PER_MEGABIT = 1000;
 const MILLISECONDS_PER_SECOND = 1000;
 const FPS_HEALTHY_SHARE = 0.9;
-const PROCESSING_HEALTHY_SHARE = 0.5;
 const CPU_ATTENTION_PERCENT = 50;
 const ROUND_TRIP_ATTENTION_MS = 100;
 const NICE_STEPS = [1, 2, 2.5, 5, 10];
@@ -91,6 +91,8 @@ const CSV_COLUMNS = [
   "dropped_frames",
   "decode_median_ms",
   "decode_p95_ms",
+  "transfer_median_ms",
+  "transfer_p95_ms",
   "color_median_ms",
   "color_p95_ms",
   "deliver_median_ms",
@@ -132,7 +134,7 @@ export function healthStrip(metrics: DevMetrics, formatFps: number, packetsLostI
   return {
     fpsDelivered: measured(fps, (value) => value >= formatFps * FPS_HEALTHY_SHARE),
     bitrateMbps: measured(bitrateMbps(metrics), (value) => value > 0),
-    processingP95: measured(p95, (value) => value <= metrics.budgetMs * PROCESSING_HEALTHY_SHARE),
+    processingP95: measured(p95, (value) => value <= metrics.budgetMs),
     packetsLost: measured(packetsLostInWindow, (value) => value === 0),
     cpuPercent: measured(metrics.process.cpuPercent, (value) => value < CPU_ATTENTION_PERCENT),
     roundTripMs: measured(roundTrip, (value) => value < ROUND_TRIP_ATTENTION_MS),
@@ -244,6 +246,8 @@ function csvRow(sample: DevMetrics): (string | number | null)[] {
     delivered?.dropped ?? null,
     stages?.decode?.median ?? null,
     stages?.decode?.p95 ?? null,
+    stages?.transfer?.median ?? null,
+    stages?.transfer?.p95 ?? null,
     stages?.color?.median ?? null,
     stages?.color?.p95 ?? null,
     stages?.deliver?.median ?? null,

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
+from wcam.decoding.status import DecoderKind
 from wcam.media.color_correction import ColorCorrection
 
 WINDOW_SECONDS = 1.0
@@ -20,6 +21,7 @@ class VideoStats:
     fps: float
     bitrate_kbps: int
     codec: str | None = None
+    decoder: DecoderKind | None = None
     frames_scaled: int = 0
     orientation: Orientation = Orientation.LANDSCAPE
     color_range: str = "unspecified"

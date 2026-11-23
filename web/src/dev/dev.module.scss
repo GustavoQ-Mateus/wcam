@@ -267,6 +267,15 @@
     background: var(--reference);
   }
 
+  &[data-tone="hatched"] {
+    height: var(--space-3);
+    background: repeating-linear-gradient(
+      45deg,
+      var(--data) 0 var(--indicator-stroke),
+      transparent var(--indicator-stroke) calc(var(--indicator-stroke) * 3)
+    );
+  }
+
   &[data-tone="loss"] {
     width: var(--indicator-stroke);
     height: var(--space-3);
@@ -338,6 +347,11 @@
   &[data-tone="tertiary"] {
     fill: var(--data-3);
   }
+}
+
+.hatch {
+  stroke: var(--data);
+  stroke-width: 2;
 }
 
 .reference {

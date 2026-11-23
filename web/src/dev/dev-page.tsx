@@ -161,6 +161,9 @@ export default function DevPage() {
           series={[]}
           bands={[
             { label: t("dev.stage_decode"), values: charts.decode, tone: "primary" },
+            ...(charts.transfer.some((value) => value > 0)
+              ? [{ label: t("dev.stage_transfer"), values: charts.transfer, tone: "hatched" as const }]
+              : []),
             { label: t("dev.stage_color"), values: charts.color, tone: "secondary" },
             { label: t("dev.stage_deliver"), values: charts.deliver, tone: "tertiary" },
           ]}

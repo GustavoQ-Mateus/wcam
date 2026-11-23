@@ -20,10 +20,11 @@ from wcam.media.color_range import (
     declared_range,
 )
 from wcam.media.episodes import FrameGap
-from wcam.media.placeholder import black_i420, camera_off_i420
+from wcam.media.placeholder import black_nv12, camera_off_nv12
+from wcam.media.plane_translation import PlaneTranslator
 from wcam.media.quality import QualityMeter, QualityReport
 from wcam.media.video_format import DEFAULT_VIDEO_FORMAT
-from wcam.virtualcam.sink import AnnouncedFormat, CameraState, I420Frame, VirtualCameraSink, frame_size
+from wcam.virtualcam.sink import AnnouncedFormat, CameraState, Nv12Frame, VirtualCameraSink, frame_size
 
 STALE_FRAME_SECONDS = 0.5
 FREEZE_SECONDS = 3.0
@@ -40,7 +41,6 @@ DEFAULT_OUTPUT = AnnouncedFormat(
 )
 QUALITY_WORKER_NAME = "wcam-quality"
 MILLISECONDS_PER_SECOND = 1000
-ALL_COLUMNS = slice(None)
 MIRRORED_COLUMNS = slice(None, None, -1)
 
 
@@ -55,7 +55,7 @@ class FrameSource(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class VideoImageFrame:
-    image: I420Frame
+    image: Nv12Frame
     replace_held: bool
 
 
@@ -73,7 +73,7 @@ class FramePipeline:
         self.color_correction: ColorCorrection | None = None
         self._clock = clock
         self.output = DEFAULT_OUTPUT
-        self._placeholder = black_i420(DEFAULT_OUTPUT.width, DEFAULT_OUTPUT.height)
+        self._placeholder = black_nv12(DEFAULT_OUTPUT.width, DEFAULT_OUTPUT.height)
         self._pending: asyncio.Queue[tuple[VideoFrame | VideoImageFrame, float]] = asyncio.Queue(maxsize=1)
         self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=WORKER_NAME)
         self._quality_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=QUALITY_WORKER_NAME)
@@ -81,8 +81,8 @@ class FramePipeline:
         self._measured_correction = CorrectionState.DEFAULT
         self._phone_active = False
         self._video_active = False
-        self._last_video: I420Frame | None = None
-        self._last_phone: I420Frame | None = None
+        self._last_video: Nv12Frame | None = None
+        self._last_phone: Nv12Frame | None = None
         self._last_phone_at: float | None = None
         self.portrait = False
         self.source = FrameSource.PLACEHOLDER
@@ -92,17 +92,18 @@ class FramePipeline:
         self.frozen = False
         self.camera_off = False
         self.mirror = False
-        self._last_sent: I420Frame | None = None
-        self._camera_off_frame: I420Frame | None = None
+        self._last_sent: Nv12Frame | None = None
+        self._camera_off_frame: Nv12Frame | None = None
         self._source_listeners: list[Callable[[], None]] = []
         self.stage_times = StageTimes()
         self.frames_delivered = 0
         self.frames_dropped = 0
         self._gap_lock = threading.Lock()
         self._longest_gap: FrameGap | None = None
+        self._translator = PlaneTranslator()
 
     @property
-    def last_sent(self) -> I420Frame | None:
+    def last_sent(self) -> Nv12Frame | None:
         return self._last_sent
 
     @property
@@ -110,7 +111,7 @@ class FramePipeline:
         return self._video_active
 
     @property
-    def placeholder(self) -> I420Frame:
+    def placeholder(self) -> Nv12Frame:
         return self._placeholder
 
     @property
@@ -125,7 +126,7 @@ class FramePipeline:
         if announced is None:
             return
         if frame_size(self._placeholder) != (announced.width, announced.height):
-            self._placeholder = black_i420(announced.width, announced.height)
+            self._placeholder = black_nv12(announced.width, announced.height)
         self.output = announced
 
     async def request_format(self, width: int, height: int, fps: int) -> bool:
@@ -164,7 +165,7 @@ class FramePipeline:
         self._last_video = None
         self._last_phone_at = None
 
-    def submit_video(self, image: I420Frame, *, replace_held: bool = False) -> None:
+    def submit_video(self, image: Nv12Frame, *, replace_held: bool = False) -> None:
         self._enqueue(VideoImageFrame(image, replace_held))
 
     def record_stage(self, stage: Stage, milliseconds: float) -> None:
@@ -240,13 +241,13 @@ class FramePipeline:
             self.frames_dropped += 1
         self._pending.put_nowait((frame, time.perf_counter()))
 
-    def _current_output(self, placeholder: I420Frame) -> I420Frame | None:
+    def _current_output(self, placeholder: Nv12Frame) -> Nv12Frame | None:
         if self._video_active:
             return self._last_video if fits(self._last_video, placeholder) else None
         return self._last_phone if self._phone_active and fits(self._last_phone, placeholder) else None
 
     def _accept_video_frame(self, frame: VideoImageFrame) -> None:
-        self._last_video = mirrored_i420(frame.image) if self.mirror else frame.image
+        self._last_video = mirrored_nv12(frame.image) if self.mirror else frame.image
         if frame.replace_held and self.frozen:
             self._last_sent = self._last_video
 
@@ -256,8 +257,8 @@ class FramePipeline:
         return accepted
 
     def _chosen_frame(
-        self, output: I420Frame | None, now: float, placeholder: I420Frame
-    ) -> tuple[FrameSource, I420Frame]:
+        self, output: Nv12Frame | None, now: float, placeholder: Nv12Frame
+    ) -> tuple[FrameSource, Nv12Frame]:
         if self.camera_off:
             return FrameSource.CAMERA_OFF, self._camera_off_like(placeholder)
         if self.frozen and self._last_sent is not None and fits(self._last_sent, placeholder):
@@ -271,12 +272,12 @@ class FramePipeline:
         for listener in self._source_listeners:
             listener()
 
-    def _camera_off_like(self, placeholder: I420Frame) -> I420Frame:
+    def _camera_off_like(self, placeholder: Nv12Frame) -> Nv12Frame:
         if self._camera_off_frame is None or not fits(self._camera_off_frame, placeholder):
-            self._camera_off_frame = camera_off_i420(*frame_size(placeholder))
+            self._camera_off_frame = camera_off_nv12(*frame_size(placeholder))
         return self._camera_off_frame
 
-    def _source_of(self, output: I420Frame | None, now: float) -> FrameSource:
+    def _source_of(self, output: Nv12Frame | None, now: float) -> FrameSource:
         if output is None:
             return FrameSource.PLACEHOLDER
         if self._video_active:
@@ -285,7 +286,7 @@ class FramePipeline:
             return FrameSource.FROZEN
         return FrameSource.PHONE
 
-    def _measure(self, now: float, output: I420Frame) -> None:
+    def _measure(self, now: float, output: Nv12Frame) -> None:
         if self.quality is None:
             return
         self._restart_quality_on_correction_change(self.quality, now)
@@ -309,7 +310,7 @@ class FramePipeline:
         except TimeoutError:
             return None, None
 
-    def _accept_phone_frame(self, frame: VideoFrame, now: float, placeholder: I420Frame) -> None:
+    def _accept_phone_frame(self, frame: VideoFrame, now: float, placeholder: Nv12Frame) -> None:
         self.color_range = declared_range(frame)
         self.color_matrix = declared_matrix(frame)
         self.portrait = frame.height > frame.width
@@ -332,25 +333,30 @@ class FramePipeline:
             if self._longest_gap is None or gap.seconds > self._longest_gap.seconds:
                 self._longest_gap = gap
 
-    def _pillarboxed(self, frame: VideoFrame, placeholder: I420Frame) -> I420Frame:
+    def _pillarboxed(self, frame: VideoFrame, placeholder: Nv12Frame) -> Nv12Frame:
         _, output_height = frame_size(placeholder)
         width = even(frame.width * output_height / frame.height)
         reduced = self._converted(frame, width, output_height)
         canvas = placeholder.copy()
-        paste_i420(canvas, reduced, width, output_height)
+        paste_nv12(canvas, reduced, width, output_height)
         return canvas
 
-    def _converted(self, frame: VideoFrame, width: int, height: int) -> I420Frame:
-        return i420_array(frame, width, height, self.color_range, self.color_tables(), mirror=self.mirror)
+    def _converted(self, frame: VideoFrame, width: int, height: int) -> Nv12Frame:
+        tables = self.color_tables()
+        return nv12_frame(
+            frame, width, height, self.color_range, tables, mirror=self.mirror, translator=self._translator
+        )
 
 
-def mirrored_i420(image: I420Frame) -> I420Frame:
+def mirrored_nv12(image: Nv12Frame) -> Nv12Frame:
     width, height = frame_size(image)
-    planes = i420_planes(image, width, height)
-    return np.concatenate([plane[:, MIRRORED_COLUMNS].reshape(-1) for plane in planes]).reshape(image.shape)
+    mirrored = np.empty_like(image)
+    for target, source in zip(nv12_planes(mirrored, width, height), nv12_planes(image, width, height), strict=True):
+        target[:] = source[:, MIRRORED_COLUMNS]
+    return mirrored
 
 
-def i420_array(
+def nv12_frame(
     frame: VideoFrame,
     width: int,
     height: int,
@@ -358,12 +364,10 @@ def i420_array(
     tables: ColorTables | None = None,
     *,
     mirror: bool = False,
-) -> I420Frame:
+    translator: PlaneTranslator | None = None,
+) -> Nv12Frame:
     source = reformatted(frame, width, height, color_range)
-    if tables is not None or mirror:
-        return copied_i420(source, tables, mirror=mirror)
-    array: I420Frame = np.ascontiguousarray(source.to_ndarray(), dtype=np.uint8)
-    return array
+    return (translator or PlaneTranslator()).translated(source, tables, mirror=mirror)
 
 
 def reformatted(frame: VideoFrame, width: int, height: int, color_range: ColorRange) -> VideoFrame:
@@ -380,29 +384,10 @@ def reformatted(frame: VideoFrame, width: int, height: int, color_range: ColorRa
     )
 
 
-def copied_i420(frame: VideoFrame, tables: ColorTables | None, *, mirror: bool) -> I420Frame:
-    output = np.empty(frame.width * frame.height * 3 // 2, dtype=np.uint8)
-    columns = MIRRORED_COLUMNS if mirror else ALL_COLUMNS
-    offset = 0
-    for plane, table in zip(frame.planes, plane_tables(tables), strict=True):
-        size = plane.width * plane.height
-        rows = plane_rows(plane, table)[: plane.height, : plane.width]
-        output[offset : offset + size].reshape(plane.height, plane.width)[:] = rows[:, columns]
-        offset += size
-    return output.reshape(frame.height * 3 // 2, frame.width)
-
-
-def plane_tables(tables: ColorTables | None) -> tuple[bytes | None, bytes | None, bytes | None]:
-    if tables is None:
-        return None, None, None
-    luma_table, chroma_table = tables
-    return luma_table, chroma_table, chroma_table
-
-
-def plane_rows(plane: VideoPlane, table: bytes | None) -> I420Frame:
+def plane_rows(plane: VideoPlane, table: bytes | None) -> Nv12Frame:
     # bytes.translate reads a 256 entry table in C, about five times faster here than numpy.take.
     data = memoryview(plane) if table is None else bytes(plane).translate(table)
-    rows: I420Frame = np.frombuffer(data, dtype=np.uint8).reshape(-1, plane.line_size)
+    rows: Nv12Frame = np.frombuffer(data, dtype=np.uint8).reshape(-1, plane.line_size)
     return rows
 
 
@@ -410,7 +395,7 @@ def elapsed_since(started: float) -> float:
     return (time.perf_counter() - started) * MILLISECONDS_PER_SECOND
 
 
-def fits(frame: I420Frame | None, placeholder: I420Frame) -> bool:
+def fits(frame: Nv12Frame | None, placeholder: Nv12Frame) -> bool:
     return frame is not None and frame.shape == placeholder.shape
 
 
@@ -418,13 +403,13 @@ def even(value: float) -> int:
     return max(2, round(value / 2) * 2)
 
 
-def paste_i420(canvas: I420Frame, image: I420Frame, width: int, height: int) -> None:
+def paste_nv12(canvas: Nv12Frame, image: Nv12Frame, width: int, height: int) -> None:
     canvas_width, canvas_height = frame_size(canvas)
     top = even((canvas_height - height) / 2) if height < canvas_height else 0
     left = even((canvas_width - width) / 2) if width < canvas_width else 0
     for canvas_plane, image_plane, divisor in zip(
-        i420_planes(canvas, canvas_width, canvas_height),
-        i420_planes(image, width, height),
+        nv12_planes(canvas, canvas_width, canvas_height),
+        nv12_planes(image, width, height),
         (1, 2, 2),
         strict=True,
     ):
@@ -433,11 +418,9 @@ def paste_i420(canvas: I420Frame, image: I420Frame, width: int, height: int) -> 
         canvas_plane[row : row + height // divisor, column : column + width // divisor] = image_plane
 
 
-def i420_planes(frame: I420Frame, width: int, height: int) -> tuple[I420Frame, I420Frame, I420Frame]:
+def nv12_planes(frame: Nv12Frame, width: int, height: int) -> tuple[Nv12Frame, Nv12Frame, Nv12Frame]:
     flat = frame.reshape(-1)
     luma_size = width * height
-    chroma_size = luma_size // 4
     luma = flat[:luma_size].reshape(height, width)
-    blue = flat[luma_size : luma_size + chroma_size].reshape(height // 2, width // 2)
-    red = flat[luma_size + chroma_size : luma_size + 2 * chroma_size].reshape(height // 2, width // 2)
-    return luma, blue, red
+    chroma = flat[luma_size : luma_size + luma_size // 2].reshape(height // 2, width // 2, 2)
+    return luma, chroma[:, :, 0], chroma[:, :, 1]

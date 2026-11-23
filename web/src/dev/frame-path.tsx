@@ -12,6 +12,7 @@ const STAGE_KEYS: Readonly<Record<StageMedian["stage"], MessageKey>> = {
   phone: "dev.stage_phone",
   wifi: "dev.stage_wifi",
   decode: "dev.stage_decode",
+  transfer: "dev.stage_transfer",
   color: "dev.stage_color",
   deliver: "dev.stage_deliver",
   apps: "dev.stage_apps",

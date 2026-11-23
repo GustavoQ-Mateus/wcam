@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { comparisonAvailable, cpuPercentValue, secondsUntil, windowProgress, svgDataUrl } from "./console-format";
-import type { Session, Status } from "./contract";
+import {
+  comparisonAvailable,
+  cpuPercentValue,
+  currentDecoder,
+  decoderKey,
+  secondsUntil,
+  windowProgress,
+  svgDataUrl,
+} from "./console-format";
+import type { Session, Status, Video, VideoSource } from "./contract";
 
 const NOW = Date.parse("2026-11-01T18:00:00Z");
 
@@ -42,5 +50,28 @@ describe("console format", () => {
       comparisonAvailable(status(true, null)),
       comparisonAvailable(null),
     ]).toEqual([true, false, false, false, false]);
+  });
+
+  it("decoding comes from the phone video, or from the library video while it plays", () => {
+    const status = (phone: Video["decoder"] | undefined, video: Partial<VideoSource>) =>
+      ({
+        session: phone === undefined ? null : ({ video: { decoder: phone } } as Session),
+        videoSource: { active: false, decoder: null, ...video },
+      }) as Status;
+
+    expect([
+      currentDecoder(status("hardware", {})),
+      currentDecoder(status("software", { decoder: "hardware" })),
+      currentDecoder(status("hardware", { active: true, decoder: "software" })),
+      currentDecoder(status(null, {})),
+      currentDecoder(status(undefined, {})),
+    ]).toEqual(["hardware", "software", "software", null, null]);
+  });
+
+  it("decoding is shown as graphics card or processor", () => {
+    expect([decoderKey("hardware"), decoderKey("software")]).toEqual([
+      "console.detail_decoder_hardware",
+      "console.detail_decoder_software",
+    ]);
   });
 });

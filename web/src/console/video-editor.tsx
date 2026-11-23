@@ -98,6 +98,11 @@ export function VideoEditor({
       changeIfMoved(clips, moveClip(clips, selectedIndex, selectedIndex + direction), video.changeClips);
     }
   };
+  const zoomBy = (direction: 1 | -1) => {
+    const next = Math.min(ZOOM_LEVELS.length - 1, Math.max(0, zoomIndex + direction));
+    setZoomIndex(next);
+    return next !== zoomIndex;
+  };
   const togglePause = () => {
     onChange({ frozen: !controls.frozen });
   };
@@ -183,9 +188,7 @@ export function VideoEditor({
         onTogglePause={togglePause}
         onSplit={split}
         onDelete={removeSelected}
-        onZoom={(direction) => {
-          setZoomIndex((index) => Math.min(ZOOM_LEVELS.length - 1, Math.max(0, index + direction)));
-        }}
+        onZoom={zoomBy}
         onMirror={() => {
           onChange({ mirror: !controls.mirror });
         }}
@@ -212,6 +215,7 @@ export function VideoEditor({
         onInsertVideo={insertAt}
         onDropFiles={phoneLive ? video.addFiles : noop}
         onKeyDown={handleKey}
+        onZoom={zoomBy}
       />
       <div className={styles.bottom}>
         <FormatPanel videoFormat={status.videoFormat} onChoose={onChooseFormat} />

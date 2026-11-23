@@ -25,6 +25,7 @@ const VIDEO_SOURCE: VideoSource = {
   timeline: { clips: [], durationSeconds: 0 },
   active: false,
   positionSeconds: null,
+  decoder: null,
 };
 const ACTIVE_VIDEO: VideoSource = {
   videos: [
@@ -42,6 +43,7 @@ const ACTIVE_VIDEO: VideoSource = {
   timeline: { clips: [{ id: "c1", videoId: "v1", inSeconds: 0, outSeconds: 6 }], durationSeconds: 6 },
   active: true,
   positionSeconds: 2,
+  decoder: "hardware",
 };
 const SESSION: Session = {
   id: "s1",

@@ -12,6 +12,7 @@ export interface DevCharts {
   roundTrip: (number | null)[];
   jitter: (number | null)[];
   decode: number[];
+  transfer: number[];
   color: number[];
   deliver: number[];
   eventMarks: ChartMark[];
@@ -19,7 +20,7 @@ export interface DevCharts {
 }
 
 export interface StageMedian {
-  stage: "phone" | "wifi" | "decode" | "color" | "deliver" | "apps";
+  stage: "phone" | "wifi" | "decode" | "transfer" | "color" | "deliver" | "apps";
   milliseconds: number | null;
 }
 
@@ -43,6 +44,7 @@ export function devCharts(
     roundTrip: line(samples.map(roundTripMs)),
     jitter: line(samples.map(phoneJitterMs)),
     decode: band(samples.map((sample) => sample.stages?.decode?.p95 ?? 0)),
+    transfer: band(samples.map((sample) => sample.stages?.transfer?.p95 ?? 0)),
     color: band(samples.map((sample) => sample.stages?.color?.p95 ?? 0)),
     deliver: band(samples.map((sample) => sample.stages?.deliver?.p95 ?? 0)),
     eventMarks: eventMarks(samples, events, windowSeconds),
@@ -57,6 +59,7 @@ export function stageMedians(latest: DevMetrics | undefined): StageMedian[] {
     { stage: "phone", milliseconds: null },
     { stage: "wifi", milliseconds: roundTrip === null ? null : roundTrip / HALF },
     { stage: "decode", milliseconds: stages?.decode?.median ?? null },
+    ...transferStage(stages?.transfer?.median ?? null),
     { stage: "color", milliseconds: stages?.color?.median ?? null },
     { stage: "deliver", milliseconds: stages?.deliver?.median ?? null },
     { stage: "apps", milliseconds: null },
@@ -67,6 +70,10 @@ export function liveDuration(since: string, at: string): string {
   const seconds = Math.max(0, Math.floor((Date.parse(at) - Date.parse(since)) / MILLISECONDS_PER_SECOND));
   const minutes = Math.floor(seconds / SECONDS_PER_MINUTE);
   return `${String(minutes)}:${String(seconds % SECONDS_PER_MINUTE).padStart(TWO_DIGITS, "0")}`;
+}
+
+function transferStage(milliseconds: number | null): StageMedian[] {
+  return milliseconds !== null && milliseconds > 0 ? [{ stage: "transfer", milliseconds }] : [];
 }
 
 function eventMarks(samples: readonly DevMetrics[], events: readonly DevEvent[], windowSeconds: number): ChartMark[] {

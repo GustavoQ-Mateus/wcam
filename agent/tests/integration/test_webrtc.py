@@ -30,6 +30,7 @@ from aiortc.rtp import RtpPacket
 from av import VideoFrame
 
 from tests.conftest import console_app, console_client, opened_pipeline, phone_app, phone_client, services
+from tests.fakes import software_decoding
 from wcam.app import create_servers, serve
 from wcam.config import Settings
 from wcam.media import peer as peer_module
@@ -44,7 +45,7 @@ from wcam.media.peer import (
     video_jitter_buffer,
 )
 from wcam.media.pipeline import FramePipeline, FrameSource
-from wcam.media.placeholder import black_i420
+from wcam.media.placeholder import black_nv12
 from wcam.media.sdp_filter import candidate_addresses, sha256_fingerprint
 from wcam.media.video_format import VideoFormat
 from wcam.network.certificates import load_or_create_certificate
@@ -114,7 +115,7 @@ class DetailedVideo(VideoStreamTrack):
 
 class RecordingPeerFactory:
     def __init__(self, network: LanInterface, pipeline: FramePipeline) -> None:
-        self._create = aiortc_peer_factory(network.network, pipeline)
+        self._create = aiortc_peer_factory(network.network, pipeline, software_decoding())
         self.peers: list[AiortcPeer] = []
 
     async def __call__(self, offer_sdp: str, events: PeerEvents) -> MediaPeer:
@@ -477,7 +478,7 @@ async def test_phone_sending_video_before_live_is_counted_and_never_reaches_the_
     assert released == 0
     assert source is FrameSource.PLACEHOLDER
     assert last_frame is not None
-    assert last_frame.tobytes() == black_i420(WIDTH, HEIGHT).tobytes()
+    assert last_frame.tobytes() == black_nv12(WIDTH, HEIGHT).tobytes()
 
 
 async def test_controls_reach_the_phone_and_the_phone_controls_reach_the_status_quickly(
@@ -588,7 +589,7 @@ async def test_peer_connection_has_no_ice_servers(lan: LanInterface, monkeypatch
 
     monkeypatch.setattr(peer_module, "RTCPeerConnection", RecordingConnection)
     client = phone_client_peer()
-    create = aiortc_peer_factory(lan.network, opened_pipeline())
+    create = aiortc_peer_factory(lan.network, opened_pipeline(), software_decoding())
     peer = await create(await client.offer(), silent_events())
     await peer.close()
     await client.connection.close()

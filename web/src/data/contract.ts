@@ -27,12 +27,15 @@ export type SessionState = "connecting" | "awaiting_confirmation" | "live";
 export type EndReason =
   "rejected" | "disconnected_by_pc" | "disconnected_by_phone" | "connection_failed" | "confirmation_timeout";
 
+export type Decoder = "hardware" | "software";
+
 export interface Video {
   width: number;
   height: number;
   fps: number;
   bitrateKbps: number;
   codec: string;
+  decoder: Decoder | null;
   framesScaled: number;
   orientation: "landscape" | "portrait";
   colorRange: "full" | "limited" | "unspecified";
@@ -126,6 +129,7 @@ export interface VideoSource {
   timeline: Timeline;
   active: boolean;
   positionSeconds: number | null;
+  decoder: Decoder | null;
 }
 
 export interface VideoFormatStatus {

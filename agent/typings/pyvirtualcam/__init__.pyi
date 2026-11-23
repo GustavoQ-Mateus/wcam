@@ -5,6 +5,7 @@ from numpy.typing import NDArray
 
 class PixelFormat(Enum):
     I420 = "I420"
+    NV12 = "NV12"
 
 class Camera:
     def __init__(
