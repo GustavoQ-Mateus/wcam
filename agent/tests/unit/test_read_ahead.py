@@ -13,7 +13,7 @@ def started(capacity: int = CAPACITY) -> tuple[ReadAhead, int]:
 
 
 def frame(generation: int, index: int) -> TimelineFrame:
-    return TimelineFrame(generation, index * PERIOD, np.zeros((3, 2), dtype=np.uint8), 0.0, 0.0)
+    return TimelineFrame(generation, index * PERIOD, np.zeros((3, 2), dtype=np.uint8), 0.0, 0.0, 0.0)
 
 
 def test_late_tick_shows_the_older_due_frame_instead_of_skipping_it() -> None:

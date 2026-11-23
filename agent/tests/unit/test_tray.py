@@ -188,7 +188,9 @@ def test_each_tray_state_has_its_own_icon(state: TrayState) -> None:
 
 
 def video_with_a_clip(active: bool = False) -> VideoSourceView:
-    return VideoSourceView((), Timeline((Clip("c1", "v1", 0.0, 2.0),)), active=active, position_seconds=None)
+    return VideoSourceView(
+        (), Timeline((Clip("c1", "v1", 0.0, 2.0),)), active=active, position_seconds=None, decoder=None
+    )
 
 
 def use_video_entry(snapshot: TraySnapshot) -> MenuEntry:

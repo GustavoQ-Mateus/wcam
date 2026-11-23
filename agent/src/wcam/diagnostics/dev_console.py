@@ -11,6 +11,7 @@ MILLISECONDS_PER_SECOND = 1000
 BITS_PER_KILOBIT = 1000
 P95 = 0.95
 MINIMUM_WINDOW_SECONDS = 0.001
+SHARED_WINDOW_SECONDS = 0.5
 
 type Json = dict[str, object]
 
@@ -46,6 +47,7 @@ class DevConsole:
         self._previous_at = time.monotonic()
         self._previous_delivered = 0
         self._previous_lost: int | None = None
+        self._last_metrics: Json | None = None
 
     def collect(self, subscribers: int) -> None:
         collecting = subscribers > 0
@@ -53,6 +55,12 @@ class DevConsole:
         self._manager.want_phone_stats(collecting)
 
     async def metrics(self) -> Json:
+        if self._last_metrics is not None and time.monotonic() - self._previous_at < SHARED_WINDOW_SECONDS:
+            return self._last_metrics
+        self._last_metrics = await self._new_metrics()
+        return self._last_metrics
+
+    async def _new_metrics(self) -> Json:
         status = self._manager.status()
         session = status.session
         window = self._pipeline.stage_times.take()

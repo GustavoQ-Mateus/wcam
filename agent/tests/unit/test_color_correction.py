@@ -7,6 +7,7 @@ from av import VideoFrame
 
 from tests.conftest import console_app, console_client
 from tests.fakes import FakePeerFactory
+from tests.frames import nv12_from_i420
 from tests.unit.test_pipeline import live_pipeline, random_i420
 from tests.unit.test_session_manager import confirm_on_both_sides, connected_manager, session_request
 from wcam.config import Settings
@@ -141,8 +142,8 @@ def test_default_correction_output_is_byte_for_byte_range_only() -> None:
     pipeline.deliver(VideoFrame.from_ndarray(image, format="yuvj420p"))
 
     assert sink.last_frame is not None
-    assert np.array_equal(sink.last_frame[:OUTPUT_HEIGHT], LUMA_TABLE[image[:OUTPUT_HEIGHT]])
-    assert np.array_equal(sink.last_frame[OUTPUT_HEIGHT:], CHROMA_TABLE[image[OUTPUT_HEIGHT:]])
+    expected = np.vstack([LUMA_TABLE[image[:OUTPUT_HEIGHT]], CHROMA_TABLE[image[OUTPUT_HEIGHT:]]])
+    assert np.array_equal(sink.last_frame, nv12_from_i420(expected))
 
 
 def test_default_correction_leaves_limited_range_frames_untouched() -> None:
@@ -153,7 +154,7 @@ def test_default_correction_leaves_limited_range_frames_untouched() -> None:
     pipeline.deliver(VideoFrame.from_ndarray(image, format="yuv420p"))
 
     assert sink.last_frame is not None
-    assert np.array_equal(sink.last_frame, image)
+    assert np.array_equal(sink.last_frame, nv12_from_i420(image))
 
 
 def test_applied_correction_reaches_the_sink_through_the_composed_tables() -> None:
@@ -165,8 +166,8 @@ def test_applied_correction_reaches_the_sink_through_the_composed_tables() -> No
     pipeline.deliver(VideoFrame.from_ndarray(image, format="yuvj420p"))
 
     assert sink.last_frame is not None
-    assert np.array_equal(sink.last_frame[:OUTPUT_HEIGHT], luma_table[image[:OUTPUT_HEIGHT]])
-    assert np.array_equal(sink.last_frame[OUTPUT_HEIGHT:], chroma_table[image[OUTPUT_HEIGHT:]])
+    expected = np.vstack([luma_table[image[:OUTPUT_HEIGHT]], chroma_table[image[OUTPUT_HEIGHT:]]])
+    assert np.array_equal(sink.last_frame, nv12_from_i420(expected))
 
 
 def test_declared_full_range_wins_over_an_unspecified_frame() -> None:

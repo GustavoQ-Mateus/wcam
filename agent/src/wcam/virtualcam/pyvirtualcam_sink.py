@@ -6,7 +6,7 @@ from wcam.virtualcam.sink import (
     UNAVAILABLE_UNTIL_OPENED,
     AnnouncedFormat,
     CameraState,
-    I420Frame,
+    Nv12Frame,
     SinkStatus,
     UnavailableReason,
 )
@@ -44,7 +44,7 @@ class PyvirtualcamSink:
 
     def open(self, width: int, height: int, fps: int) -> None:
         try:
-            self._camera = pyvirtualcam.Camera(width, height, fps, fmt=pyvirtualcam.PixelFormat.I420, backend=BACKEND)
+            self._camera = pyvirtualcam.Camera(width, height, fps, fmt=pyvirtualcam.PixelFormat.NV12, backend=BACKEND)
         except (RuntimeError, KeyError) as error:
             self._status = SinkStatus(CameraState.UNAVAILABLE, unavailable_reason(str(error)))
             return
@@ -62,7 +62,7 @@ class PyvirtualcamSink:
     def announced_format(self) -> AnnouncedFormat | None:
         return self._announced
 
-    def send(self, frame: I420Frame) -> None:
+    def send(self, frame: Nv12Frame) -> None:
         if self._camera is not None:
             self._camera.send(frame)
 

@@ -5,6 +5,7 @@ from enum import StrEnum
 
 class Stage(StrEnum):
     DECODE = "decode"
+    TRANSFER = "transfer"
     COLOR = "color"
     DELIVER = "deliver"
     TOTAL = "total"

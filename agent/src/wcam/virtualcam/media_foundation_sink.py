@@ -3,14 +3,11 @@ import logging
 from pathlib import Path
 from typing import Protocol
 
-import numpy as np
-from numpy.typing import NDArray
-
 from wcam.virtualcam.sink import (
     UNAVAILABLE_UNTIL_OPENED,
     AnnouncedFormat,
     CameraState,
-    I420Frame,
+    Nv12Frame,
     SinkStatus,
     UnavailableReason,
     frame_size,
@@ -23,8 +20,6 @@ E_FAIL = -2147467259
 FORMAT_REFUSED = "The WCam camera did not accept the new format"
 
 logger = logging.getLogger(__name__)
-
-type Nv12Frame = NDArray[np.uint8]
 
 
 class FormatState(ctypes.Structure):
@@ -124,7 +119,6 @@ class MediaFoundationSink:
     def __init__(self, library: CameraLibrary | None) -> None:
         self._library = library
         self._status = UNAVAILABLE_UNTIL_OPENED
-        self._nv12: Nv12Frame | None = None
         self._announced: AnnouncedFormat | None = None
 
     @property
@@ -169,32 +163,17 @@ class MediaFoundationSink:
             self._announced = self._library.get_format() or self._announced
         return self._announced
 
-    def send(self, frame: I420Frame) -> None:
+    def send(self, frame: Nv12Frame) -> None:
         if self._library is None or self._status.state is not CameraState.ACTIVE:
             return
         width, height = frame_size(frame)
-        buffer_size = width * height * 3 // 2
-        if self._nv12 is None or self._nv12.size != buffer_size:
-            self._nv12 = np.empty(buffer_size, dtype=np.uint8)
-        i420_to_nv12(frame, width, height, self._nv12)
-        self._library.publish(self._nv12, width, height)
+        self._library.publish(frame, width, height)
 
     def close(self) -> None:
         if self._library is not None and self._status.state is CameraState.ACTIVE:
             self._library.stop()
-        self._nv12 = None
         self._announced = None
         self._status = UNAVAILABLE_UNTIL_OPENED
-
-
-def i420_to_nv12(frame: I420Frame, width: int, height: int, output: Nv12Frame) -> None:
-    luma_size = width * height
-    chroma_size = luma_size // 4
-    flat = frame.reshape(-1)
-    output[:luma_size] = flat[:luma_size]
-    interleaved = output[luma_size:]
-    interleaved[0::2] = flat[luma_size : luma_size + chroma_size]
-    interleaved[1::2] = flat[luma_size + chroma_size : luma_size + 2 * chroma_size]
 
 
 def load_native_library(path: Path) -> CameraLibrary | None:
