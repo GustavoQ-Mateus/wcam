@@ -4,7 +4,7 @@ import { currentFacing, problemKey, signalPath, type ConsoleMode } from "../data
 import { LANGUAGE } from "../data/language";
 import { useFrozenSince } from "../data/use-frozen-since";
 import type { VideoFormat } from "../data/video-format";
-import { usePreview } from "../media/use-preview";
+import { useConsolePreview } from "../media/use-console-preview";
 import { ControlBar } from "./control-bar";
 import { DetailsPanel } from "./details-panel";
 import { FormatPanel } from "./format-panel";
@@ -35,7 +35,7 @@ export function LiveView({
   onUseVideo,
 }: LiveViewProps) {
   const [previewOn, setPreviewOn] = useState(true);
-  const preview = usePreview(previewOn);
+  const preview = useConsolePreview(previewOn);
   const frozenSince = useFrozenSince(mode === "frozen", receivedAt, LANGUAGE);
   const facing = currentFacing(status);
   const { session, controls } = status;
@@ -45,7 +45,7 @@ export function LiveView({
         <PreviewPanel
           mode={mode}
           previewOn={previewOn}
-          attachPreview={preview.attach}
+          previewSurface={preview.surface}
           previewState={preview.state}
           frozenSince={frozenSince}
           onShowPreviewAgain={preview.showAgain}

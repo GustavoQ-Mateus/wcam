@@ -1,14 +1,16 @@
 import type { ConsoleMode } from "../data/console-view";
 import { t } from "../data/language";
 import type { PreviewState } from "../data/preview-state";
+import type { PreviewSurface } from "../media/use-preview";
 import { ConsoleButton } from "./console-button";
+import { PreviewPicture } from "./preview-picture";
 import styles from "./preview-panel.module.scss";
 import { StatusMark } from "./status-mark";
 
 interface PreviewPanelProps {
   mode: ConsoleMode;
   previewOn: boolean;
-  attachPreview: (video: HTMLVideoElement | null) => void;
+  previewSurface: PreviewSurface;
   previewState: PreviewState;
   frozenSince: string | null;
   onShowPreviewAgain: () => void;
@@ -17,7 +19,7 @@ interface PreviewPanelProps {
 export function PreviewPanel({
   mode,
   previewOn,
-  attachPreview,
+  previewSurface,
   previewState,
   frozenSince,
   onShowPreviewAgain,
@@ -26,9 +28,7 @@ export function PreviewPanel({
   const previewStopped = previewOn && previewState === "stopped";
   return (
     <div className={styles.frame} data-mode={mode}>
-      {previewOn && !previewStopped && (
-        <video ref={attachPreview} className={styles.video} hidden={cameraOff} autoPlay muted playsInline />
-      )}
+      {previewOn && !previewStopped && <PreviewPicture surface={previewSurface} hidden={cameraOff} />}
       {previewState === "showing" && previewOn && !cameraOff && (
         <span className={styles.label}>{t("console.preview_label")}</span>
       )}

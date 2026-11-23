@@ -14,7 +14,7 @@ import { t } from "../data/language";
 import { useConsole } from "../data/use-console";
 import { useDevEvents } from "../data/use-dev-events";
 import { downloadText } from "../media/download-text";
-import { usePreview } from "../media/use-preview";
+import { useConsolePreview } from "../media/use-console-preview";
 import { PreviewPanel } from "../console/preview-panel";
 import { StatusMark } from "../console/status-mark";
 import { DetailList } from "./detail-list";
@@ -44,7 +44,7 @@ export default function DevPage() {
   const live = useDevEvents();
   const [windowSeconds, setWindowSeconds] = useState<number>(DEFAULT_WINDOW);
   const [paused, setPaused] = useState<DevMetrics[] | null>(null);
-  const preview = usePreview(true);
+  const preview = useConsolePreview(true);
   const samples = paused ?? live.samples;
   const shown = lastSeconds(samples, windowSeconds);
   const latest = shown[shown.length - 1];
@@ -133,7 +133,7 @@ export default function DevPage() {
             <PreviewPanel
               mode={mode}
               previewOn
-              attachPreview={preview.attach}
+              previewSurface={preview.surface}
               previewState={preview.state}
               frozenSince={null}
               onShowPreviewAgain={preview.showAgain}

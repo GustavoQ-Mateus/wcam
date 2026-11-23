@@ -3,8 +3,12 @@ import { closePreview, openPreview } from "../data/api-client";
 import { FIRST_FRAME_TIMEOUT_MS, nextPreviewState, type PreviewEvent, type PreviewState } from "../data/preview-state";
 import { iceGatheringComplete } from "./ice-gathering";
 
+export type PreviewSurface =
+  | { kind: "video"; attach: (video: HTMLVideoElement | null) => void }
+  | { kind: "canvas"; attach: (canvas: HTMLCanvasElement | null) => void };
+
 export interface Preview {
-  attach: (video: HTMLVideoElement | null) => void;
+  surface: PreviewSurface;
   state: PreviewState;
   showAgain: () => void;
 }
@@ -106,7 +110,7 @@ export function usePreview(enabled: boolean): Preview {
     dispatch("start");
     setAttempt((count) => count + 1);
   }, []);
-  return { attach, state, showAgain };
+  return { surface: { kind: "video", attach }, state, showAgain };
 }
 
 async function negotiate(connection: RTCPeerConnection): Promise<void> {

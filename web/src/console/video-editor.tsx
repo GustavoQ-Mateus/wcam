@@ -10,7 +10,7 @@ import { usePlaybackPosition } from "../data/use-playback-position";
 import type { VideoSourceActions } from "../data/use-video-source";
 import type { VideoFormat } from "../data/video-format";
 import { KEYBOARD_STEP_SECONDS } from "../data/video-position";
-import { usePreview } from "../media/use-preview";
+import { useConsolePreview } from "../media/use-console-preview";
 import { DetailsPanel } from "./details-panel";
 import { EditorTimeline } from "./editor-timeline";
 import { FormatPanel } from "./format-panel";
@@ -56,7 +56,7 @@ export function VideoEditor({
   const [previewOn, setPreviewOn] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [zoomIndex, setZoomIndex] = useState(0);
-  const preview = usePreview(previewOn);
+  const preview = useConsolePreview(previewOn);
   const { controls, videoSource, session } = status;
   const { active } = videoSource;
   const frozen = active && controls.frozen;
@@ -139,7 +139,7 @@ export function VideoEditor({
           <PreviewPanel
             mode={mode}
             previewOn={previewOn}
-            attachPreview={preview.attach}
+            previewSurface={preview.surface}
             previewState={preview.state}
             frozenSince={frozenSince}
             onShowPreviewAgain={preview.showAgain}
