@@ -15,7 +15,7 @@ from wcam.app import create_console_app
 from wcam.config import Settings
 from wcam.media.loopback_ice import LOOPBACK, gather_only_on_loopback
 from wcam.media.peer import FrameSource as ReceivedTrack
-from wcam.media.pipeline import FramePipeline, i420_planes
+from wcam.media.pipeline import FramePipeline, nv12_planes
 from wcam.media.preview import PREVIEW_HEIGHT, PREVIEW_WIDTH, decimated, preview_size, reduced_frame
 from wcam.media.sdp_filter import candidate_addresses
 from wcam.services import AgentServices
@@ -138,6 +138,5 @@ def test_decimation_keeps_every_other_pixel_of_each_plane() -> None:
 
     smaller = decimated(frame, 8, 4, 2)
 
-    luma, blue, red = i420_planes(frame, 8, 4)
-    expected = np.concatenate([plane[::2, ::2].reshape(-1) for plane in (luma, blue, red)])
-    assert smaller.reshape(-1).tobytes() == expected.tobytes()
+    for reduced, original in zip(nv12_planes(smaller, 4, 2), nv12_planes(frame, 8, 4), strict=True):
+        assert np.array_equal(reduced, original[::2, ::2])

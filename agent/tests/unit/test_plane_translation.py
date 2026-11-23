@@ -2,11 +2,13 @@ import numpy as np
 import pytest
 from av import VideoFrame
 
+from tests.frames import nv12_from_i420
 from tests.unit.test_pipeline import random_i420
 from wcam.media.color_correction import ColorTables, apple_display_tables, range_tables
 from wcam.media.color_range import ColorRange, declared_range
-from wcam.media.pipeline import i420_array, reformatted
+from wcam.media.pipeline import nv12_frame, reformatted
 from wcam.media.plane_translation import PlaneTranslator
+from wcam.tools.make_reference import HEIGHT, WIDTH, reference_frame
 from wcam.virtualcam.sink import I420Frame
 
 CASES = [
@@ -45,16 +47,16 @@ def tables_for(correction: str, color_range: ColorRange) -> ColorTables | None:
 @pytest.mark.parametrize(("frame_width", "frame_height", "width", "height"), CASES)
 @pytest.mark.parametrize("pixel_format", FORMATS)
 @pytest.mark.parametrize("correction", ["apple", "range", "none"])
-def test_direct_plane_translation_matches_the_previous_conversion_byte_for_byte(
+def test_nv12_translation_matches_the_previous_i420_conversion_then_nv12_byte_for_byte(
     frame_width: int, frame_height: int, width: int, height: int, pixel_format: str, correction: str
 ) -> None:
     frame = VideoFrame.from_ndarray(random_i420(frame_width, frame_height), format=pixel_format)
     color_range = declared_range(frame)
     tables = tables_for(correction, color_range)
 
-    converted = i420_array(frame, width, height, color_range, tables)
+    converted = nv12_frame(frame, width, height, color_range, tables)
 
-    expected = previous_i420_array(frame, width, height, color_range, tables)
+    expected = nv12_from_i420(previous_i420_array(frame, width, height, color_range, tables))
     assert converted.shape == (height * 3 // 2, width)
     assert converted.tobytes() == expected.tobytes()
 
@@ -86,16 +88,18 @@ def previous_mirrored(array: I420Frame, width: int, height: int) -> I420Frame:
 @pytest.mark.parametrize(("frame_width", "frame_height", "width", "height"), CASES)
 @pytest.mark.parametrize("pixel_format", FORMATS)
 @pytest.mark.parametrize("correction", ["apple", "range", "none"])
-def test_mirrored_translation_matches_the_previous_conversion_byte_for_byte(
+def test_mirrored_nv12_translation_matches_the_previous_i420_conversion_then_nv12_byte_for_byte(
     frame_width: int, frame_height: int, width: int, height: int, pixel_format: str, correction: str
 ) -> None:
     frame = VideoFrame.from_ndarray(random_i420(frame_width, frame_height), format=pixel_format)
     color_range = declared_range(frame)
     tables = tables_for(correction, color_range)
 
-    converted = i420_array(frame, width, height, color_range, tables, mirror=True)
+    converted = nv12_frame(frame, width, height, color_range, tables, mirror=True)
 
-    expected = previous_mirrored(previous_i420_array(frame, width, height, color_range, tables), width, height)
+    expected = nv12_from_i420(
+        previous_mirrored(previous_i420_array(frame, width, height, color_range, tables), width, height)
+    )
     assert converted.tobytes() == expected.tobytes()
 
 
@@ -109,3 +113,18 @@ def test_translator_keeps_its_graph_while_the_tables_and_size_stay_the_same() ->
 
     assert first.tobytes() == second.tobytes()
     assert translator.graphs_built == 1
+
+
+def reference_video_frame() -> VideoFrame:
+    planes = np.frombuffer(reference_frame()[-WIDTH * HEIGHT * 3 // 2 :], dtype=np.uint8)
+    return VideoFrame.from_ndarray(planes.reshape(HEIGHT * 3 // 2, WIDTH), format="yuvj420p")
+
+
+def test_reference_video_with_tables_and_mirror_matches_the_previous_i420_conversion_then_nv12() -> None:
+    frame = reference_video_frame()
+    tables = apple_display_tables(ColorRange.FULL)
+
+    converted = nv12_frame(frame, WIDTH, HEIGHT, ColorRange.FULL, tables, mirror=True)
+
+    previous = previous_i420_array(frame, WIDTH, HEIGHT, ColorRange.FULL, tables)
+    assert converted.tobytes() == nv12_from_i420(previous_mirrored(previous, WIDTH, HEIGHT)).tobytes()

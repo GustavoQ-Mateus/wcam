@@ -45,7 +45,7 @@ from wcam.media.peer import (
     video_jitter_buffer,
 )
 from wcam.media.pipeline import FramePipeline, FrameSource
-from wcam.media.placeholder import black_i420
+from wcam.media.placeholder import black_nv12
 from wcam.media.sdp_filter import candidate_addresses, sha256_fingerprint
 from wcam.media.video_format import VideoFormat
 from wcam.network.certificates import load_or_create_certificate
@@ -478,7 +478,7 @@ async def test_phone_sending_video_before_live_is_counted_and_never_reaches_the_
     assert released == 0
     assert source is FrameSource.PLACEHOLDER
     assert last_frame is not None
-    assert last_frame.tobytes() == black_i420(WIDTH, HEIGHT).tobytes()
+    assert last_frame.tobytes() == black_nv12(WIDTH, HEIGHT).tobytes()
 
 
 async def test_controls_reach_the_phone_and_the_phone_controls_reach_the_status_quickly(

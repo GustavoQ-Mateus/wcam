@@ -2,9 +2,9 @@ import numpy as np
 from av import VideoFrame
 from av.video.reformatter import ColorRange, Colorspace
 
-from wcam.media.pipeline import I420_FORMAT, REDUCTION_INTERPOLATION, even, i420_planes, paste_i420, plane_rows
-from wcam.media.placeholder import black_i420
-from wcam.virtualcam.sink import I420Frame
+from wcam.media.pipeline import I420_FORMAT, REDUCTION_INTERPOLATION, even, nv12_planes, paste_nv12, plane_rows
+from wcam.media.placeholder import black_nv12
+from wcam.virtualcam.sink import I420Frame, Nv12Frame
 
 QUARTER_TURN_DEGREES = 90
 TURNS_PER_CIRCLE = 4
@@ -28,15 +28,15 @@ def fitted_size(shown_width: int, shown_height: int, width: int, height: int) ->
     return min(width, even(shown_width * scale)), min(height, even(shown_height * scale))
 
 
-def fitted_i420(frame: VideoFrame, width: int, height: int) -> I420Frame:
+def fitted_nv12(frame: VideoFrame, width: int, height: int) -> Nv12Frame:
     turns = quarter_turns(frame)
     fit_width, fit_height = fitted_size(*shown_size(frame), width, height)
     coded_width, coded_height = (fit_height, fit_width) if turns % 2 else (fit_width, fit_height)
-    image = assembled_i420(source_planes(frame, coded_width, coded_height), turns, fit_width, fit_height)
+    image = assembled_nv12(source_planes(frame, coded_width, coded_height), turns, fit_width, fit_height)
     if (fit_width, fit_height) == (width, height):
         return image
-    canvas = black_i420(width, height)
-    paste_i420(canvas, image, fit_width, fit_height)
+    canvas = black_nv12(width, height)
+    paste_nv12(canvas, image, fit_width, fit_height)
     return canvas
 
 
@@ -69,8 +69,8 @@ def converted_frame(frame: VideoFrame, width: int, height: int) -> VideoFrame:
     )
 
 
-def assembled_i420(planes: Planes, turns: int, width: int, height: int) -> I420Frame:
+def assembled_nv12(planes: Planes, turns: int, width: int, height: int) -> Nv12Frame:
     image = np.empty((height * 3 // 2, width), dtype=np.uint8)
-    for target, source in zip(i420_planes(image, width, height), planes, strict=True):
+    for target, source in zip(nv12_planes(image, width, height), planes, strict=True):
         target[:] = np.rot90(source, turns)
     return image

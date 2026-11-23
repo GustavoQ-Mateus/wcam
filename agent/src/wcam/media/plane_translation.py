@@ -6,14 +6,20 @@ from av import VideoFrame
 from av.filter import Graph
 from av.filter.context import FilterContext
 from av.video.format import VideoFormat
+from av.video.plane import VideoPlane
 
 from wcam.media.color_correction import IDENTITY_TABLE, ColorTables
-from wcam.virtualcam.sink import I420Frame
+from wcam.virtualcam.sink import Nv12Frame
 
 TABLE_ENTRIES = 256
 GRAPH_TIME_BASE = Fraction(1, 90_000)
 TABLE_FILTER = "lut"
 MIRROR_FILTER = "hflip"
+SCALE_FILTER = "scale"
+# The same range on both sides keeps swscale from converting it, so it only interleaves the chroma.
+SAME_RANGE = "in_range=full:out_range=full"
+FORMAT_FILTER = "format"
+NV12_FORMAT = "nv12"
 SINK_FILTER = "buffersink"
 
 
@@ -42,11 +48,10 @@ class PlaneTranslator:
         self._graph: Graph | None = None
         self.graphs_built = 0
 
-    def translated(self, frame: VideoFrame, tables: ColorTables | None, *, mirror: bool) -> I420Frame:
+    def translated(self, frame: VideoFrame, tables: ColorTables | None, *, mirror: bool) -> Nv12Frame:
         graph = self._graph_for(TranslationKey(frame.width, frame.height, frame.format.name, tables, mirror))
         graph.vpush(frame)
-        array: I420Frame = np.ascontiguousarray(graph.vpull().to_ndarray(), dtype=np.uint8)
-        return array
+        return nv12_array(graph.vpull())
 
     def _graph_for(self, key: TranslationKey) -> Graph:
         if self._graph is None or key != self._key:
@@ -64,6 +69,8 @@ def translation_graph(key: TranslationKey) -> Graph:
         last = linked(graph, last, TABLE_FILTER, table_arguments(key.tables))
     if key.mirror:
         last = linked(graph, last, MIRROR_FILTER)
+    last = linked(graph, last, SCALE_FILTER, SAME_RANGE)
+    last = linked(graph, last, FORMAT_FILTER, NV12_FORMAT)
     linked(graph, last, SINK_FILTER)
     graph.configure()
     return graph
@@ -81,3 +88,16 @@ def linked(graph: Graph, previous: FilterContext, name: str, arguments: str | No
     node = graph.add(name, arguments)
     previous.link_to(node)
     return node
+
+
+def nv12_array(frame: VideoFrame) -> Nv12Frame:
+    image = np.empty((frame.height * 3 // 2, frame.width), dtype=np.uint8)
+    luma, chroma = frame.planes
+    image[: frame.height] = plane_rows(luma)[:, : frame.width]
+    image[frame.height :] = plane_rows(chroma)[:, : frame.width]
+    return image
+
+
+def plane_rows(plane: VideoPlane) -> Nv12Frame:
+    rows: Nv12Frame = np.frombuffer(memoryview(plane), dtype=np.uint8).reshape(-1, plane.line_size)
+    return rows

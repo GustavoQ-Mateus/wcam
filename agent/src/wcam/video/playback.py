@@ -22,9 +22,9 @@ from wcam.decoding.source import SourceDecoding, software_decoding
 from wcam.decoding.status import DecoderKind, DecodingSource, FallbackReason
 from wcam.diagnostics.stage_times import Stage
 from wcam.media.pipeline import elapsed_since
-from wcam.video.frames import fitted_i420
+from wcam.video.frames import fitted_nv12
 from wcam.video.timeline import Clip, Timeline
-from wcam.virtualcam.sink import AnnouncedFormat, I420Frame
+from wcam.virtualcam.sink import AnnouncedFormat, Nv12Frame
 
 PRODUCER_NAME = "wcam-video"
 PREPARER_NAME = "wcam-video-next"
@@ -59,7 +59,7 @@ class VideoOutput(Protocol):
     @property
     def frozen(self) -> bool: ...
 
-    def submit_video(self, image: I420Frame, *, replace_held: bool = False) -> None: ...
+    def submit_video(self, image: Nv12Frame, *, replace_held: bool = False) -> None: ...
 
     def record_stage(self, stage: Stage, milliseconds: float) -> None: ...
 
@@ -76,7 +76,7 @@ class PlayRequest:
 class TimelineFrame:
     generation: int
     play_seconds: float
-    image: I420Frame
+    image: Nv12Frame
     decode_milliseconds: float
     transfer_milliseconds: float
     convert_milliseconds: float
@@ -281,7 +281,7 @@ class PreparedClip:
     decoder: ClipDecoder
     frames: Iterator[DecodedFrame]
     first: DecodedFrame | None
-    image: I420Frame | None
+    image: Nv12Frame | None
     size: tuple[int, int]
     convert_milliseconds: float
 
@@ -294,7 +294,7 @@ def prepared_clip(path: Path, clip: Clip, size: tuple[int, int], decoding: Sourc
     if first is None:
         return PreparedClip(decoder, frames, None, None, size, 0.0)
     started = time.perf_counter()
-    image = fitted_i420(first.frame, *size)
+    image = fitted_nv12(first.frame, *size)
     return PreparedClip(decoder, frames, first, image, size, elapsed_since(started))
 
 
@@ -371,7 +371,7 @@ class TimelineReader:
         request: PlayRequest,
         clip_start: float,
         decoded: DecodedFrame,
-        ready: I420Frame | None = None,
+        ready: Nv12Frame | None = None,
         ready_milliseconds: float = 0.0,
     ) -> None:
         play_seconds = clip_start + decoded.offset_seconds
@@ -379,7 +379,7 @@ class TimelineReader:
             return
         self._decoding.status.report(decoded.decoder, decoded.reason)
         started = time.perf_counter()
-        image = fitted_i420(decoded.frame, *self._size()) if ready is None else ready
+        image = fitted_nv12(decoded.frame, *self._size()) if ready is None else ready
         convert_milliseconds = elapsed_since(started) if ready is None else ready_milliseconds
         self._emit(
             TimelineFrame(
