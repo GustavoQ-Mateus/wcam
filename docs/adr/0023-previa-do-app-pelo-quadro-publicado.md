@@ -1,6 +1,6 @@
 # 0023. Prévia do app lida do quadro que a câmera publica
 
-Status: Aceita
+Status: Aceita, substituída em parte pela ADR 0025 (prévias desenhadas pelo Avalonia, sem canal para a página)
 Data: 2026-11-23
 Complementa: ADR 0015 (prévia por WebRTC local, que continua para o console no navegador) e ADR 0022 (app em C#)
 

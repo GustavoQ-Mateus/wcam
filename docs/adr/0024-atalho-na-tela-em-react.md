@@ -1,6 +1,6 @@
 # 0024. Atalho na tela em React dentro de janelas do app
 
-Status: Aceita
+Status: Substituída pela ADR 0025 (interface em Avalonia)
 Data: 2026-11-23
 Substitui em parte: ADR 0023 (a prévia flutuante como janela nativa desenhada pelo D3D11)
 

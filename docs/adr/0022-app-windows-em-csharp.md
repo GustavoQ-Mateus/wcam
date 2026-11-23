@@ -1,6 +1,6 @@
 # 0022. App Windows em C# com o agente Python como processo filho
 
-Status: Aceita
+Status: Aceita, substituída em parte pela ADR 0025 (interface em Avalonia, sem WebView2)
 Data: 2026-11-23
 Substitui em parte: ADR 0008 e planejamento §3 (bandeja com `pystray` e janela com `pywebview` no agente Python)
 

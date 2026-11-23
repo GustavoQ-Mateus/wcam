@@ -20,7 +20,7 @@ Monorepo único, conta `GustavoQ-Mateus` no GitHub.
 | `web` | React + Vite + TypeScript + SCSS, Vitest, Playwright | Duas superfícies: `/cam` (celular, captura) e `/` (console no PC) |
 | `docs` | Markdown | Planejamento, specs, ADRs |
 | `vcam` | C# com .NET 10 Native AOT, CsWin32, xUnit | Câmera virtual nativa do Windows (media source Media Foundation) |
-| `app` | C# com .NET 10 Native AOT, WinUI, WebView2, CsWin32, xUnit | App Windows: bandeja, janela do console, atalho na tela, ciclo de vida do agente (spec v1.0.0) |
+| `app` | C# com .NET 10 Native AOT, Avalonia UI, CsWin32, xUnit | App Windows: janela principal, bandeja, atalho na tela, ciclo de vida do agente (spec v1.0.0, ADR 0025) |
 | `installer` | Inno Setup | Instalador Windows e regra de firewall |
 | raiz | Docker Compose | Ambiente de desenvolvimento e CI |
 
@@ -132,7 +132,7 @@ Testes
 - NUNCA incluir "Co-Authored-By: Claude" nem qualquer referência à Anthropic.
 
 ## Ambiente
-- Produto: app Windows nativo em C# (bandeja, janela WebView2 e atalho na tela; ADR 0022), com o agente Python como processo filho, porque a câmera virtual depende do SO. No celular, só o navegador. Linux (v4l2loopback) e macOS ficam para depois.
+- Produto: app Windows nativo em C# com Avalonia (janela principal, bandeja e atalho na tela; ADR 0022 e 0025), com o agente Python como processo filho, porque a câmera virtual depende do SO. No celular, só o navegador. Linux (v4l2loopback) e macOS ficam para depois.
 - Desenvolvimento e CI: `docker compose up` sobe agente headless com câmera falsa, web e Playwright. A câmera virtual real só é testada fora do Docker, no Windows.
 - Portas: console `127.0.0.1:8080` (HTTP, só local), celular `0.0.0.0:8443` (HTTPS na LAN), Vite em dev `5173`.
 - O certificado TLS autoassinado e o banco SQLite ficam no diretório de dados do usuário (`%LOCALAPPDATA%\wcam`), nunca no repositório.
