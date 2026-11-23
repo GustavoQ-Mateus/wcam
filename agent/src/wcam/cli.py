@@ -1,11 +1,11 @@
 import argparse
 import asyncio
 import contextlib
+import functools
 import io
 import logging
 import multiprocessing
 import sys
-import webbrowser
 from typing import TextIO
 
 import segno
@@ -29,12 +29,13 @@ from wcam.media.pipeline import FramePipeline
 from wcam.media.quality import QualityMeter, read_y4m_luma
 from wcam.network.certificates import TlsCertificate, load_or_create_certificate
 from wcam.network.lan import NoLanInterfaceError, detect_lan_interface
+from wcam.parent_pipe import pipe_probe, stop_when_parent_closes
 from wcam.persistence.database import open_database
 from wcam.process_monitor import CpuMonitor
+from wcam.process_priority import raise_process_priority
 from wcam.services import AgentServices
 from wcam.sessions.comparisons import ComparisonStore, CorrectionSnapshot
 from wcam.sessions.manager import SessionManager, SessionState
-from wcam.tray.tray import Tray, windows_tray_icon
 from wcam.virtualcam.factory import FallbackReason, SinkSelection, select_sink
 from wcam.virtualcam.media_foundation_sink import load_native_library
 from wcam.virtualcam.sink import CameraState
@@ -52,16 +53,18 @@ def main() -> None:
     multiprocessing.freeze_support()
     parser = argparse.ArgumentParser(prog="wcam")
     parser.add_argument("--version", action="version", version=f"wcam {__version__}")
-    parser.parse_args()
+    parser.add_argument("--child", action="store_true")
+    arguments = parser.parse_args()
     use_utf8_output(sys.stdout)
     settings = Settings()
     messages = load_messages(settings.locales_dir, resolve_language(system_language_tag()))
     with contextlib.suppress(KeyboardInterrupt):
-        start(settings, messages)
+        start(settings, messages, child=arguments.child)
     print(messages.text("terminal.stopped"))
 
 
-def start(settings: Settings, messages: Messages) -> None:
+def start(settings: Settings, messages: Messages, *, child: bool = False) -> None:
+    raise_process_priority()
     try:
         lan = detect_lan_interface(settings.lan_ip)
     except NoLanInterfaceError:
@@ -108,12 +111,12 @@ def start(settings: Settings, messages: Messages) -> None:
     announce_pairing(messages, manager, phone_url, console_url, sys.stdout)
     hint_confirmation(messages, manager, sys.stdout)
     servers = create_servers(settings, lan, certificate, services)
-    icon = windows_tray_icon()
-    tray = None
-    if icon is not None:
-        tray = Tray(icon, services, messages, lambda: webbrowser.open(console_url), lambda: request_stop(servers))
+    parent_watch = None
+    if child:
+        probe = pipe_probe(sys.stdin.fileno())
+        parent_watch = functools.partial(stop_when_parent_closes, probe, lambda: request_stop(servers))
     with stop_signals_handled(servers):
-        asyncio.run(run(servers, services, None if tray is None else tray.run))
+        asyncio.run(run(servers, services, parent_watch))
 
 
 def use_utf8_output(stream: TextIO) -> None:

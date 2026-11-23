@@ -5,6 +5,7 @@ from typing import cast
 
 import av
 import numpy as np
+import psutil
 import pytest
 from av import VideoFrame
 from av.video.codeccontext import VideoCodecContext
@@ -13,6 +14,7 @@ from wcam.decoding.hardware import HardwareDecodeError, HardwareDecoderProcess, 
 from wcam.decoding.messages import EncodedPacket
 from wcam.decoding.status import FallbackReason
 from wcam.media.phone_decoder import contains_idr
+from wcam.process_priority import ABOVE_NORMAL_PRIORITY_CLASS
 from wcam.tools.make_reference import FRAME_MARKER, HEIGHT, WIDTH, reference_frame
 from wcam.tools.synthetic_h264 import VideoEncoder, encode
 
@@ -110,3 +112,16 @@ def test_hardware_frames_keep_the_declared_range_and_matrix(hardware: HardwareSt
         expected.colorspace,
         expected.key_frame,
     )
+
+
+def test_decoder_process_runs_above_normal_priority() -> None:
+    decoder = HardwareDecoderProcess()
+    try:
+        opened = decoder.open("h264", None)
+        if not isinstance(opened, FallbackReason):
+            opened.close()
+        priorities = [child.nice() for child in psutil.Process().children(recursive=True)]
+    finally:
+        decoder.close()
+
+    assert ABOVE_NORMAL_PRIORITY_CLASS in priorities

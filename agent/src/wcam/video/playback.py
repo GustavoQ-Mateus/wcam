@@ -22,6 +22,7 @@ from wcam.decoding.source import SourceDecoding, software_decoding
 from wcam.decoding.status import DecoderKind, DecodingSource, FallbackReason
 from wcam.diagnostics.stage_times import Stage
 from wcam.media.pipeline import elapsed_since
+from wcam.process_priority import join_capture_task
 from wcam.video.frames import fitted_nv12
 from wcam.video.timeline import Clip, Timeline
 from wcam.virtualcam.sink import AnnouncedFormat, Nv12Frame
@@ -465,7 +466,7 @@ class VideoPlayback:
 
     async def run(self) -> None:
         loop = asyncio.get_running_loop()
-        producer = ThreadPoolExecutor(max_workers=1, thread_name_prefix=PRODUCER_NAME)
+        producer = ThreadPoolExecutor(max_workers=1, thread_name_prefix=PRODUCER_NAME, initializer=join_capture_task)
         preparer = ThreadPoolExecutor(max_workers=1, thread_name_prefix=PREPARER_NAME)
         self._reader = TimelineReader(
             self._read_ahead, self._output, preparer, lambda: self._play_seconds, self._decoding
