@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\Wcam.App\AgentStatus.cs" Link="App\AgentStatus.cs" />
+    <Compile Include="..\..\src\Wcam.App\AgentSupervisor.cs" Link="App\AgentSupervisor.cs" />
+    <Compile Include="..\..\src\Wcam.App\AppSettings.cs" Link="App\AppSettings.cs" />
+    <Compile Include="..\..\src\Wcam.App\EdgePlacement.cs" Link="App\EdgePlacement.cs" />
+    <Compile Include="..\..\src\Wcam.App\Hotkey.cs" Link="App\Hotkey.cs" />
+    <Compile Include="..\..\src\Wcam.App\Localization.cs" Link="App\Localization.cs" />
+    <Compile Include="..\..\src\Wcam.App\PreviewSlots.cs" Link="App\PreviewSlots.cs" />
+    <Compile Include="..\..\src\Wcam.App\PublishedFrameReader.cs" Link="App\PublishedFrameReader.cs" />
+    <Compile Include="..\..\src\Wcam.App\RestartPolicy.cs" Link="App\RestartPolicy.cs" />
+    <Compile Include="..\..\src\Wcam.App\SingleInstance.cs" Link="App\SingleInstance.cs" />
+    <Compile Include="..\..\src\Wcam.App\StartupRegistration.cs" Link="App\StartupRegistration.cs" />
+    <Compile Include="..\..\src\Wcam.App\TrayMenu.cs" Link="App\TrayMenu.cs" />
+    <Compile Include="..\..\..\vcam\src\Wcam.VirtualCamera\FrameChannel.cs" Link="VirtualCamera\FrameChannel.cs" />
+    <Compile Include="..\..\..\vcam\src\Wcam.VirtualCamera\FrameFormat.cs" Link="VirtualCamera\FrameFormat.cs" />
+    <Compile Include="..\..\..\vcam\src\Wcam.VirtualCamera\FrameTransport.cs" Link="VirtualCamera\FrameTransport.cs" />
+    <Compile Include="..\..\..\vcam\src\Wcam.VirtualCamera\VideoFormat.cs" Link="VirtualCamera\VideoFormat.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>
