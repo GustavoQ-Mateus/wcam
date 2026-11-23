@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Wcam.App;
@@ -7,7 +7,7 @@ internal sealed record WindowBounds(int X, int Y, int Width, int Height);
 
 internal sealed record AppSettings
 {
-    public const string DefaultHotkey = "Ctrl+Alt+W";
+    public const string DefaultHotkey = "Win+Alt+W";
 
     public WindowBounds? ConsoleWindow { get; init; }
 

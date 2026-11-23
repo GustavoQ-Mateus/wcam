@@ -1,4 +1,4 @@
-namespace Wcam.App.Tests;
+﻿namespace Wcam.App.Tests;
 
 public class EdgePlacementTests
 {
@@ -39,7 +39,7 @@ public class EdgePlacementTests
         EdgePlacement placement = EdgePlacement.Snap(Both, 3830, 520);
 
         Assert.Equal(new EdgePlacement("second", ScreenEdge.Right, 0.5), placement);
-        Assert.Equal((3840 - Size, 500), placement.Position(Both, Size));
+        Assert.Equal((3840 - Size, 500), placement.Position(Both, Size, 0));
     }
 
     [Fact]
@@ -56,14 +56,54 @@ public class EdgePlacementTests
     {
         var placement = new EdgePlacement("second", ScreenEdge.Top, 1);
 
-        Assert.Equal((1920 - Size, 0), placement.Position([Primary], Size));
+        Assert.Equal((1920 - Size, 0), placement.Position([Primary], Size, 0));
+    }
+
+[Fact]
+    public void Inset_KeepsTheIconAwayFromTheEdge()
+    {
+        var placement = new EdgePlacement("primary", ScreenEdge.Right, 0);
+
+        Assert.Equal((1920 - Size - 6, 6), placement.Position(Both, Size, 6));
     }
 
     [Fact]
-    public void LeftEdgePlacement_StaysInsideTheWorkArea()
+    public void BottomCornerPlacement_StaysInsideTheWorkArea()
     {
         var placement = new EdgePlacement("primary", ScreenEdge.Bottom, 1);
 
-        Assert.Equal((1920 - Size, 1040 - Size), placement.Position(Both, Size));
+        Assert.Equal((1920 - Size, 1040 - Size), placement.Position(Both, Size, 0));
+    }
+}
+
+public class PanelPlacementTests
+{
+    private static readonly Monitor[] Screen = [new("primary", new ScreenRect(0, 0, 1920, 1040), true)];
+
+    [Fact]
+    public void IconOnTheRightEdge_OpensThePanelToItsLeft()
+    {
+        Assert.Equal((1874 - 8 - 240, 420), PanelPlacement.Beside(Screen, 1874, 500, 40, 240, 200, 8));
+    }
+
+    [Fact]
+    public void IconOnTheLeftEdge_OpensThePanelToItsRight()
+    {
+        Assert.Equal((6 + 40 + 8, 420), PanelPlacement.Beside(Screen, 6, 500, 40, 240, 200, 8));
+    }
+
+    [Fact]
+    public void IconOnTheTopEdge_OpensThePanelBelow()
+    {
+        Assert.Equal((860, 6 + 40 + 8), PanelPlacement.Beside(Screen, 960, 6, 40, 240, 200, 8));
+    }
+
+    [Fact]
+    public void IconInTheBottomCorner_KeepsThePanelOnScreen()
+    {
+        (int x, int y) = PanelPlacement.Beside(Screen, 1874, 994, 40, 240, 300, 8);
+
+        Assert.Equal(1040 - 300, y);
+        Assert.Equal(1874 - 8 - 240, x);
     }
 }

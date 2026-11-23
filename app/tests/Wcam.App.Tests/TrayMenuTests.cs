@@ -1,4 +1,4 @@
-namespace Wcam.App.Tests;
+﻿namespace Wcam.App.Tests;
 
 public class TrayMenuTests
 {
@@ -16,6 +16,18 @@ public class TrayMenuTests
     public void StoppedAgent_ShowsProblemWithStoppedText()
     {
         Assert.Equal((TrayState.Problem, "tray.agent_stopped"), TrayMenu.State(AgentLifecycle.Stopped, Live));
+    }
+
+    [Fact]
+    public void AgentWithoutNetwork_ShowsTheNetworkText()
+    {
+        Assert.Equal((TrayState.Problem, "tray.agent_no_network"), TrayMenu.State(AgentLifecycle.NoNetwork, Live));
+    }
+
+    [Fact]
+    public void AgentWithBusyPort_ShowsThePortText()
+    {
+        Assert.Equal((TrayState.Problem, "tray.agent_port_busy"), TrayMenu.State(AgentLifecycle.PortBusy, Live));
     }
 
     [Fact]
@@ -137,6 +149,37 @@ public class TrayMenuTests
 
         Assert.False(entries.Single(entry => entry.Action == TrayAction.ToggleOverlay).Checked);
         Assert.True(entries.Single(entry => entry.Action == TrayAction.ToggleStartWithWindows).Checked);
+    }
+
+[Fact]
+    public void Panel_FollowsTheStatusOfTheControls()
+    {
+        AgentStatus status = Live with { Controls = Normal with { CameraOff = true } };
+
+        IReadOnlyList<MenuEntry> entries = TrayMenu.PanelEntries(AgentLifecycle.Running, status, false);
+
+        Assert.Equal("controls.camera_on", entries.Single(entry => entry.Action == TrayAction.ToggleCamera).TextKey);
+        Assert.False(entries.Single(entry => entry.Action == TrayAction.ToggleFreeze).Enabled);
+        Assert.DoesNotContain(entries, entry => entry.Action == TrayAction.ToggleMirror);
+    }
+
+    [Fact]
+    public void Panel_OffersToHideAShownFloatingPreview()
+    {
+        IReadOnlyList<MenuEntry> entries = TrayMenu.PanelEntries(AgentLifecycle.Running, Live, true);
+
+        MenuEntry preview = entries.Single(entry => entry.Action == TrayAction.ToggleFloatingPreview);
+        Assert.Equal("overlay.preview_off", preview.TextKey);
+    }
+
+    [Fact]
+    public void PanelWithAgentStopped_KeepsOnlyTheAppActions()
+    {
+        IReadOnlyList<MenuEntry> entries = TrayMenu.PanelEntries(AgentLifecycle.Stopped, Live, false);
+
+        Assert.Equal(
+            [TrayAction.ToggleFloatingPreview, TrayAction.OpenConsole, TrayAction.HideOverlay],
+            entries.Select(entry => entry.Action));
     }
 
     [Fact]

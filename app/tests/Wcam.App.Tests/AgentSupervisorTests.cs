@@ -115,11 +115,35 @@ public class AgentSupervisorTests
         Assert.True(launcher.Started[0].Killed);
     }
 
-[Theory]
-    [InlineData(AgentSupervisor.NoLocalNetworkExitCode)]
-    [InlineData(AgentSupervisor.PortInUseExitCode)]
-    [InlineData(0)]
-    public async Task AgentEndingWithAFinalCode_IsNotStartedAgain(int exitCode)
+    [Fact]
+    public async Task AgentWithoutLocalNetwork_EndsWithNoNetworkAndIsNotStartedAgain()
+    {
+        await AssertFinalExit(AgentSupervisor.NoLocalNetworkExitCode, AgentLifecycle.NoNetwork);
+    }
+
+    [Fact]
+    public async Task AgentWithBusyPort_EndsWithPortBusyAndIsNotStartedAgain()
+    {
+        await AssertFinalExit(AgentSupervisor.PortInUseExitCode, AgentLifecycle.PortBusy);
+    }
+
+    [Fact]
+    public async Task AgentEndingOnItsOwnWithZero_EndsStoppedAndIsNotStartedAgain()
+    {
+        await AssertFinalExit(0, AgentLifecycle.Stopped);
+    }
+
+    [Fact]
+    public async Task MissingAgentExecutable_EndsStopped()
+    {
+        var supervisor = new AgentSupervisor(new MissingLauncher(), new FakeHealth(() => true), Fast, TimeProvider.System);
+
+        await supervisor.RunAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(AgentLifecycle.Stopped, supervisor.Lifecycle);
+    }
+
+    private static async Task AssertFinalExit(int exitCode, AgentLifecycle expected)
     {
         var launcher = new FakeLauncher();
         var supervisor = new AgentSupervisor(launcher, new FakeHealth(() => true), Fast, TimeProvider.System);
@@ -129,18 +153,8 @@ public class AgentSupervisorTests
         launcher.Started[0].Crash(exitCode);
         await run.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.Equal(AgentLifecycle.Stopped, supervisor.Lifecycle);
+        Assert.Equal(expected, supervisor.Lifecycle);
         Assert.Single(launcher.Started);
-    }
-
-[Fact]
-    public async Task MissingAgentExecutable_EndsStopped()
-    {
-        var supervisor = new AgentSupervisor(new MissingLauncher(), new FakeHealth(() => true), Fast, TimeProvider.System);
-
-        await supervisor.RunAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
-
-        Assert.Equal(AgentLifecycle.Stopped, supervisor.Lifecycle);
     }
 
     private static async Task WaitUntil(Func<bool> condition)

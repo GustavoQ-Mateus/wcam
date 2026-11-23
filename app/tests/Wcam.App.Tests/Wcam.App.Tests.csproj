@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
@@ -14,6 +14,7 @@
     <Compile Include="..\..\src\Wcam.App\EdgePlacement.cs" Link="App\EdgePlacement.cs" />
     <Compile Include="..\..\src\Wcam.App\Hotkey.cs" Link="App\Hotkey.cs" />
     <Compile Include="..\..\src\Wcam.App\Localization.cs" Link="App\Localization.cs" />
+    <Compile Include="..\..\src\Wcam.App\PanelPlacement.cs" Link="App\PanelPlacement.cs" />
     <Compile Include="..\..\src\Wcam.App\PreviewSlots.cs" Link="App\PreviewSlots.cs" />
     <Compile Include="..\..\src\Wcam.App\PublishedFrameReader.cs" Link="App\PublishedFrameReader.cs" />
     <Compile Include="..\..\src\Wcam.App\RestartPolicy.cs" Link="App\RestartPolicy.cs" />

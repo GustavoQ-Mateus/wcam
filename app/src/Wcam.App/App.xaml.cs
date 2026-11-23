@@ -18,6 +18,7 @@ public sealed partial class App : Application
     private AgentSupervisor _supervisor = null!;
     private DispatcherQueue _ui = null!;
     private ConsoleWindow? _console;
+    private OverlayController _overlay = null!;
     private AgentStatus _status = AgentStatus.Unknown;
     private Task _agent = Task.CompletedTask;
     private RegisteredWaitHandle? _showWait;
@@ -39,6 +40,11 @@ public sealed partial class App : Application
         _tray = new TrayIcon();
         _tray.Selected += OnTrayAction;
         _tray.Activated += ShowConsole;
+        _tray.HotkeyPressed += () => _overlay.OpenPanel(keyboard: true);
+        _tray.RegisterHotkey(Hotkey.Parse(_settings.Hotkey));
+        _overlay = new OverlayController(_texts, () => _settings, SaveSettings);
+        _overlay.Selected += OnTrayAction;
+        _overlay.Apply();
         _launcher = new JobAgentLauncher(AppPaths.Agent());
         _supervisor = new AgentSupervisor(_launcher, _client, SupervisorTiming.Product, TimeProvider.System);
         _supervisor.LifecycleChanged += _ => _ui.TryEnqueue(OnLifecycleChanged);
@@ -76,6 +82,7 @@ public sealed partial class App : Application
         IReadOnlyList<MenuEntry> entries = TrayMenu.Entries(lifecycle, _status, preferences);
         string[] texts = entries.Select(entry => entry.TextKey.Length == 0 ? string.Empty : _texts.Text(entry.TextKey)).ToArray();
         _tray.Update(state, _texts.Text("tray.tooltip", "state", _texts.Text(textKey)), entries, texts);
+        _overlay.Update(lifecycle, _status);
     }
 
     private void ShowConsole()
@@ -119,6 +126,14 @@ public sealed partial class App : Application
                 break;
             case TrayAction.ToggleOverlay:
                 SaveSettings(_settings with { OverlayVisible = !_settings.OverlayVisible });
+                _overlay.Apply();
+                break;
+            case TrayAction.HideOverlay:
+                SaveSettings(_settings with { OverlayVisible = false });
+                _overlay.Apply();
+                break;
+            case TrayAction.ToggleFloatingPreview:
+                _overlay.ToggleFloatingPreview();
                 break;
             case TrayAction.ToggleStartWithWindows:
                 _startupRegistration.Set(!_startupRegistration.IsEnabled);
@@ -143,6 +158,7 @@ public sealed partial class App : Application
         _showWait?.Unregister(null);
         await _agent;
         _console?.Close();
+        _overlay.Dispose();
         _tray.Dispose();
         _launcher.Dispose();
         _client.Dispose();

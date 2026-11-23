@@ -1,3 +1,5 @@
+﻿using Wcam.VirtualCamera;
+
 namespace Wcam.App;
 
 internal sealed class PreviewSlots
@@ -6,6 +8,15 @@ internal sealed class PreviewSlots
 
     private readonly bool[] _withPage = new bool[Count];
     private bool _idle;
+    private FrameFormat _buffersFormat;
+
+    public bool NeedsBuffers(FrameFormat format) => format != _buffersFormat;
+
+    public void BuffersSent(FrameFormat format)
+    {
+        Array.Clear(_withPage);
+        _buffersFormat = format;
+    }
 
     public int? FreeSlot()
     {
@@ -29,12 +40,6 @@ internal sealed class PreviewSlots
         }
     }
 
-    public void Reset()
-    {
-        Array.Clear(_withPage);
-        _idle = false;
-    }
-
     public bool BecameIdle()
     {
         if (_idle)
@@ -42,6 +47,7 @@ internal sealed class PreviewSlots
             return false;
         }
         _idle = true;
+        _buffersFormat = default;
         return true;
     }
 

@@ -1,4 +1,4 @@
-namespace Wcam.App.Tests;
+﻿namespace Wcam.App.Tests;
 
 public class RestartPolicyTests
 {
@@ -103,6 +103,46 @@ public class PreviewSlotsTests
         Assert.True(slots.BecameIdle());
     }
 
+[Fact]
+    public void NewFormat_NeedsBuffers()
+    {
+        var slots = new PreviewSlots();
+
+        Assert.True(slots.NeedsBuffers(Wcam.VirtualCamera.FrameFormat.Default));
+    }
+
+    [Fact]
+    public void SameFormatAfterBuffersSent_DoesNotNeedBuffers()
+    {
+        var slots = new PreviewSlots();
+        slots.BuffersSent(Wcam.VirtualCamera.FrameFormat.Default);
+
+        Assert.False(slots.NeedsBuffers(Wcam.VirtualCamera.FrameFormat.Default));
+    }
+
+    [Fact]
+    public void SameFormatAfterIdle_NeedsNewBuffersSoTheSequenceRestarts()
+    {
+        var slots = new PreviewSlots();
+        slots.BuffersSent(Wcam.VirtualCamera.FrameFormat.Default);
+
+        slots.BecameIdle();
+
+        Assert.True(slots.NeedsBuffers(Wcam.VirtualCamera.FrameFormat.Default));
+    }
+
+    [Fact]
+    public void SentBuffers_GiveBothSlotsBackToTheApp()
+    {
+        var slots = new PreviewSlots();
+        slots.GiveToPage(0);
+        slots.GiveToPage(1);
+
+        slots.BuffersSent(Wcam.VirtualCamera.FrameFormat.Default);
+
+        Assert.Equal(0, slots.FreeSlot());
+    }
+
     [Fact]
     public void ReleaseOfUnknownSlot_IsIgnored()
     {
@@ -143,7 +183,7 @@ public class LocalizationTests
         string locales = Path.Combine(RepositoryRoot(), "locales");
         Localization english = Localization.Load(locales, Localization.English);
         Localization portuguese = Localization.Load(locales, Localization.Portuguese);
-        string[] keys = ["tray.show_overlay", "tray.start_with_windows", "overlay.panel", "app.name"];
+        string[] keys = ["tray.show_overlay", "tray.start_with_windows", "tray.agent_no_network", "tray.agent_port_busy", "overlay.panel", "overlay.preview_close", "app.name"];
 
         Assert.All(keys, key => Assert.NotEmpty(english.Text(key) + portuguese.Text(key)));
     }
@@ -170,7 +210,7 @@ public class AppSettingsTests
             ConsoleWindow = new WindowBounds(10, 20, 900, 700),
             OverlayPlacement = new EdgePlacement("primary", ScreenEdge.Bottom, 0.25),
             FloatingPreviewVisible = true,
-            Hotkey = "Win+Alt+W",
+            Hotkey = "Ctrl+Shift+F9",
         };
 
         settings.Save(path);

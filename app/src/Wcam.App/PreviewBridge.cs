@@ -101,13 +101,13 @@ internal sealed unsafe class PreviewSession
     private void Run()
     {
         using var reader = new PublishedFrameReader(AppPaths.FramesSection, TimeProvider.System);
-        FrameFormat current = default;
+        using var timer = new PollTimer();
         try
         {
             while (!_stop.IsCancellationRequested)
             {
-                TimeSpan wait = Step(reader, ref current);
-                _stop.Token.WaitHandle.WaitOne(wait);
+                TimeSpan wait = Step(reader);
+                timer.Wait(wait, _stop.Token.WaitHandle);
             }
         }
         finally
@@ -116,18 +116,17 @@ internal sealed unsafe class PreviewSession
         }
     }
 
-    private TimeSpan Step(PublishedFrameReader reader, ref FrameFormat current)
+    private TimeSpan Step(PublishedFrameReader reader)
     {
         if (!reader.TryReadFormat(out FrameFormat format))
         {
             ReportIdle();
             return IdlePoll;
         }
-        if (format != current && !ReplaceBuffers(format))
+        if (NeedsBuffers(format) && !ReplaceBuffers(format))
         {
             return IdlePoll;
         }
-        current = format;
         int? slot = FreeSlot();
         if (slot is null)
         {
@@ -163,9 +162,12 @@ internal sealed unsafe class PreviewSession
         {
             return false;
         }
-        lock (_slots)
+        if (posted)
         {
-            _slots.Reset();
+            lock (_slots)
+            {
+                _slots.BuffersSent(format);
+            }
         }
         return posted;
     }
@@ -195,6 +197,14 @@ internal sealed unsafe class PreviewSession
             _buffers[slot]?.Dispose();
             _buffers[slot] = null;
             _pointers[slot] = 0;
+        }
+    }
+
+    private bool NeedsBuffers(FrameFormat format)
+    {
+        lock (_slots)
+        {
+            return _slots.NeedsBuffers(format);
         }
     }
 

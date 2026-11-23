@@ -42,7 +42,6 @@ internal sealed class AgentSupervisor
 {
     public const int NoLocalNetworkExitCode = 2;
     public const int PortInUseExitCode = 3;
-    private static readonly int[] FinalExitCodes = [0, NoLocalNetworkExitCode, PortInUseExitCode];
 
     private readonly IAgentLauncher _launcher;
     private readonly IHealthProbe _health;
@@ -79,18 +78,18 @@ internal sealed class AgentSupervisor
                 await StopAsync(process);
                 return;
             }
-            bool endedForGood = EndedForGood(process);
+            AgentLifecycle? final = FinalLifecycle(process);
             process.Kill();
-            if (endedForGood || !_restarts.TryRestart(_time.GetUtcNow()))
+            if (final is not null || !_restarts.TryRestart(_time.GetUtcNow()))
             {
-                SetLifecycle(AgentLifecycle.Stopped);
+                SetLifecycle(final ?? AgentLifecycle.Stopped);
                 return;
             }
             SetLifecycle(AgentLifecycle.Restarting);
         }
     }
 
-private IAgentProcess? TryStart()
+    private IAgentProcess? TryStart()
     {
         try
         {
@@ -102,8 +101,20 @@ private IAgentProcess? TryStart()
         }
     }
 
-    private static bool EndedForGood(IAgentProcess process) =>
-        process.Exited.IsCompleted && FinalExitCodes.Contains(process.ExitCode);
+    private static AgentLifecycle? FinalLifecycle(IAgentProcess process)
+    {
+        if (!process.Exited.IsCompleted)
+        {
+            return null;
+        }
+        return process.ExitCode switch
+        {
+            0 => AgentLifecycle.Stopped,
+            NoLocalNetworkExitCode => AgentLifecycle.NoNetwork,
+            PortInUseExitCode => AgentLifecycle.PortBusy,
+            _ => null,
+        };
+    }
 
     private async Task<bool> WatchAsync(IAgentProcess process, CancellationToken stop)
     {

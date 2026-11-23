@@ -1,4 +1,4 @@
-namespace Wcam.App;
+﻿namespace Wcam.App;
 
 internal enum TrayState
 {
@@ -24,6 +24,8 @@ internal enum TrayAction
     Disconnect,
     ToggleOverlay,
     ToggleStartWithWindows,
+    ToggleFloatingPreview,
+    HideOverlay,
     Quit,
 }
 
@@ -33,6 +35,8 @@ internal enum AgentLifecycle
     Running,
     Restarting,
     Stopped,
+    NoNetwork,
+    PortBusy,
 }
 
 internal sealed record MenuEntry(string TextKey, TrayAction Action, bool Enabled = true, bool Checked = false)
@@ -46,19 +50,15 @@ internal static class TrayMenu
 {
     public static (TrayState State, string TextKey) State(AgentLifecycle lifecycle, AgentStatus status)
     {
-        if (lifecycle == AgentLifecycle.Restarting)
+        return lifecycle switch
         {
-            return (TrayState.Problem, "tray.agent_restarting");
-        }
-        if (lifecycle == AgentLifecycle.Stopped)
-        {
-            return (TrayState.Problem, "tray.agent_stopped");
-        }
-        if (lifecycle == AgentLifecycle.Starting)
-        {
-            return (TrayState.Waiting, "state.waiting");
-        }
-        return StatusState(status);
+            AgentLifecycle.Restarting => (TrayState.Problem, "tray.agent_restarting"),
+            AgentLifecycle.Stopped => (TrayState.Problem, "tray.agent_stopped"),
+            AgentLifecycle.NoNetwork => (TrayState.Problem, "tray.agent_no_network"),
+            AgentLifecycle.PortBusy => (TrayState.Problem, "tray.agent_port_busy"),
+            AgentLifecycle.Starting => (TrayState.Waiting, "state.waiting"),
+            _ => StatusState(status),
+        };
     }
 
     public static IReadOnlyList<MenuEntry> Entries(
@@ -111,6 +111,23 @@ internal static class TrayMenu
                 Enabled: status.VideoActive || (status.Live && status.TimelineHasClips),
                 Checked: status.VideoActive),
         ];
+    }
+
+public static IReadOnlyList<MenuEntry> PanelEntries(AgentLifecycle lifecycle, AgentStatus status, bool floatingPreview)
+    {
+        var entries = new List<MenuEntry>();
+        if (lifecycle == AgentLifecycle.Running)
+        {
+            entries.AddRange(ControlEntries(status).Where(entry => entry.Action != TrayAction.ToggleMirror));
+            entries.Add(MenuEntry.Separator);
+        }
+        entries.Add(new MenuEntry(
+            floatingPreview ? "overlay.preview_off" : "overlay.preview_on",
+            TrayAction.ToggleFloatingPreview,
+            Checked: floatingPreview));
+        entries.Add(new MenuEntry("tray.open_console", TrayAction.OpenConsole));
+        entries.Add(new MenuEntry("overlay.hide", TrayAction.HideOverlay));
+        return entries;
     }
 
     public static string CameraTextKey(AgentStatus status) => status.Live ? status.Controls.Facing switch

@@ -1,4 +1,4 @@
-namespace Wcam.App;
+﻿namespace Wcam.App;
 
 internal enum ScreenEdge
 {
@@ -45,10 +45,11 @@ internal sealed record EdgePlacement(string MonitorId, ScreenEdge Edge, double O
         return new EdgePlacement(monitor.Id, nearest, SnapToCorner(offset));
     }
 
-    public (int X, int Y) Position(IReadOnlyList<Monitor> monitors, int size)
+    public (int X, int Y) Position(IReadOnlyList<Monitor> monitors, int size, int inset)
     {
         Monitor monitor = monitors.FirstOrDefault(monitor => monitor.Id == MonitorId) ?? Primary(monitors);
-        ScreenRect area = monitor.WorkArea;
+        ScreenRect full = monitor.WorkArea;
+        var area = new ScreenRect(full.Left + inset, full.Top + inset, full.Right - inset, full.Bottom - inset);
         int alongX = area.Left + (int)Math.Round(Offset * (area.Width - size));
         int alongY = area.Top + (int)Math.Round(Offset * (area.Height - size));
         return Edge switch
