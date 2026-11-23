@@ -17,7 +17,10 @@ Prevalece sobre o texto abaixo onde houver conflito.
 - A interface do app é Avalonia UI em C#, sem WebView2 e sem páginas web dentro do app (substitui o WinUI e a ADR 0024).
 - A janela principal é um aplicativo de verdade, com estrutura própria (barra de título, navegação, áreas fixas), e cobre o que o console faz para o usuário: QR e confirmação, estado da conexão, prévia em qualidade total, controles, detalhes, formato, e a biblioteca e a linha do tempo de vídeo. O `/dev` continua só no navegador.
 - Identidade visual do WCam definida primeiro (marca, ícone do app, tipografia, grade, componentes, movimento), a partir dos tokens de §5.6, com `impeccable` (`shape`), `taste-skill` (telas de app), `emil-design-eng`, `animate` e `review-animations`, registrada em `docs/design-v1.0.0.md`. O usuário valida um protótipo executável antes das telas finais.
-- Ícone na tela, painel e prévia flutuante em Avalonia, com o mesmo comportamento da §1.1 e a identidade nova.
+- Ícone na tela, painel e prévia flutuante em Avalonia, com a identidade nova. Esclarecimento do usuário em 2026-11-23, que prevalece sobre a §1.1:
+  - O ícone é de fato uma câmera: um quadradinho de cantos arredondados com a lente, no espírito do ícone de câmera dos celulares (sem copiar o de nenhuma marca), bonito e moderno. Fica por padrão no topo da tela, no meio; o usuário pode mudar o lugar.
+  - O ícone fica escondido. Só aparece quando o usuário segura Ctrl e leva o mouse perto do lugar dele; soltando o Ctrl ou afastando o mouse, ele some. Na primeira abertura do app, aparece uma vez com a dica de como chamá-lo.
+  - O painel não é uma lista como o menu da bandeja: é um painel moderno de botões com ícone para cada ação (e rótulo curto), que abre com animação a partir do ícone, com estado visível em cada botão (por exemplo, congelado aceso). Visual profissional, na identidade do app.
 - Prévias do app desenhadas pelo Avalonia a partir da seção `Local\WCamFrames`.
 - Web (§3): nada nesta versão além da `version` 1.0.0; o polimento do front web fica para a v1.4.0.
 - Spike novo: Avalonia 12 com Native AOT (publish sem avisos), bandeja, janela sem moldura do sistema, janela sempre por cima sem foco com exclusão de captura, e a prévia NV12 em 1080p30 e 2160p30 (CPU).

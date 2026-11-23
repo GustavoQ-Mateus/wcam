@@ -310,5 +310,7 @@
   "tray.agent_no_network": "No local network. Connect the computer to Wi-Fi or a network cable.",
   "tray.agent_port_busy": "Another program is using the WCam port.",
   "overlay.preview_close": "Close floating preview",
-  "console.preview_waiting": "Waiting for the WCam camera picture."
+  "console.preview_waiting": "Waiting for the WCam camera picture.",
+  "installer.launch": "Open WCam now",
+  "installer.remove_user_data": "Also delete your WCam data on this computer? This includes the library videos and settings."
 }

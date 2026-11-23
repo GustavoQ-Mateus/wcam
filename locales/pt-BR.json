@@ -310,5 +310,7 @@
   "tray.agent_no_network": "Sem rede local. Conecte o computador ao Wi-Fi ou a um cabo de rede.",
   "tray.agent_port_busy": "Outro programa está usando a porta do WCam.",
   "overlay.preview_close": "Fechar prévia flutuante",
-  "console.preview_waiting": "Esperando a imagem da câmera WCam."
+  "console.preview_waiting": "Esperando a imagem da câmera WCam.",
+  "installer.launch": "Abrir o WCam agora",
+  "installer.remove_user_data": "Apagar também os seus dados do WCam neste computador? Isso inclui os vídeos da biblioteca e as configurações."
 }
