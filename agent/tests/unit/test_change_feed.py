@@ -1,7 +1,7 @@
 import asyncio
 import threading
 
-from wcam.api.events import repeated_events, sse_event
+from wcam.api.events import next_tick, repeated_events, sse_event
 from wcam.change_feed import ChangeFeed
 
 WAIT_SECONDS = 1.0
@@ -59,3 +59,7 @@ async def test_closing_the_feed_ends_the_stream_and_drops_the_subscriber() -> No
     assert isinstance(await asyncio.wait_for(asyncio.gather(waiting, return_exceptions=True), WAIT_SECONDS), list)
     assert waiting.exception() is not None
     assert feed.subscribers == 0
+
+
+def test_listeners_connected_at_different_moments_get_metrics_on_the_same_second() -> None:
+    assert next_tick(10.2, 1.0) == next_tick(10.9, 1.0) == 11.0

@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import json
+import math
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 
 from fastapi.responses import StreamingResponse
@@ -12,6 +13,10 @@ from wcam.diagnostics.dev_events import DevEvent, DevEventLog
 EVENT_STREAM = "text/event-stream"
 STREAM_HEADERS = {"Cache-Control": "no-cache"}
 REPEAT_SECONDS = 1.0
+
+
+def next_tick(now: float, repeat_seconds: float) -> float:
+    return math.floor(now / repeat_seconds + 1) * repeat_seconds
 
 
 def sse_event(name: str, data: str) -> str:
@@ -49,7 +54,7 @@ async def developer_events(
             waiting = next_metrics - loop.time()
             if waiting <= 0:
                 yield sse_event("metrics", json.dumps(await metrics()))
-                next_metrics += repeat_seconds
+                next_metrics = next_tick(loop.time(), repeat_seconds)
                 continue
             with contextlib.suppress(TimeoutError):
                 event = await asyncio.wait_for(events.get(), waiting)

@@ -7,6 +7,7 @@ from tests.fakes import FakePeerFactory
 from tests.unit.test_pipeline import phone_frame
 from tests.unit.test_session_manager import confirm_on_both_sides, session_request
 from wcam.decoding.status import DecoderKind, FallbackReason
+from wcam.diagnostics.dev_console import SHARED_WINDOW_SECONDS
 from wcam.diagnostics.dev_events import KEPT_EVENTS, DevEventLog, EpisodeEvents
 from wcam.diagnostics.stage_times import Stage
 from wcam.media.metrics import ReceiveStats
@@ -117,6 +118,7 @@ async def test_live_metrics_have_stages_frames_and_the_receiver_numbers() -> Non
     agent.dev_events.subscribe()
     factory.last.received = ReceiveStats(packets_lost=4, jitter_ms=2.5)
     await agent.dev_console.metrics()
+    await asyncio.sleep(SHARED_WINDOW_SECONDS)
     factory.last.received = ReceiveStats(packets_lost=7, jitter_ms=2.5)
     delivered_frame(agent)
 
@@ -134,6 +136,18 @@ async def test_live_metrics_have_stages_frames_and_the_receiver_numbers() -> Non
     assert metrics["frameTimesMs"] is not None
     assert metrics["budgetMs"] == 33.3
     assert metrics["ceilingKbps"] == 10_000
+
+
+async def test_two_listeners_asking_in_the_same_second_get_the_same_delivered_frames() -> None:
+    factory = FakePeerFactory()
+    agent = await live_agent(factory)
+    agent.dev_events.subscribe()
+    delivered_frame(agent)
+
+    first = await agent.dev_console.metrics()
+    second = await agent.dev_console.metrics()
+
+    assert second["delivered"] == first["delivered"]
 
 
 async def test_metrics_without_a_phone_have_no_session_numbers() -> None:
