@@ -294,5 +294,17 @@
   "console.video_queued": "Na fila",
   "console.video_keep": "Manter",
   "console.video_dismiss": "Fechar aviso",
-  "console.video_phone_camera_off": "A câmera do celular fica desligada enquanto o vídeo passa."
+  "console.video_phone_camera_off": "A câmera do celular fica desligada enquanto o vídeo passa.",
+  "tray.start_with_windows": "Iniciar com o Windows",
+  "tray.agent_restarting": "O WCam está reiniciando",
+  "tray.agent_stopped": "O WCam parou. Tentando de novo…",
+  "tray.show_overlay": "Mostrar atalho na tela",
+  "overlay.icon": "Atalho do WCam",
+  "overlay.panel": "Controles rápidos do WCam",
+  "overlay.preview_on": "Mostrar prévia flutuante",
+  "overlay.preview_off": "Esconder prévia flutuante",
+  "overlay.preview": "Prévia da câmera WCam",
+  "overlay.drag_hint": "Segure Ctrl e arraste para mudar o lugar",
+  "overlay.hotkey": "Atalho de teclado: {keys}",
+  "overlay.hide": "Esconder atalho na tela"
 }

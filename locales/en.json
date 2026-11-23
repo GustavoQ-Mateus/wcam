@@ -294,5 +294,17 @@
   "console.video_queued": "Waiting to send",
   "console.video_keep": "Keep",
   "console.video_dismiss": "Dismiss",
-  "console.video_phone_camera_off": "The phone camera is off while the video plays."
+  "console.video_phone_camera_off": "The phone camera is off while the video plays.",
+  "tray.start_with_windows": "Start with Windows",
+  "tray.agent_restarting": "WCam is restarting",
+  "tray.agent_stopped": "WCam stopped. Trying again…",
+  "tray.show_overlay": "Show on-screen shortcut",
+  "overlay.icon": "WCam shortcut",
+  "overlay.panel": "WCam quick controls",
+  "overlay.preview_on": "Show floating preview",
+  "overlay.preview_off": "Hide floating preview",
+  "overlay.preview": "WCam camera preview",
+  "overlay.drag_hint": "Hold Ctrl and drag to move it",
+  "overlay.hotkey": "Keyboard shortcut: {keys}",
+  "overlay.hide": "Hide on-screen shortcut"
 }
