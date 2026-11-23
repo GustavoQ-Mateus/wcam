@@ -1,5 +1,10 @@
 import type { LibraryVideo, TimelineClip } from "./contract";
 
+export interface WheelZoom {
+  direction: 1 | -1 | 0;
+  pendingDelta: number;
+}
+
 export interface ClipPlace {
   index: number;
   offsetSeconds: number;
@@ -12,6 +17,8 @@ export const TRACK_HEIGHT_PIXELS = 56;
 export const LIBRARY_VIDEO_TYPE = "application/x-wcam-video";
 
 const MILLISECONDS_PER_SECOND = 1000;
+const WHEEL_ZOOM_STEP_PIXELS = 50;
+const WHEEL_DELTA_PIXEL = 0;
 const RULER_STEPS_SECONDS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
 
 export function clipLength(clip: TimelineClip): number {
@@ -164,4 +171,15 @@ function replaceClip(
 
 function rounded(seconds: number): number {
   return Math.round(seconds * MILLISECONDS_PER_SECOND) / MILLISECONDS_PER_SECOND;
+}
+
+export function wheelZoom(pendingDelta: number, deltaY: number, deltaMode: number): WheelZoom {
+  if (deltaMode !== WHEEL_DELTA_PIXEL) {
+    return { direction: deltaY < 0 ? 1 : deltaY > 0 ? -1 : 0, pendingDelta: 0 };
+  }
+  const total = pendingDelta + deltaY;
+  if (Math.abs(total) < WHEEL_ZOOM_STEP_PIXELS) {
+    return { direction: 0, pendingDelta: total };
+  }
+  return { direction: total < 0 ? 1 : -1, pendingDelta: 0 };
 }

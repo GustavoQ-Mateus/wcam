@@ -17,6 +17,7 @@ import {
   trimEnd,
   trimStart,
   videoInUse,
+  wheelZoom,
 } from "./timeline";
 
 const VIDEO: LibraryVideo = {
@@ -150,5 +151,25 @@ describe("timeline", () => {
   it("filmstrip frame follows the time in the video", () => {
     expect(filmstripFrame(VIDEO, 6)).toBe(30);
     expect(filmstripFrame(VIDEO, 12)).toBe(59);
+  });
+
+  it("one mouse wheel notch with ctrl zooms one level, up to zoom in and down to zoom out", () => {
+    expect([wheelZoom(0, -100, 0), wheelZoom(0, 100, 0), wheelZoom(0, -3, 1)]).toEqual([
+      { direction: 1, pendingDelta: 0 },
+      { direction: -1, pendingDelta: 0 },
+      { direction: 1, pendingDelta: 0 },
+    ]);
+  });
+
+  it("small trackpad pinch deltas add up before zooming one level", () => {
+    const first = wheelZoom(0, -20, 0);
+    const second = wheelZoom(first.pendingDelta, -20, 0);
+    const third = wheelZoom(second.pendingDelta, -20, 0);
+
+    expect([first, second, third]).toEqual([
+      { direction: 0, pendingDelta: -20 },
+      { direction: 0, pendingDelta: -40 },
+      { direction: 1, pendingDelta: 0 },
+    ]);
   });
 });

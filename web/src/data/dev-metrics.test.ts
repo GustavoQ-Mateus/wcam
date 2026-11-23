@@ -15,6 +15,7 @@ import {
 
 const STAGES: NonNullable<DevMetrics["stages"]> = {
   decode: { median: 3.1, p95: 4.8 },
+  transfer: { median: 1.2, p95: 1.7 },
   color: { median: 2, p95: 2.9 },
   deliver: { median: 0.6, p95: 1.1 },
   total: { median: 5.9, p95: 8.2 },
@@ -75,7 +76,7 @@ describe("dev metrics", () => {
     const slow: DevMetrics = {
       ...LIVE,
       delivered: { fps: 20, frames: 1, dropped: 0 },
-      stages: { ...STAGES, total: { median: 20, p95: 25 } },
+      stages: { ...STAGES, total: { median: 30, p95: 40 } },
       process: { cpuPercent: 80 },
       phone: { at: 1, outbound: OUTBOUND, remoteInbound: { roundTripTime: 0.3, jitter: 0, packetsLost: 4 } },
     };
@@ -89,6 +90,13 @@ describe("dev metrics", () => {
       strip.cpuPercent.health,
       strip.roundTripMs.health,
     ]).toEqual(["attention", "attention", "attention", "attention", "attention"]);
+  });
+
+  it("processing p95 asks for attention only above the time of one frame", () => {
+    const withP95 = (p95: number) =>
+      healthStrip({ ...LIVE, stages: { ...STAGES, total: { median: p95, p95 } } }, 30, 0).processingP95.health;
+
+    expect([withP95(25), withP95(33.3), withP95(33.4)]).toEqual(["ok", "ok", "attention"]);
   });
 
   it("numbers that are not measured yet stay empty and ok", () => {
@@ -156,5 +164,14 @@ describe("dev metrics", () => {
     expect(header?.startsWith("at,received_fps,received_kbps")).toBe(true);
     expect(live?.split(",").slice(0, 3)).toEqual(["2026-11-12T18:00:01.000Z", "30", "9400"]);
     expect(idle?.split(",")[1]).toBe("");
+  });
+
+  it("csv has the transfer stage right after decoding", () => {
+    const [header, live] = metricsCsv([LIVE]).split("\n");
+    const columns = header?.split(",") ?? [];
+    const transfer = columns.indexOf("transfer_median_ms");
+
+    expect([columns[transfer - 1], columns[transfer + 1]]).toEqual(["decode_p95_ms", "transfer_p95_ms"]);
+    expect(live?.split(",").slice(transfer, transfer + 2)).toEqual(["1.2", "1.7"]);
   });
 });
