@@ -26,6 +26,7 @@ Base para medir: PC do usuário (i5-8500, 6 núcleos, Intel UHD 630), iPhone do 
 
 - A tradução de cor (faixa cheia para limitada, curva de exibição da v0.6.0, retrato com faixas, espelho) não pode prender o event loop nem disputar o GIL com a recepção. Técnica escolhida pelo agent com medição (operações que liberam o GIL, swscale do PyAV com faixa e matriz explícitas, tabela aplicada num só passo, ou junto da etapa da §1.1), registrada no relatório.
 - Resultado igual ao de hoje: teste de igualdade de bytes contra a implementação da v0.9.0 em quadros de faixa cheia, limitada, retrato e espelhado. SSIM do e2e continua acima de 0,98.
+- Emenda de 2026-11-22 (reunião de 15 min com o CA 1 falhando por disputa de CPU com o Meet; escolha do usuário): o quadro interno do pipeline passa de I420 para NV12, o formato que a câmera nativa já recebe. A tradução de cor do celular termina em NV12 no mesmo grafo (tabela, espelho e entrelaçamento numa passagem); quadros do vídeo da biblioteca, de espera e de câmera desligada viram NV12 uma vez; o retrato com faixas é montado em NV12; o sink só copia, sem conversão própria. Sem mudança de contrato, schema ou `vcam`. Teste: NV12 igual byte a byte ao caminho anterior (tradução, I420, NV12) no vídeo de referência, com tabela e espelho; o sink não converte. Medido no spike, em 2160p sem disputa: cor mais entrega de 8,7 para 3,9 ms na mediana. Validação por uma nova reunião de 15 min no Meet em 2160p30.
 
 ### 1.3 Quedas de fps em reunião
 
