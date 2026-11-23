@@ -1,6 +1,6 @@
 # Spec v0.10.0, Desempenho
 
-Status: Aprovada (2026-11-15)
+Status: Entregue (2026-11-23)
 Branch de integração: `feature/performance`
 Sessões: `agent`, `web` (pouco), `vcam` só se a ADR da §4 pedir
 Referências: `docs/planejamento.md` §1 (CA-1, CA-2), §6 (linha 0.10.0); ADR 0014 (H.264 e decodificação no hardware como próximo passo); ADR 0016 e 0017 (vídeo como câmera); spec v0.8.0, changelog (quedas de fps no `/dev`, limite do indicador); spec v0.9.0, changelog (CA 8, CPU do HEVC 4K); spec v0.7.0 §1.3 (formato pendente até o app reabrir a câmera).
@@ -95,3 +95,22 @@ Chaves novas antes do código: o rótulo e os dois valores do decodificador nos 
 6. Troca de formato com o app aberto imediata, ou ADR com a medição por app justificando por que não.
 7. Detalhes e `/dev` mostram o decodificador em uso; indicador de processamento com o limite revisto.
 8. Verificação completa do CLAUDE.md e `npm run test:e2e`; `version` 0.10.0 em `agent/pyproject.toml` e `web/package.json`.
+
+## Changelog
+
+Entregue em 2026-11-23. Medições no PC do usuário (i5-8500, 6 núcleos, UHD 630) com o iPhone e o Meet no Chrome; reuniões de 15 min por decisão do usuário. Relatórios em `docs/relatorio-v0.10.0-agent.md` e `docs/relatorio-v0.10.0-web.md`.
+
+- CA 1: cumprido em 1080p30 (ADR 0021): p95 por quadro de 11,5 ms, 29,7 fps entregues, nenhuma queda causada pelo PC. Em 2160p30, melhor esforço: p95 de 30,5 ms (53,4 antes do NV12), 28,9 fps, 3 travadas curtas do PC por disputa de CPU com o Meet.
+- CA 2: cumprido com o `IMG_0641.MOV` em 4K (198,9% para 51,6% de um núcleo, placa de vídeo pela ADR 0018). Com o celular em 2160p30, 11,6% menor (32,8% para 29,0% da máquina), no processador pela ADR 0019; aceito pelo usuário.
+- CA 3: `WCAM_HW_DECODE=off`, placa falhando ao abrir e no meio do fluxo, e codec sem caminho na placa (VP8) seguem em software sem queda da sessão (testes com WebRTC real e decodificador falso; CI sem placa).
+- CA 4: quadro da placa igual byte a byte ao de software no vídeo de referência e nos vídeos H.264 e HEVC da biblioteca (UHD 630); NV12 igual byte a byte ao caminho anterior; SSIM do e2e de 0,984.
+- CA 5: causas explicadas com números. Do PC: fila sem limite do receptor com a placa ao vivo (ADR 0019, limite de atraso de 200 ms), tradução de cor segurando o GIL (grafo do FFmpeg) e I420 convertido para NV12 no fim (NV12 direto); o que sobra em 4K é disputa de CPU com o Meet. Do celular e da rede: quedas com o celular enviando menos ou com perda de pacotes.
+- CA 6: troca imediata medida e recusada (ADR 0020): Meet e app Câmera perdem a câmera ao voltar para um formato menor; o Teams esconde a perda. O formato continua pendente até o app reabrir.
+- CA 7: detalhes mostram "Placa de vídeo" ou "Processador"; `/dev` com a etapa "Transferência", o evento `decoder` e o indicador de processamento em atenção só acima do tempo de um quadro.
+- CA 8: CI completo verde nos PRs #51 e #52 (agent em Ubuntu e Windows, web, vcam, e2e, CodeQL); pytest 571 passando e 1 pulado; Vitest 217; e2e 33 de 33; `version` 0.10.0 nos dois lados. Fluxo real com o celular nas reuniões, com o build de 42f3af1 mais a web.
+
+Achados:
+- `delivered.fps` do `/dev` errado desde a v0.8.0: assinantes simultâneos dividiam a janela de métricas; corrigido, e o stream não repete snapshot.
+- O spike da §1.6 mediu a placa sem outro app usando a GPU; ao vivo, a placa integrada dividida com o app de reunião criou fila (ADR 0019).
+
+Não verificado: `pyvirtualcam` em NV12 no backend do OBS; o processo filho dentro do executável do PyInstaller (testado a partir de zipapp); Zoom, Discord e OBS na troca de formato; SSIM em 4K com teto de bitrate menor; Android (os testes foram com o iPhone do usuário); visual do console conferido pelo usuário só durante as reuniões.
