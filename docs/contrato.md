@@ -289,6 +289,24 @@ App para a página:
 
 Os quadros da seção já vêm com espelho, congelamento, câmera desligada e quadro de espera aplicados, porque o agente publica continuamente enquanto a câmera virtual está ativa; a página só desenha. O app só aceita a seção com FourCC NV12, validado no cabeçalho.
 
+## Atalho na tela (spec v1.0.0 §1.1, ADR 0024)
+
+Rotas `/overlay/icon`, `/overlay/panel` e `/overlay/preview` no mesmo `index.html`, cada uma numa janela pequena do app com a sua WebView2 no ambiente do console; a página sabe qual janela é pela rota. O ícone tem fundo transparente. Fora do app (sem `window.chrome.webview`), as rotas não têm função. Controles da câmera pela API do console e estado pelo SSE, como no console. A prévia flutuante usa o canal da prévia acima.
+
+Página para o app (`chrome.webview.postMessage`, JSON):
+- `{"type": "window.drag"}`: no `pointerdown`; no ícone só com Ctrl, na prévia em qualquer ponto. O arraste é nativo; ao soltar o ícone, o app gruda na borda mais próxima.
+- `{"type": "window.resize", "edge": "left" | "right" | "top" | "bottom" | "topLeft" | "topRight" | "bottomLeft" | "bottomRight"}`: só na prévia; redimensionamento nativo em 16:9, entre 160x90 e 960x540.
+- `{"type": "window.size", "width": W, "height": H}`: só no painel, em px CSS arredondados para cima (ResizeObserver); o app aplica a escala do monitor.
+- `{"type": "panel.open"}`: clique no ícone sem Ctrl.
+- `{"type": "panel.close"}`: Esc; o app devolve o foco à janela anterior se o painel foi aberto pelo atalho.
+- `{"type": "console.open"}`, `{"type": "overlay.hide"}` e `{"type": "floatingPreview.toggle"}` (o × da prévia usa o mesmo).
+
+App para a página (`PostWebMessageAsJson`):
+- `{"type": "overlay.state", "edge": "left" | "right" | "top" | "bottom", "keyboard": bool, "hotkey": "Win+Alt+W", "floatingPreview": bool}`: ao montar cada página, ao abrir o painel, quando a borda muda e quando a prévia flutuante liga ou desliga. `edge` é o lado do ícone (num canto, o app escolhe o lado); `keyboard` `true` quando o painel tem o foco.
+- `{"type": "panel.closing"}`: o app esconde a janela do painel 90 ms depois, para a animação de saída.
+
+Só do app: sempre por cima, sem foco pelo mouse, exclusão de captura, Ctrl com o mouse sobre o ícone (a página não vê o Ctrl sem foco), fechar o painel com 400 ms de tolerância quando o mouse sai, atalho global, posição do painel ao lado do ícone, lugar e tamanho lembrados.
+
 ## Celular (`<ip-da-lan>:8443`)
 
 `POST /api/sessions` com `{"token": "...", "sdp": "<oferta completa, sem trickle>"}`:
