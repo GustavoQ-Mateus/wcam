@@ -76,7 +76,6 @@ export const MAX_EVENTS = 50;
 const KILOBITS_PER_MEGABIT = 1000;
 const MILLISECONDS_PER_SECOND = 1000;
 const FPS_HEALTHY_SHARE = 0.9;
-const PROCESSING_HEALTHY_SHARE = 0.5;
 const CPU_ATTENTION_PERCENT = 50;
 const ROUND_TRIP_ATTENTION_MS = 100;
 const NICE_STEPS = [1, 2, 2.5, 5, 10];
@@ -135,7 +134,7 @@ export function healthStrip(metrics: DevMetrics, formatFps: number, packetsLostI
   return {
     fpsDelivered: measured(fps, (value) => value >= formatFps * FPS_HEALTHY_SHARE),
     bitrateMbps: measured(bitrateMbps(metrics), (value) => value > 0),
-    processingP95: measured(p95, (value) => value <= metrics.budgetMs * PROCESSING_HEALTHY_SHARE),
+    processingP95: measured(p95, (value) => value <= metrics.budgetMs),
     packetsLost: measured(packetsLostInWindow, (value) => value === 0),
     cpuPercent: measured(metrics.process.cpuPercent, (value) => value < CPU_ATTENTION_PERCENT),
     roundTripMs: measured(roundTrip, (value) => value < ROUND_TRIP_ATTENTION_MS),

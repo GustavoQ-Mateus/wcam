@@ -76,7 +76,7 @@ describe("dev metrics", () => {
     const slow: DevMetrics = {
       ...LIVE,
       delivered: { fps: 20, frames: 1, dropped: 0 },
-      stages: { ...STAGES, total: { median: 20, p95: 25 } },
+      stages: { ...STAGES, total: { median: 30, p95: 40 } },
       process: { cpuPercent: 80 },
       phone: { at: 1, outbound: OUTBOUND, remoteInbound: { roundTripTime: 0.3, jitter: 0, packetsLost: 4 } },
     };
@@ -90,6 +90,13 @@ describe("dev metrics", () => {
       strip.cpuPercent.health,
       strip.roundTripMs.health,
     ]).toEqual(["attention", "attention", "attention", "attention", "attention"]);
+  });
+
+  it("processing p95 asks for attention only above the time of one frame", () => {
+    const withP95 = (p95: number) =>
+      healthStrip({ ...LIVE, stages: { ...STAGES, total: { median: p95, p95 } } }, 30, 0).processingP95.health;
+
+    expect([withP95(25), withP95(33.3), withP95(33.4)]).toEqual(["ok", "ok", "attention"]);
   });
 
   it("numbers that are not measured yet stay empty and ok", () => {
