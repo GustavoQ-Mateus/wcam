@@ -264,6 +264,15 @@ Evento `event`, a cada acontecimento; o agente guarda os últimos 50 em memória
 
 `kind`: `session_state` (`{"state", "reason"}`), `controls` (só os campos que mudaram), `video_format` (`{"format"}`), `camera_capabilities` (`{"facingMode", "width", "height", "frameRate"}`), `virtual_camera` (`{"state", "source", "format"}`), `episode` (o registro de episódio da v0.6.0), `preview` (`{"open": bool}`), `video_source` (`{"active"}`), `timeline` (`{"clips": <n>, "durationSeconds"}`), `decoder` (`{"source": "phone" | "video", "decoder": "hardware" | "software", "reason"}`, quando o caminho muda; `reason` é `null` ao abrir na placa de vídeo, e no fallback `unsupported` (placa sem o codec ou o perfil), `open_failed`, `stream_error` (falha no meio do fluxo) `disabled` (`WCAM_HW_DECODE=off`) ou `live_phone` (celular ao vivo no processador com `auto`, ADR 0019); spec v0.10.0). Com o vídeo ativo, `delivered` e os tempos por etapa valem para os quadros do vídeo.
 
+## Agente como processo filho do app (spec v1.0.0, ADR 0022)
+
+- O app abre o executável do agente com o argumento `--child`: sem bandeja, sem abrir navegador, e com o stdin num pipe do app. O agente verifica o pipe a cada 250 ms (sem leitura bloqueante); no fim do pipe (EOF), encerra limpo, pelo mesmo caminho do Ctrl+C. O app fecha o pipe para pedir o encerramento; se o app morrer, o Windows fecha o pipe.
+- O app põe o agente num Job Object com `KILL_ON_JOB_CLOSE`; os processos de decodificação herdam o job. Se o agente não sair em 5 s depois do EOF, o app chama `TerminateJobObject`.
+- Pronto e saúde pelo `GET /api/health` do console: até 30 s para o primeiro `200`, depois a cada 2 s; 3 falhas seguidas ou saída não pedida contam como queda, com até 3 novas tentativas em 5 min.
+- Códigos de saída: `0` encerramento pedido; `2` sem interface de rede local; `3` porta ocupada; qualquer outro é queda.
+- No executável instalado, o agente acha `web/dist` e `locales` na própria pasta; as variáveis `WCAM_WEB_DIST` e `WCAM_LOCALES_DIR` continuam só para desenvolvimento.
+- No Windows, cada processo do agente (o principal e os de decodificação) se põe em prioridade acima do normal, sem EcoQoS, e pede o perfil "Capture" do MMCSS nas threads de decodificação e de entrega. O app não mexe em prioridade.
+
 ## Canal da prévia dentro do app (WebView2, spec v1.0.0, ADR 0023)
 
 Só existe quando a página roda dentro do app Windows (`window.chrome.webview` existe). No navegador comum, a prévia segue pelo WebRTC local (ADR 0015). Mensagens são objetos JSON roteados por `type`: a página manda com `chrome.webview.postMessage`; o app manda com `PostWebMessageAsJson` ou, para os buffers, com `PostSharedBufferToScript`.
