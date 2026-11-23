@@ -15,6 +15,7 @@ from wcam.decoding.source import SourceDecoding
 from wcam.decoding.status import DecoderKind, DecoderStatus, FallbackReason
 from wcam.diagnostics.stage_times import Stage
 from wcam.media.latency_limit import Clock, LatencyLimit
+from wcam.process_priority import join_capture_task
 
 H264_MIME_TYPE = "video/h264"
 VIDEO_MIME_PREFIX = "video/"
@@ -153,6 +154,7 @@ def install_phone_decoder(decoding: PhoneDecoding) -> None:
         raise UnexpectedAiortcReceiverError("aiortc no longer picks the decoder through get_decoder")
 
     def get_decoder(codec: RTCRtpCodecParameters) -> Decoder:
+        join_capture_task()
         mime_type = codec.mimeType.lower()
         if mime_type == H264_MIME_TYPE:
             return decoding.create_decoder()

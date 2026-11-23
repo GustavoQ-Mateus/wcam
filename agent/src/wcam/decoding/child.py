@@ -26,6 +26,7 @@ from wcam.decoding.messages import (
     StreamPacket,
 )
 from wcam.decoding.status import FallbackReason
+from wcam.process_priority import join_capture_task, raise_process_priority
 
 HARDWARE_DEVICE = "dxva2"
 COPIED_FORMAT = "nv12"
@@ -53,6 +54,8 @@ def i420_bytes(width: int, height: int) -> int:
 
 
 def serve(connection: Connection, memory_name: str, slot_bytes: int, slot_count: int) -> None:
+    raise_process_priority()
+    join_capture_task()
     memory = SharedMemory(memory_name)
     try:
         ChildDecoder(connection, SharedSlots(memory, slot_bytes, slot_count)).run()

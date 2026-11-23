@@ -24,6 +24,7 @@ from wcam.media.placeholder import black_nv12, camera_off_nv12
 from wcam.media.plane_translation import PlaneTranslator
 from wcam.media.quality import QualityMeter, QualityReport
 from wcam.media.video_format import DEFAULT_VIDEO_FORMAT
+from wcam.process_priority import join_capture_task
 from wcam.virtualcam.sink import AnnouncedFormat, CameraState, Nv12Frame, VirtualCameraSink, frame_size
 
 STALE_FRAME_SECONDS = 0.5
@@ -75,7 +76,7 @@ class FramePipeline:
         self.output = DEFAULT_OUTPUT
         self._placeholder = black_nv12(DEFAULT_OUTPUT.width, DEFAULT_OUTPUT.height)
         self._pending: asyncio.Queue[tuple[VideoFrame | VideoImageFrame, float]] = asyncio.Queue(maxsize=1)
-        self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=WORKER_NAME)
+        self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=WORKER_NAME, initializer=join_capture_task)
         self._quality_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=QUALITY_WORKER_NAME)
         self._measuring: Future[None] | None = None
         self._measured_correction = CorrectionState.DEFAULT
