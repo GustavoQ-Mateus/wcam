@@ -1,0 +1,37 @@
+.icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--overlay-icon);
+  height: var(--overlay-icon);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink);
+
+  &:hover {
+    background: var(--raised);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-width) solid var(--focus);
+    outline-offset: calc(var(--focus-width) * -1);
+  }
+}
+
+.glyph {
+  width: var(--overlay-glyph);
+  height: var(--overlay-glyph);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--icon-stroke);
+  stroke-linejoin: round;
+}
+
+.mark {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  display: flex;
+  border-radius: 50%;
+  background: var(--surface);
+}

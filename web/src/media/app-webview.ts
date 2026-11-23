@@ -1,4 +1,5 @@
 import type { PageMessage } from "../data/app-preview";
+import type { OverlayPageMessage } from "../data/overlay";
 
 export interface SharedBufferEvent extends Event {
   additionalData: unknown;
@@ -15,7 +16,7 @@ interface AppWebViewEvents {
 }
 
 export interface AppWebView {
-  postMessage: (message: PageMessage) => void;
+  postMessage: (message: PageMessage | OverlayPageMessage) => void;
   releaseBuffer: (buffer: ArrayBuffer) => void;
   addEventListener: <Name extends keyof AppWebViewEvents>(
     name: Name,

@@ -1,0 +1,111 @@
+.preview {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--ground);
+  cursor: move;
+}
+
+.waiting {
+  padding: 0 var(--space-4);
+  color: var(--muted);
+  font-size: var(--text-meta);
+  text-align: center;
+}
+
+.edge {
+  position: absolute;
+
+  &[data-edge="top"],
+  &[data-edge="bottom"] {
+    left: var(--overlay-resize-edge);
+    right: var(--overlay-resize-edge);
+    height: var(--overlay-resize-edge);
+    cursor: ns-resize;
+  }
+
+  &[data-edge="left"],
+  &[data-edge="right"] {
+    top: var(--overlay-resize-edge);
+    bottom: var(--overlay-resize-edge);
+    width: var(--overlay-resize-edge);
+    cursor: ew-resize;
+  }
+
+  &[data-edge="top"],
+  &[data-edge="topLeft"],
+  &[data-edge="topRight"] {
+    top: 0;
+  }
+
+  &[data-edge="bottom"],
+  &[data-edge="bottomLeft"],
+  &[data-edge="bottomRight"] {
+    bottom: 0;
+  }
+
+  &[data-edge="left"],
+  &[data-edge="topLeft"],
+  &[data-edge="bottomLeft"] {
+    left: 0;
+  }
+
+  &[data-edge="right"],
+  &[data-edge="topRight"],
+  &[data-edge="bottomRight"] {
+    right: 0;
+  }
+
+  &[data-edge="topLeft"],
+  &[data-edge="topRight"],
+  &[data-edge="bottomLeft"],
+  &[data-edge="bottomRight"] {
+    width: var(--overlay-resize-edge);
+    height: var(--overlay-resize-edge);
+  }
+
+  &[data-edge="topLeft"],
+  &[data-edge="bottomRight"] {
+    cursor: nwse-resize;
+  }
+
+  &[data-edge="topRight"],
+  &[data-edge="bottomLeft"] {
+    cursor: nesw-resize;
+  }
+}
+
+.close {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: grid;
+  place-items: center;
+  width: var(--overlay-row-height);
+  height: var(--overlay-row-height);
+  border-radius: 50%;
+  background: var(--scrim);
+  color: var(--ink);
+  opacity: 0;
+  cursor: pointer;
+
+  .preview:hover > &,
+  &:focus-visible {
+    opacity: 1;
+  }
+
+  &:focus-visible {
+    outline: var(--focus-width) solid var(--focus);
+  }
+
+  svg {
+    width: var(--icon-size-small);
+    height: var(--icon-size-small);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: var(--icon-stroke);
+    stroke-linecap: round;
+  }
+}

@@ -1,0 +1,17 @@
+.overlay {
+  overflow: hidden;
+
+  body {
+    min-height: 0;
+    background: var(--surface);
+    user-select: none;
+  }
+
+  &[data-overlay="icon"] body {
+    background: transparent;
+  }
+
+  &[data-overlay="preview"] body {
+    background: var(--ground);
+  }
+}

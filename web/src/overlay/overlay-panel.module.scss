@@ -1,0 +1,112 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: var(--overlay-panel-width);
+  padding: var(--space-2);
+  background: var(--surface);
+  font-size: var(--text-meta);
+  line-height: var(--line-tight);
+  animation: open var(--duration-panel-open) var(--ease-out) both;
+
+  &[data-closing="true"] {
+    animation: close var(--duration-panel-close) var(--ease-out) both;
+  }
+
+  &[data-edge="left"] {
+    --enter-x: calc(var(--overlay-offset) * -1);
+    --enter-y: 0;
+  }
+
+  &[data-edge="right"] {
+    --enter-x: var(--overlay-offset);
+    --enter-y: 0;
+  }
+
+  &[data-edge="top"] {
+    --enter-x: 0;
+    --enter-y: calc(var(--overlay-offset) * -1);
+  }
+
+  &[data-edge="bottom"] {
+    --enter-x: 0;
+    --enter-y: var(--overlay-offset);
+  }
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  color: var(--ink);
+  font-weight: var(--weight-strong);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--divider);
+}
+
+.item {
+  min-height: var(--overlay-row-height);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-label);
+  text-align: left;
+  color: var(--ink);
+
+  &:hover:enabled {
+    background: var(--raised);
+  }
+
+  &:disabled {
+    color: var(--faint);
+    cursor: default;
+  }
+
+  &[aria-pressed="true"] {
+    background: var(--raised);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-width) solid var(--focus);
+    outline-offset: calc(var(--focus-width) * -1);
+  }
+}
+
+.help {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-top: 1px solid var(--divider);
+  color: var(--faint);
+  font-size: var(--text-label);
+}
+
+@keyframes open {
+  from {
+    opacity: 0;
+    transform: translate(var(--enter-x), var(--enter-y));
+  }
+}
+
+@keyframes close {
+  to {
+    opacity: 0;
+    transform: translate(var(--enter-x), var(--enter-y));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .panel[data-closing="true"] {
+    animation: none;
+  }
+
+  .panel[data-closing="true"] {
+    opacity: 0;
+  }
+}
