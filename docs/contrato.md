@@ -1,6 +1,6 @@
 # Contrato entre web e agent
 
-Versão: 0.10.0
+Versão: 1.0.0
 
 Fonte da verdade da comunicação entre `web` e `agent`. Mudou aqui, muda na spec da versão antes do código.
 
@@ -263,6 +263,22 @@ Evento `event`, a cada acontecimento; o agente guarda os últimos 50 em memória
 ```
 
 `kind`: `session_state` (`{"state", "reason"}`), `controls` (só os campos que mudaram), `video_format` (`{"format"}`), `camera_capabilities` (`{"facingMode", "width", "height", "frameRate"}`), `virtual_camera` (`{"state", "source", "format"}`), `episode` (o registro de episódio da v0.6.0), `preview` (`{"open": bool}`), `video_source` (`{"active"}`), `timeline` (`{"clips": <n>, "durationSeconds"}`), `decoder` (`{"source": "phone" | "video", "decoder": "hardware" | "software", "reason"}`, quando o caminho muda; `reason` é `null` ao abrir na placa de vídeo, e no fallback `unsupported` (placa sem o codec ou o perfil), `open_failed`, `stream_error` (falha no meio do fluxo) `disabled` (`WCAM_HW_DECODE=off`) ou `live_phone` (celular ao vivo no processador com `auto`, ADR 0019); spec v0.10.0). Com o vídeo ativo, `delivered` e os tempos por etapa valem para os quadros do vídeo.
+
+## Canal da prévia dentro do app (WebView2, spec v1.0.0, ADR 0023)
+
+Só existe quando a página roda dentro do app Windows (`window.chrome.webview` existe). No navegador comum, a prévia segue pelo WebRTC local (ADR 0015). Mensagens são objetos JSON roteados por `type`: a página manda com `chrome.webview.postMessage`; o app manda com `PostWebMessageAsJson` ou, para os buffers, com `PostSharedBufferToScript`.
+
+Página para o app:
+- `{"type": "preview.start"}`: a prévia ficou visível (ligada no console e documento visível). O app só lê `Local\WCamFrames` a partir daqui.
+- `{"type": "preview.stop"}`: prévia desligada, documento escondido ou página saindo. O app para de ler, solta os buffers e não manda nada até o próximo `preview.start`. Para o documento ficar escondido com a janela minimizada ou oculta, o app põe `CoreWebView2Controller.IsVisible = false`.
+- `{"type": "preview.release", "slot": 0 | 1}`: a página terminou de usar o quadro do slot, que volta a ser do app.
+
+App para a página:
+- Buffer compartilhado (evento `sharedbufferreceived`, só leitura) com `additionalData` `{"type": "preview.buffer", "slot": 0 | 1, "width": W, "height": H}`. O app manda dois, um por slot, depois do `preview.start` e de novo quando o formato da seção muda. Conteúdo: NV12 compacto igual ao da seção, plano Y com `W*H` bytes seguido do UV intercalado com `W*H/2` bytes, stride igual a `W`. A página chama `chrome.webview.releaseBuffer` no buffer antigo do mesmo slot quando chega um novo, e nos dois em `preview.stop`.
+- `{"type": "preview.frame", "slot": 0 | 1, "sequence": N}`: um quadro inteiro foi copiado no slot, que passa a ser da página até o `preview.release`. O app só escreve em slot que é dele (nunca mandado ou já devolvido); com os dois slots na página, descarta o quadro (vale o mais novo, sem fila). `sequence` é o `FrameIndex` da seção, cresce dentro de um mesmo par de buffers e volta a zero na troca de formato; a página ignora sequência menor ou igual à última desenhada e zera a referência a cada `preview.buffer`.
+- `{"type": "preview.idle"}`: a seção não existe ou o quadro não é novo pelo critério de 1 s da câmera nativa. Enviado uma vez, na transição; o app tenta reabrir a seção a cada ~1 s. A página mostra o estado de prévia parada e sai dele no próximo `preview.frame`.
+
+Os quadros da seção já vêm com espelho, congelamento, câmera desligada e quadro de espera aplicados, porque o agente publica continuamente enquanto a câmera virtual está ativa; a página só desenha. O app só aceita a seção com FourCC NV12, validado no cabeçalho.
 
 ## Celular (`<ip-da-lan>:8443`)
 
