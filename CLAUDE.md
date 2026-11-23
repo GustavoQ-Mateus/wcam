@@ -16,10 +16,11 @@ Monorepo único, conta `GustavoQ-Mateus` no GitHub.
 
 | Pasta | Stack | Papel |
 |---|---|---|
-| `agent` | Python 3.13, uv, FastAPI + uvicorn, aiortc, PyAV, pyvirtualcam, SQLite, pystray, pywebview, PyInstaller, pytest | Servidor local: HTTPS na LAN, pareamento, WebRTC, câmera virtual, API e eventos |
+| `agent` | Python 3.13, uv, FastAPI + uvicorn, aiortc, PyAV, pyvirtualcam, SQLite, PyInstaller, pytest | Servidor local: HTTPS na LAN, pareamento, WebRTC, câmera virtual, API e eventos |
 | `web` | React + Vite + TypeScript + SCSS, Vitest, Playwright | Duas superfícies: `/cam` (celular, captura) e `/` (console no PC) |
 | `docs` | Markdown | Planejamento, specs, ADRs |
 | `vcam` | C# com .NET 10 Native AOT, CsWin32, xUnit | Câmera virtual nativa do Windows (media source Media Foundation) |
+| `app` | C# com .NET 10 Native AOT, WinUI, WebView2, CsWin32, xUnit | App Windows: bandeja, janela do console, atalho na tela, ciclo de vida do agente (spec v1.0.0) |
 | `installer` | Inno Setup | Instalador Windows e regra de firewall |
 | raiz | Docker Compose | Ambiente de desenvolvimento e CI |
 
@@ -101,6 +102,7 @@ Testes
 - Agent, a partir de `agent`: `uv run ruff check`, `uv run ruff format --check`, `uv run pyright` e `uv run pytest`.
 - Web, a partir de `web`: `npm run build` (inclui `tsc -b`) sem avisos, `npm run lint` e `npm test`.
 - Vcam, a partir de `vcam`: `dotnet build` sem avisos, `dotnet test` e `dotnet publish -r win-x64 -c Release` sem avisos de trimming ou AOT.
+- App, a partir de `app`: os mesmos três comandos do `vcam`.
 - Não declarar pronto o que não foi verificado. Se algo não foi testado, dizer.
 
 ## Verificação antes de abrir PR
@@ -130,7 +132,7 @@ Testes
 - NUNCA incluir "Co-Authored-By: Claude" nem qualquer referência à Anthropic.
 
 ## Ambiente
-- Produto: app Windows nativo (bandeja + janela WebView2), porque a câmera virtual depende do SO. No celular, só o navegador. Linux (v4l2loopback) e macOS ficam para depois.
+- Produto: app Windows nativo em C# (bandeja, janela WebView2 e atalho na tela; ADR 0022), com o agente Python como processo filho, porque a câmera virtual depende do SO. No celular, só o navegador. Linux (v4l2loopback) e macOS ficam para depois.
 - Desenvolvimento e CI: `docker compose up` sobe agente headless com câmera falsa, web e Playwright. A câmera virtual real só é testada fora do Docker, no Windows.
 - Portas: console `127.0.0.1:8080` (HTTP, só local), celular `0.0.0.0:8443` (HTTPS na LAN), Vite em dev `5173`.
 - O certificado TLS autoassinado e o banco SQLite ficam no diretório de dados do usuário (`%LOCALAPPDATA%\wcam`), nunca no repositório.
