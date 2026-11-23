@@ -9,7 +9,7 @@ import pytest
 from av import VideoFrame
 from av.video.codeccontext import VideoCodecContext
 
-from wcam.decoding.hardware import HardwareDecoderProcess, HardwareStream
+from wcam.decoding.hardware import HardwareDecodeError, HardwareDecoderProcess, HardwareStream
 from wcam.decoding.messages import EncodedPacket
 from wcam.decoding.status import FallbackReason
 from wcam.media.phone_decoder import contains_idr
@@ -62,12 +62,28 @@ def planes(frame: VideoFrame) -> list[bytes]:
 @pytest.fixture
 def hardware() -> Iterator[HardwareStream]:
     decoder = HardwareDecoderProcess()
-    opened = decoder.open("h264", None)
-    if isinstance(opened, FallbackReason):
+    unavailable = hardware_unavailable(decoder)
+    if unavailable is not None:
         decoder.close()
-        pytest.skip(f"no hardware decoder on this computer: {opened}")
+        pytest.skip(f"no hardware decoder on this computer: {unavailable}")
+    opened = decoder.open("h264", None)
+    assert not isinstance(opened, FallbackReason)
     yield opened
     decoder.close()
+
+
+def hardware_unavailable(decoder: HardwareDecoderProcess) -> str | None:
+    probe = decoder.open("h264", None)
+    if isinstance(probe, FallbackReason):
+        return probe
+    data = reference_packets()[0]
+    try:
+        frames = probe.decode(EncodedPacket(data, 0, contains_idr(data))).frames
+    except HardwareDecodeError as error:
+        return error.reason
+    finally:
+        probe.close()
+    return None if frames else "no frame decoded"
 
 
 def test_hardware_frames_equal_software_frames_byte_for_byte(hardware: HardwareStream) -> None:
