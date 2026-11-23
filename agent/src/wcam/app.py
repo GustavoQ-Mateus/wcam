@@ -106,11 +106,11 @@ def create_servers(
 async def run(
     servers: Sequence[uvicorn.Server],
     services: AgentServices,
-    tray: Callable[[], Coroutine[None, None, None]] | None = None,
+    parent_watch: Callable[[], Coroutine[None, None, None]] | None = None,
 ) -> None:
     background = [asyncio.create_task(services.pipeline.run()), asyncio.create_task(services.cpu.run())]
-    if tray is not None:
-        background.append(asyncio.create_task(tray()))
+    if parent_watch is not None:
+        background.append(asyncio.create_task(parent_watch()))
     services.camera.start()
     try:
         await serve(servers)

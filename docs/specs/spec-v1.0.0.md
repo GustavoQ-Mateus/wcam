@@ -37,6 +37,8 @@ Primeira versão estável: daqui em diante, mudança incompatível de contrato o
 - A prévia flutuante usa o caminho de prévia da ADR do spike; tamanho pequeno pede pouca CPU, e o custo é medido.
 - Movimento só onde tem função (abrir e fechar o painel, grudar na borda), curto e respeitando "reduzir movimento" do Windows. Skills: `impeccable` (`shape` antes, `audit` e `polish` depois), `emil-design-eng`, `animate` e `review-animations`, registradas em `docs/design-v1.0.0.md`, com tokens de §5.6 e as regras anti slop.
 
+- Emenda de 2026-11-23 (ADR 0024, pedido do usuário depois de ver a primeira versão nativa): o ícone, o painel e a prévia flutuante são páginas React do `web`, cada uma numa janela pequena do app com WebView2; o app continua dono do comportamento de janela (sempre por cima, foco, exclusão de captura, arrastar e grudar, atalho global). O menu da bandeja segue nativo. O polimento pesado do front fica para a v1.4.0.
+
 ## 2. Agent
 
 - Modo filho: o agente aceita ser iniciado pelo app, sem a bandeja Python e sem abrir navegador, e encerra limpo quando o app pede ou quando o processo pai morre.
