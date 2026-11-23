@@ -306,5 +306,9 @@
   "overlay.preview": "WCam camera preview",
   "overlay.drag_hint": "Hold Ctrl and drag to move it",
   "overlay.hotkey": "Keyboard shortcut: {keys}",
-  "overlay.hide": "Hide on-screen shortcut"
+  "overlay.hide": "Hide on-screen shortcut",
+  "tray.agent_no_network": "No local network. Connect the computer to Wi-Fi or a network cable.",
+  "tray.agent_port_busy": "Another program is using the WCam port.",
+  "overlay.preview_close": "Close floating preview",
+  "console.preview_waiting": "Waiting for the WCam camera picture."
 }
