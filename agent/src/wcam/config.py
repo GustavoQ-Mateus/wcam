@@ -12,6 +12,7 @@ DEFAULT_PROGRAM_FILES = r"C:\Program Files"
 VCAM_FOLDER = "WCam"
 VCAM_DLL_NAME = "Wcam.VirtualCamera.dll"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+BUNDLE_ATTRIBUTE = "_MEIPASS"
 
 
 def default_data_dir() -> Path:
@@ -20,6 +21,19 @@ def default_data_dir() -> Path:
     xdg_data_home = os.environ.get("XDG_DATA_HOME")
     base = Path(xdg_data_home) if xdg_data_home else Path.home() / ".local" / "share"
     return base / APP_FOLDER
+
+
+def resource_root() -> Path:
+    bundle = getattr(sys, BUNDLE_ATTRIBUTE, None)
+    return Path(bundle) if isinstance(bundle, str) else REPOSITORY_ROOT
+
+
+def default_web_dist() -> Path:
+    return resource_root() / "web" / "dist"
+
+
+def default_locales_dir() -> Path:
+    return resource_root() / "locales"
 
 
 def default_vcam_dll() -> Path:
@@ -34,8 +48,8 @@ class Settings(BaseSettings):
     console_bind: str = "127.0.0.1"
     lan_ip: str | None = None
     data_dir: Path = Field(default_factory=default_data_dir)
-    web_dist: Path = REPOSITORY_ROOT / "web" / "dist"
-    locales_dir: Path = REPOSITORY_ROOT / "locales"
+    web_dist: Path = Field(default_factory=default_web_dist)
+    locales_dir: Path = Field(default_factory=default_locales_dir)
     extra_allowed_hosts: list[str] = Field(default_factory=list[str])
     virtual_camera: Literal["auto", "media_foundation", "obs", "fake"] = "auto"
     vcam_dll: Path = Field(default_factory=default_vcam_dll)
