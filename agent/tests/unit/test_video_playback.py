@@ -14,6 +14,8 @@ from tests.videos import (
     small_video,
     video_duration,
 )
+from wcam.decoding.source import software_decoding
+from wcam.decoding.status import DecodingSource
 from wcam.media.placeholder import BLACK_LUMA
 from wcam.video.playback import ClipDecoder, VideoPlayback, following_tick
 from wcam.video.timeline import Clip, Timeline
@@ -170,7 +172,7 @@ def test_tick_more_than_a_period_behind_starts_again_from_now() -> None:
 def test_jump_past_the_last_keyframe_reports_the_clip_as_finished(tmp_path: Path) -> None:
     path = small_video(tmp_path)
     duration = video_duration(path)
-    decoder = ClipDecoder(path, Clip("c", "v", 0.0, duration))
+    decoder = ClipDecoder(path, Clip("c", "v", 0.0, duration), software_decoding(DecodingSource.VIDEO))
     decoder.start_at(0.0)
 
     jumped = decoder.jump_to_keyframe_after(duration - CAMERA_PERIOD)

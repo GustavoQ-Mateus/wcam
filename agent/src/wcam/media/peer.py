@@ -20,6 +20,7 @@ from wcam.media.episodes import EpisodeTracker, LinkSample, write_episode
 from wcam.media.frame_gate import FrameGate
 from wcam.media.h264_level import declare_h264_level_5_1
 from wcam.media.metrics import Orientation, ReceiveStats, VideoMeter, VideoStats
+from wcam.media.phone_decoder import PhoneDecoding, install_phone_decoder
 from wcam.media.pipeline import FramePipeline
 from wcam.media.pipeline import FrameSource as OutputSource
 from wcam.media.recovering_jitter_buffer import STALLED_SECONDS, RecoveringJitterBuffer
@@ -96,11 +97,13 @@ class AiortcPeer:
         connection: RTCPeerConnection,
         network: IPv4Network,
         pipeline: FramePipeline,
+        decoding: PhoneDecoding,
         events: PeerEvents,
     ) -> None:
         self._connection = connection
         self._network = network
         self._pipeline = pipeline
+        self._decoding = decoding
         self._events = events
         self._channel: RTCDataChannel | None = None
         self._frame_task: asyncio.Task[None] | None = None
@@ -133,6 +136,7 @@ class AiortcPeer:
         return replace(
             stats,
             codec=video_codec(self._answer_sdp),
+            decoder=self._decoding.status.decoder,
             frames_scaled=self._pipeline.frames_scaled,
             orientation=Orientation.PORTRAIT if self._pipeline.portrait else Orientation.LANDSCAPE,
             color_range=self._pipeline.color_range,
@@ -145,6 +149,7 @@ class AiortcPeer:
         self._connection.on("track", self._handle_track)
         self._connection.on("connectionstatechange", self._handle_connection_state)
         offer = RTCSessionDescription(keep_candidates_in_network(offer_sdp, self._network), "offer")
+        await asyncio.get_running_loop().run_in_executor(None, self._decoding.start_session, self._request_keyframe)
         await self._connection.setRemoteDescription(offer)
         count_video_packets(self._connection, self._rtp_counter)
         self._jitter_buffers = install_recovering_jitter_buffers(self._connection)
@@ -188,6 +193,7 @@ class AiortcPeer:
         if self._channel is not None and self._channel.readyState == "open":
             await asyncio.sleep(CLOSE_FLUSH_SECONDS)
         await self._connection.close()
+        await asyncio.get_running_loop().run_in_executor(None, self._decoding.end_session)
 
     async def _watch_episodes(self) -> None:
         while True:
@@ -240,6 +246,10 @@ class AiortcPeer:
             self._events.on_lost(EndReason.CONNECTION_FAILED)
         elif state == "closed":
             self._events.on_lost(EndReason.DISCONNECTED_BY_PHONE)
+
+    def _request_keyframe(self) -> None:
+        for buffer in self._jitter_buffers:
+            buffer.request_keyframe()
 
     def _admits_after_recovery(self, frame: VideoFrame) -> bool:
         return all(buffer.admits_decoded(frame.key_frame) for buffer in self._jitter_buffers)
@@ -327,11 +337,13 @@ async def bytes_received(receiver: RTCRtpReceiver) -> int:
     return sum(stats.bytesReceived for stats in report.values() if isinstance(stats, RTCTransportStats))
 
 
-def aiortc_peer_factory(network: IPv4Network, pipeline: FramePipeline) -> PeerFactory:
+def aiortc_peer_factory(network: IPv4Network, pipeline: FramePipeline, decoding: PhoneDecoding) -> PeerFactory:
     declare_h264_level_5_1()
+    install_phone_decoder(decoding)
 
     async def create(offer_sdp: str, events: PeerEvents) -> MediaPeer:
-        peer = AiortcPeer(RTCPeerConnection(configuration=peer_configuration()), network, pipeline, events)
+        connection = RTCPeerConnection(configuration=peer_configuration())
+        peer = AiortcPeer(connection, network, pipeline, decoding, events)
         try:
             await peer.answer(offer_sdp)
         except Exception:

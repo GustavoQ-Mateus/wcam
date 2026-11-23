@@ -1,8 +1,11 @@
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
+from wcam.decoding.source import software_decoding as software_source
+from wcam.decoding.status import DecodingSource
 from wcam.media.color_correction import ColorCorrection
 from wcam.media.metrics import ReceiveStats, VideoStats
+from wcam.media.phone_decoder import PhoneDecoding
 from wcam.sessions.manager import MediaPeer, PeerEvents
 
 START = datetime(2026, 11, 1, 18, 0, tzinfo=UTC)
@@ -80,3 +83,7 @@ class FakePeerFactory:
     @property
     def last(self) -> FakePeer:
         return self.peers[-1]
+
+
+def software_decoding() -> PhoneDecoding:
+    return PhoneDecoding(software_source(DecodingSource.PHONE), lambda _stage, _milliseconds: None)

@@ -19,8 +19,6 @@ from wcam.virtualcam.media_foundation_sink import (
     IncompleteCameraLibrary,
     MediaFoundationSink,
     NativeCameraLibrary,
-    Nv12Frame,
-    i420_to_nv12,
     load_native_library,
 )
 from wcam.virtualcam.pyvirtualcam_sink import PyvirtualcamSink
@@ -30,7 +28,7 @@ from wcam.virtualcam.sink import (
     OUTPUT_WIDTH,
     AnnouncedFormat,
     CameraState,
-    I420Frame,
+    Nv12Frame,
     UnavailableReason,
 )
 
@@ -77,38 +75,9 @@ class FakeCameraLibrary:
         return self.announced
 
 
-def random_i420(width: int, height: int) -> I420Frame:
+def random_nv12(width: int, height: int) -> Nv12Frame:
     generator = np.random.default_rng(SEED)
     return generator.integers(0, 256, size=(height * 3 // 2, width), dtype=np.uint8)
-
-
-def converted(frame: I420Frame, width: int, height: int) -> Nv12Frame:
-    output = np.empty(width * height * 3 // 2, dtype=np.uint8)
-    i420_to_nv12(frame, width, height, output)
-    return output
-
-
-def test_nv12_keeps_luma_bytes_unchanged() -> None:
-    frame = random_i420(OUTPUT_WIDTH, OUTPUT_HEIGHT)
-
-    nv12 = converted(frame, OUTPUT_WIDTH, OUTPUT_HEIGHT)
-
-    luma_size = OUTPUT_WIDTH * OUTPUT_HEIGHT
-    assert nv12[:luma_size].tobytes() == frame.reshape(-1)[:luma_size].tobytes()
-
-
-def test_nv12_interleaves_each_chroma_pair_in_place() -> None:
-    frame = random_i420(SMALL_WIDTH, SMALL_HEIGHT)
-    luma_size = SMALL_WIDTH * SMALL_HEIGHT
-    chroma_size = luma_size // 4
-    flat = frame.reshape(-1)
-    blue = flat[luma_size : luma_size + chroma_size].reshape(SMALL_HEIGHT // 2, SMALL_WIDTH // 2)
-    red = flat[luma_size + chroma_size :].reshape(SMALL_HEIGHT // 2, SMALL_WIDTH // 2)
-
-    pairs = converted(frame, SMALL_WIDTH, SMALL_HEIGHT)[luma_size:].reshape(SMALL_HEIGHT // 2, SMALL_WIDTH // 2, 2)
-
-    assert (pairs[:, :, 0] == blue).all()
-    assert (pairs[:, :, 1] == red).all()
 
 
 def test_open_starts_the_native_camera() -> None:
@@ -122,15 +91,15 @@ def test_open_starts_the_native_camera() -> None:
     assert (sink.backend, sink.name, library.started) == ("media_foundation", "WCam", 1)
 
 
-def test_send_publishes_nv12_with_output_size() -> None:
+def test_send_publishes_the_nv12_frame_without_converting_it() -> None:
     library = FakeCameraLibrary(publish_result=S_FALSE)
     sink = MediaFoundationSink(library)
     sink.open(OUTPUT_WIDTH, OUTPUT_HEIGHT, OUTPUT_FPS)
-    frame = random_i420(OUTPUT_WIDTH, OUTPUT_HEIGHT)
+    frame = random_nv12(OUTPUT_WIDTH, OUTPUT_HEIGHT)
 
     sink.send(frame)
 
-    assert library.published == [(converted(frame, OUTPUT_WIDTH, OUTPUT_HEIGHT).tobytes(), OUTPUT_WIDTH, OUTPUT_HEIGHT)]
+    assert library.published == [(frame.tobytes(), OUTPUT_WIDTH, OUTPUT_HEIGHT)]
 
 
 def test_close_stops_the_native_camera() -> None:
@@ -149,7 +118,7 @@ def test_failed_start_is_unavailable_with_error() -> None:
     sink = MediaFoundationSink(FakeCameraLibrary(start_result=E_FAIL))
 
     sink.open(OUTPUT_WIDTH, OUTPUT_HEIGHT, OUTPUT_FPS)
-    sink.send(random_i420(OUTPUT_WIDTH, OUTPUT_HEIGHT))
+    sink.send(random_nv12(OUTPUT_WIDTH, OUTPUT_HEIGHT))
     sink.close()
 
     assert (sink.status.state, sink.status.reason) == (CameraState.UNAVAILABLE, UnavailableReason.ERROR)
@@ -293,9 +262,7 @@ def test_real_dll_starts_publishes_and_stops_the_camera() -> None:
     sink = MediaFoundationSink(library)
 
     sink.open(OUTPUT_WIDTH, OUTPUT_HEIGHT, OUTPUT_FPS)
-    published = library.publish(
-        converted(random_i420(OUTPUT_WIDTH, OUTPUT_HEIGHT), OUTPUT_WIDTH, OUTPUT_HEIGHT), OUTPUT_WIDTH, OUTPUT_HEIGHT
-    )
+    published = library.publish(random_nv12(OUTPUT_WIDTH, OUTPUT_HEIGHT), OUTPUT_WIDTH, OUTPUT_HEIGHT)
     sink.close()
 
     assert sink.status.state is CameraState.UNAVAILABLE
@@ -318,7 +285,7 @@ def test_format_request_is_passed_on_and_publishing_follows_the_frame_size() -> 
     sink.open(OUTPUT_WIDTH, OUTPUT_HEIGHT, OUTPUT_FPS)
 
     accepted = sink.request_format(SMALL_WIDTH, SMALL_HEIGHT, 60)
-    sink.send(random_i420(SMALL_WIDTH, SMALL_HEIGHT))
+    sink.send(random_nv12(SMALL_WIDTH, SMALL_HEIGHT))
 
     assert accepted
     assert library.formats[-1] == (SMALL_WIDTH, SMALL_HEIGHT, 60)

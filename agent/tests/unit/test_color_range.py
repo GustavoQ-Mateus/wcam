@@ -4,6 +4,7 @@ from av import VideoFrame
 from av.video.reformatter import ColorRange as DeclaredRange
 from av.video.reformatter import Colorspace
 
+from tests.frames import nv12_from_i420
 from tests.unit.test_pipeline import live_pipeline, random_i420
 from wcam.media.color_range import CHROMA_TABLE, LUMA_TABLE, ColorRange, declared_matrix, declared_range
 from wcam.tools.synthetic_h264 import decode, encode, h264_decoder, h264_encoder
@@ -82,7 +83,7 @@ def test_limited_and_unspecified_range_pass_byte_for_byte(declared: DeclaredRang
     pipeline.deliver(frame)
 
     assert sink.last_frame is not None
-    assert sink.last_frame.tobytes() == original.tobytes()
+    assert sink.last_frame.tobytes() == nv12_from_i420(original).tobytes()
 
 
 def test_reduced_portrait_full_range_frame_is_converted_only_once() -> None:

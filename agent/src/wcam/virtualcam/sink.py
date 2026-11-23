@@ -10,6 +10,7 @@ OUTPUT_HEIGHT = 1080
 OUTPUT_FPS = 30
 
 type I420Frame = NDArray[np.uint8]
+type Nv12Frame = NDArray[np.uint8]
 
 
 class CameraState(StrEnum):
@@ -42,7 +43,7 @@ class AnnouncedFormat:
     streaming_apps: int | None = None
 
 
-def frame_size(frame: I420Frame) -> tuple[int, int]:
+def frame_size(frame: Nv12Frame) -> tuple[int, int]:
     return int(frame.shape[1]), int(frame.shape[0]) * 2 // 3
 
 
@@ -65,6 +66,6 @@ class VirtualCameraSink(Protocol):
 
     def announced_format(self) -> AnnouncedFormat | None: ...
 
-    def send(self, frame: I420Frame) -> None: ...
+    def send(self, frame: Nv12Frame) -> None: ...
 
     def close(self) -> None: ...

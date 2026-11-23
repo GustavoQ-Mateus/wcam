@@ -5,13 +5,14 @@ import numpy as np
 import pytest
 from av import VideoFrame
 
+from tests.frames import nv12_from_i420
 from tests.integration.test_webrtc import wait_until
 from wcam.api.schemas import video_body
 from wcam.media.color_correction import CameraColorSpace, DisplayConvention, color_correction
 from wcam.media.color_range import LUMA_TABLE
 from wcam.media.metrics import Orientation, VideoStats
-from wcam.media.pipeline import FREEZE_SECONDS, FramePipeline, FrameSource, i420_planes
-from wcam.media.placeholder import black_i420
+from wcam.media.pipeline import FREEZE_SECONDS, FramePipeline, FrameSource, nv12_planes
+from wcam.media.placeholder import black_nv12
 from wcam.virtualcam.fake_sink import FakeSink
 from wcam.virtualcam.sink import OUTPUT_FPS, OUTPUT_HEIGHT, OUTPUT_WIDTH, I420Frame
 
@@ -69,7 +70,7 @@ def test_phone_frame_reaches_sink_unchanged_when_size_matches() -> None:
     assert sink.last_frame is not None
     assert sink.last_frame.dtype == np.uint8
     assert sink.last_frame.size == OUTPUT_WIDTH * OUTPUT_HEIGHT * 3 // 2
-    assert sink.last_frame.tobytes() == original.tobytes()
+    assert sink.last_frame.tobytes() == nv12_from_i420(original).tobytes()
     assert pipeline.frames_scaled == 0
     assert pipeline.source is FrameSource.PHONE
 
@@ -91,7 +92,7 @@ def test_landscape_frame_with_other_size_before_any_good_one_sends_black() -> No
     pipeline.deliver(phone_frame(1280, 720))
 
     assert sink.last_frame is not None
-    assert sink.last_frame.tobytes() == black_i420(OUTPUT_WIDTH, OUTPUT_HEIGHT).tobytes()
+    assert sink.last_frame.tobytes() == black_nv12(OUTPUT_WIDTH, OUTPUT_HEIGHT).tobytes()
     assert pipeline.source is FrameSource.PLACEHOLDER
     assert pipeline.frames_scaled == 0
 
@@ -102,7 +103,7 @@ def test_portrait_frame_is_reduced_to_the_output_height_and_centered_between_bla
     pipeline.deliver(flat_frame(PORTRAIT_WIDTH, PORTRAIT_HEIGHT, IMAGE_LUMA, IMAGE_CHROMA))
 
     assert sink.last_frame is not None
-    luma, blue, red = i420_planes(sink.last_frame, OUTPUT_WIDTH, OUTPUT_HEIGHT)
+    luma, blue, red = nv12_planes(sink.last_frame, OUTPUT_WIDTH, OUTPUT_HEIGHT)
     left, right = PORTRAIT_LEFT, PORTRAIT_LEFT + PORTRAIT_REDUCED_WIDTH
     assert (luma[:, left:right] == IMAGE_LUMA).all()
     assert (luma[:, :left] == 16).all()
@@ -140,7 +141,7 @@ def test_frame_in_the_announced_format_reaches_the_sink_unchanged() -> None:
     pipeline.deliver(VideoFrame.from_ndarray(original, format="yuv420p"))
 
     assert sink.last_frame is not None
-    assert sink.last_frame.tobytes() == original.tobytes()
+    assert sink.last_frame.tobytes() == nv12_from_i420(original).tobytes()
     assert pipeline.output.fps == 30
 
 
@@ -153,7 +154,7 @@ def test_last_good_frame_of_the_previous_format_is_not_sent_after_a_change() -> 
     pipeline.deliver(None)
 
     assert sink.last_frame is not None
-    assert sink.last_frame.tobytes() == black_i420(1280, 720).tobytes()
+    assert sink.last_frame.tobytes() == black_nv12(1280, 720).tobytes()
 
 
 async def test_format_request_runs_on_the_frame_worker_and_is_followed() -> None:
@@ -185,7 +186,7 @@ def test_sink_receives_placeholder_without_session() -> None:
 
     assert sink.frames_sent == 1
     assert sink.last_frame is not None
-    assert sink.last_frame.tobytes() == black_i420(OUTPUT_WIDTH, OUTPUT_HEIGHT).tobytes()
+    assert sink.last_frame.tobytes() == black_nv12(OUTPUT_WIDTH, OUTPUT_HEIGHT).tobytes()
     assert pipeline.source is FrameSource.PLACEHOLDER
 
 
@@ -197,7 +198,7 @@ def test_sink_receives_placeholder_while_awaiting_confirmation() -> None:
     pipeline.deliver(phone_frame())
 
     assert sink.last_frame is not None
-    assert sink.last_frame.tobytes() == black_i420(OUTPUT_WIDTH, OUTPUT_HEIGHT).tobytes()
+    assert sink.last_frame.tobytes() == black_nv12(OUTPUT_WIDTH, OUTPUT_HEIGHT).tobytes()
     assert pipeline.source is FrameSource.PLACEHOLDER
 
 
@@ -253,7 +254,7 @@ def test_frame_after_freeze_goes_back_to_phone() -> None:
 
     assert pipeline.source is FrameSource.PHONE
     assert sink.last_frame is not None
-    assert sink.last_frame.tobytes() == random_i420(OUTPUT_WIDTH, OUTPUT_HEIGHT, SEED + 1).tobytes()
+    assert sink.last_frame.tobytes() == nv12_from_i420(random_i420(OUTPUT_WIDTH, OUTPUT_HEIGHT, SEED + 1)).tobytes()
 
 
 def test_stopping_the_phone_returns_to_placeholder_at_once() -> None:
@@ -264,7 +265,7 @@ def test_stopping_the_phone_returns_to_placeholder_at_once() -> None:
     pipeline.deliver(None)
 
     assert sink.last_frame is not None
-    assert sink.last_frame.tobytes() == black_i420(OUTPUT_WIDTH, OUTPUT_HEIGHT).tobytes()
+    assert sink.last_frame.tobytes() == black_nv12(OUTPUT_WIDTH, OUTPUT_HEIGHT).tobytes()
 
 
 def test_new_phone_session_resets_scaled_count() -> None:

@@ -45,6 +45,7 @@ class VideoBody(CamelModel):
     fps: float
     bitrate_kbps: int
     codec: str | None
+    decoder: str | None
     frames_scaled: int
     orientation: str
     color_range: str
@@ -197,6 +198,7 @@ class VideoSourceBody(CamelModel):
     timeline: TimelineBody
     active: bool
     position_seconds: float | None
+    decoder: str | None
 
 
 class VideoSourceRequest(CamelModel):
@@ -310,6 +312,7 @@ def video_source_body(video: VideoSourceView) -> VideoSourceBody:
         timeline=timeline_body(video.timeline),
         active=video.active,
         position_seconds=None if not video.active or position is None else round(position, SECONDS_DECIMALS),
+        decoder=video.decoder,
     )
 
 
@@ -402,6 +405,7 @@ def video_body(video: VideoStats) -> VideoBody:
         fps=video.fps,
         bitrate_kbps=video.bitrate_kbps,
         codec=video.codec,
+        decoder=video.decoder,
         frames_scaled=video.frames_scaled,
         orientation=video.orientation,
         color_range=video.color_range,

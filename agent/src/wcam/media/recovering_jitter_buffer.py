@@ -19,6 +19,7 @@ class RecoveringJitterBuffer(JitterBuffer):
         self._clock = clock
         self._progress_at: float | None = None
         self.awaiting_keyframe = False
+        self._keyframe_requested = False
         self.received_bytes = 0
         self.keyframe_requests = 0
         self.stalls = 0
@@ -27,6 +28,10 @@ class RecoveringJitterBuffer(JitterBuffer):
         now = self._clock()
         self.received_bytes += len(packet.payload)
         request_keyframe, frame = super().add(packet)
+        if self._keyframe_requested:
+            self._keyframe_requested = False
+            self.awaiting_keyframe = True
+            request_keyframe = True
         if self._progress_at is None or (frame is not None and not self.awaiting_keyframe):
             self._progress_at = now
         elif now - self._progress_at > self._stalled_seconds:
@@ -37,6 +42,9 @@ class RecoveringJitterBuffer(JitterBuffer):
         if request_keyframe:
             self.keyframe_requests += 1
         return request_keyframe, frame
+
+    def request_keyframe(self) -> None:
+        self._keyframe_requested = True
 
     def admits_decoded(self, is_keyframe: bool) -> bool:
         if not self.awaiting_keyframe:

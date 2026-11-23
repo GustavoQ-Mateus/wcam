@@ -2,7 +2,7 @@ from wcam.virtualcam.sink import (
     UNAVAILABLE_UNTIL_OPENED,
     AnnouncedFormat,
     CameraState,
-    I420Frame,
+    Nv12Frame,
     SinkStatus,
     UnavailableReason,
 )
@@ -15,7 +15,7 @@ class FakeSink:
         self._announced: AnnouncedFormat | None = None
         self._requested: tuple[int, int, int] | None = None
         self.frames_sent = 0
-        self.last_frame: I420Frame | None = None
+        self.last_frame: Nv12Frame | None = None
         self.requests: list[tuple[int, int, int]] = []
         self.accepts_formats = True
         self.holds_formats = False
@@ -66,7 +66,7 @@ class FakeSink:
     def announced_format(self) -> AnnouncedFormat | None:
         return self._announced
 
-    def send(self, frame: I420Frame) -> None:
+    def send(self, frame: Nv12Frame) -> None:
         self.frames_sent += 1
         self.last_frame = frame
 

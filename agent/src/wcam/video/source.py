@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from wcam.decoding.source import SourceDecoding, software_decoding
+from wcam.decoding.status import DecoderKind, DecodingSource
 from wcam.video.errors import InvalidVideoPositionError, TimelineEmptyError, VideoSourceInactiveError
 from wcam.video.library import LibraryVideo, VideoLibrary
 from wcam.video.playback import VideoOutput, VideoPlayback
@@ -17,7 +19,7 @@ PLAYBACK_FAILED = "The video stopped because it could not be played"
 logger = logging.getLogger(__name__)
 
 type EventListener = Callable[[str, Mapping[str, object]], None]
-type PlaybackFactory = Callable[[Timeline, Mapping[str, Path], VideoOutput], VideoPlayback]
+type PlaybackFactory = Callable[[Timeline, Mapping[str, Path], VideoOutput, SourceDecoding], VideoPlayback]
 
 
 class VideoCamera(VideoOutput, Protocol):
@@ -40,10 +42,13 @@ class VideoSourceView:
     timeline: Timeline
     active: bool
     position_seconds: float | None
+    decoder: DecoderKind | None
 
 
-def default_playback(timeline: Timeline, paths: Mapping[str, Path], output: VideoOutput) -> VideoPlayback:
-    return VideoPlayback(timeline, paths, output)
+def default_playback(
+    timeline: Timeline, paths: Mapping[str, Path], output: VideoOutput, decoding: SourceDecoding
+) -> VideoPlayback:
+    return VideoPlayback(timeline, paths, output, decoding=decoding)
 
 
 class VideoSource:
@@ -54,7 +59,9 @@ class VideoSource:
         camera: VideoCamera,
         sessions: PhoneSessions,
         playback_factory: PlaybackFactory = default_playback,
+        decoding: SourceDecoding | None = None,
     ) -> None:
+        self.decoding = decoding or software_decoding(DecodingSource.VIDEO)
         self._library = library
         self._timelines = timelines
         self._camera = camera
@@ -76,7 +83,8 @@ class VideoSource:
 
     def view(self) -> VideoSourceView:
         position = None if self._playback is None else self._playback.position_seconds
-        return VideoSourceView(self._library.videos, self._timeline, self.active, position)
+        decoder = self.decoding.status.decoder if self.active else None
+        return VideoSourceView(self._library.videos, self._timeline, self.active, position, decoder)
 
     def filmstrip(self, video_id: str) -> Path:
         return self._library.find(video_id).filmstrip_path
@@ -116,7 +124,7 @@ class VideoSource:
             raise TimelineEmptyError
         self._sessions.start_video_source()
         self._camera.start_video()
-        self._playback = self._playback_factory(self._timeline, self._paths(), self._camera)
+        self._playback = self._playback_factory(self._timeline, self._paths(), self._camera, self.decoding)
         self._task = asyncio.get_running_loop().create_task(self._play(self._playback))
         self._record_event("video_source", {"active": True})
         self._notify_change()

@@ -9,7 +9,7 @@ from wcam.video.timeline import Timeline
 from wcam.virtualcam.sink import CameraState
 
 CAMERA_TEXT_KEYS = {"user": "camera.front", "environment": "camera.back"}
-NO_VIDEO = VideoSourceView((), Timeline(), active=False, position_seconds=None)
+NO_VIDEO = VideoSourceView((), Timeline(), active=False, position_seconds=None, decoder=None)
 
 
 class TrayState(StrEnum):
