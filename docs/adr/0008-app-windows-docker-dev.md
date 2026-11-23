@@ -1,6 +1,6 @@
 # 0008. App Windows de bandeja para o usuário final; Docker só em desenvolvimento e CI
 
-Status: Aceita
+Status: Aceita, substituída em parte pela ADR 0022 (bandeja e janela em C#, agente Python como processo filho)
 Data: 2026-10-31
 
 ## Contexto
