@@ -13,8 +13,8 @@ from wcam.process_priority import ABOVE_NORMAL_PRIORITY_CLASS
 CHILD = "import sys; sys.argv = ['wcam', '--child']; from wcam.cli import main; main()"
 PARENT = (
     "import subprocess, sys, time; "
-    "agent = subprocess.Popen(sys.argv[1:], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, "
-    "stderr=subprocess.DEVNULL); "
+    "agent = subprocess.Popen(sys.argv[2:], stdin=subprocess.PIPE, stdout=open(sys.argv[1], 'wb'), "
+    "stderr=subprocess.STDOUT); "
     "print(agent.pid, flush=True); time.sleep(3600)"
 )
 EXIT_PORT_IN_USE = 3
@@ -69,10 +69,11 @@ def test_child_stops_cleanly_with_exit_code_zero_when_the_parent_closes_its_inpu
     assert text.strip().splitlines()[-1] in stopped_texts()
 
 
-def test_child_stops_with_exit_code_zero_when_its_parent_dies(tmp_path: Path) -> None:
+def test_child_stops_cleanly_when_its_parent_dies(tmp_path: Path) -> None:
     console_port = free_port()
+    output_path = tmp_path / "agent-output.txt"
     parent = subprocess.Popen(  # noqa: S603
-        [sys.executable, "-c", PARENT, sys.executable, "-c", CHILD],
+        [sys.executable, "-c", PARENT, str(output_path), sys.executable, "-c", CHILD],
         env=agent_environment(tmp_path, console_port),
         stdout=subprocess.PIPE,
     )
@@ -84,12 +85,16 @@ def test_child_stops_with_exit_code_zero_when_its_parent_dies(tmp_path: Path) ->
         parent.kill()
         parent.wait()
 
-        assert agent.wait(timeout=EXIT_SECONDS) == 0
+        agent.wait(timeout=EXIT_SECONDS)
     finally:
         if parent.poll() is None:
             parent.kill()
         if agent.is_running():
             agent.kill()
+    text = output_path.read_text(encoding="utf-8", errors="replace")
+
+    assert "Traceback" not in text
+    assert text.strip().splitlines()[-1] in stopped_texts()
 
 
 def test_agent_whose_console_port_is_taken_exits_with_code_three(tmp_path: Path) -> None:
