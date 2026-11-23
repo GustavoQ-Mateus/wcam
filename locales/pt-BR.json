@@ -309,5 +309,6 @@
   "overlay.hide": "Esconder atalho na tela",
   "tray.agent_no_network": "Sem rede local. Conecte o computador ao Wi-Fi ou a um cabo de rede.",
   "tray.agent_port_busy": "Outro programa está usando a porta do WCam.",
-  "overlay.preview_close": "Fechar prévia flutuante"
+  "overlay.preview_close": "Fechar prévia flutuante",
+  "console.preview_waiting": "Esperando a imagem da câmera WCam."
 }
