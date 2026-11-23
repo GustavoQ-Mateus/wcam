@@ -273,39 +273,9 @@ Evento `event`, a cada acontecimento; o agente guarda os últimos 50 em memória
 - No executável instalado, o agente acha `web/dist` e `locales` na própria pasta; as variáveis `WCAM_WEB_DIST` e `WCAM_LOCALES_DIR` continuam só para desenvolvimento.
 - No Windows, cada processo do agente (o principal e os de decodificação) se põe em prioridade acima do normal, sem EcoQoS, e pede o perfil "Capture" do MMCSS nas threads de decodificação e de entrega. O app não mexe em prioridade.
 
-## Canal da prévia dentro do app (WebView2, spec v1.0.0, ADR 0023)
+## App Windows lendo a câmera (spec v1.0.0, ADR 0023 e 0025)
 
-Só existe quando a página roda dentro do app Windows (`window.chrome.webview` existe). No navegador comum, a prévia segue pelo WebRTC local (ADR 0015). Mensagens são objetos JSON roteados por `type`: a página manda com `chrome.webview.postMessage`; o app manda com `PostWebMessageAsJson` ou, para os buffers, com `PostSharedBufferToScript`.
-
-Página para o app:
-- `{"type": "preview.start"}`: a prévia ficou visível (ligada no console e documento visível). O app só lê `Local\WCamFrames` a partir daqui.
-- `{"type": "preview.stop"}`: prévia desligada, documento escondido ou página saindo. O app para de ler, solta os buffers e não manda nada até o próximo `preview.start`. Para o documento ficar escondido com a janela minimizada ou oculta, o app põe `CoreWebView2Controller.IsVisible = false`.
-- `{"type": "preview.release", "slot": 0 | 1}`: a página terminou de usar o quadro do slot, que volta a ser do app.
-
-App para a página:
-- Buffer compartilhado (evento `sharedbufferreceived`, só leitura) com `additionalData` `{"type": "preview.buffer", "slot": 0 | 1, "width": W, "height": H}`. O app manda dois, um por slot, depois do `preview.start`, de novo quando o formato da seção muda e de novo ao reabrir a seção depois de um `preview.idle` (o agente reiniciado recomeça o `FrameIndex`), mesmo com o mesmo tamanho. Conteúdo: NV12 compacto igual ao da seção, plano Y com `W*H` bytes seguido do UV intercalado com `W*H/2` bytes, stride igual a `W`. A página chama `chrome.webview.releaseBuffer` no buffer antigo do mesmo slot quando chega um novo, e nos dois em `preview.stop`.
-- `{"type": "preview.frame", "slot": 0 | 1, "sequence": N}`: um quadro inteiro foi copiado no slot, que passa a ser da página até o `preview.release`. O app só escreve em slot que é dele (nunca mandado ou já devolvido); com os dois slots na página, descarta o quadro (vale o mais novo, sem fila). `sequence` é o `FrameIndex` da seção, cresce dentro de um mesmo par de buffers e volta a zero na troca de formato; a página ignora sequência menor ou igual à última desenhada e zera a referência a cada `preview.buffer`.
-- `{"type": "preview.idle"}`: a seção não existe ou o quadro não é novo pelo critério de 1 s da câmera nativa. Enviado uma vez, na transição; o app tenta reabrir a seção a cada ~1 s. A página mostra o estado de prévia parada e sai dele no próximo `preview.frame`.
-
-Os quadros da seção já vêm com espelho, congelamento, câmera desligada e quadro de espera aplicados, porque o agente publica continuamente enquanto a câmera virtual está ativa; a página só desenha. O app só aceita a seção com FourCC NV12, validado no cabeçalho.
-
-## Atalho na tela (spec v1.0.0 §1.1, ADR 0024)
-
-Rotas `/overlay/icon`, `/overlay/panel` e `/overlay/preview` no mesmo `index.html`, cada uma numa janela pequena do app com a sua WebView2 no ambiente do console; a página sabe qual janela é pela rota. O ícone tem fundo transparente. Fora do app (sem `window.chrome.webview`), as rotas não têm função. Controles da câmera pela API do console e estado pelo SSE, como no console. A prévia flutuante usa o canal da prévia acima.
-
-Página para o app (`chrome.webview.postMessage`, JSON):
-- `{"type": "window.drag"}`: no `pointerdown`; no ícone só com Ctrl, na prévia em qualquer ponto. O arraste é nativo; ao soltar o ícone, o app gruda na borda mais próxima.
-- `{"type": "window.resize", "edge": "left" | "right" | "top" | "bottom" | "topLeft" | "topRight" | "bottomLeft" | "bottomRight"}`: só na prévia; redimensionamento nativo em 16:9, entre 160x90 e 960x540.
-- `{"type": "window.size", "width": W, "height": H}`: só no painel, em px CSS arredondados para cima (ResizeObserver); o app aplica a escala do monitor.
-- `{"type": "panel.open"}`: clique no ícone sem Ctrl.
-- `{"type": "panel.close"}`: Esc; o app devolve o foco à janela anterior se o painel foi aberto pelo atalho.
-- `{"type": "console.open"}`, `{"type": "overlay.hide"}` e `{"type": "floatingPreview.toggle"}` (o × da prévia usa o mesmo).
-
-App para a página (`PostWebMessageAsJson`):
-- `{"type": "overlay.state", "edge": "left" | "right" | "top" | "bottom", "keyboard": bool, "hotkey": "Win+Alt+W", "floatingPreview": bool}`: ao montar cada página, ao abrir o painel, quando a borda muda e quando a prévia flutuante liga ou desliga. `edge` é o lado do ícone (num canto, o app escolhe o lado); `keyboard` `true` quando o painel tem o foco.
-- `{"type": "panel.closing"}`: o app esconde a janela do painel 90 ms depois, para a animação de saída.
-
-Só do app: sempre por cima, sem foco pelo mouse, exclusão de captura, Ctrl com o mouse sobre o ícone (a página não vê o Ctrl sem foco), fechar o painel com 400 ms de tolerância quando o mouse sai, atalho global, posição do painel ao lado do ícone, lugar e tamanho lembrados.
+O app lê a seção `Local\WCamFrames` que o agente publica para a câmera nativa (NV12, três posições, seqlock, leitura só para o usuário dono), só enquanto uma prévia do app está visível, e não escreve nela. O agente publica continuamente enquanto a câmera virtual está ativa (pausa, câmera desligada, congelamento e quadro de espera inclusos). O canal de prévia para páginas e as rotas `/overlay/*`, propostos durante a v1.0.0, saíram antes da entrega (ADR 0025).
 
 ## Celular (`<ip-da-lan>:8443`)
 
