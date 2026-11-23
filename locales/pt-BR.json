@@ -306,5 +306,8 @@
   "overlay.preview": "Prévia da câmera WCam",
   "overlay.drag_hint": "Segure Ctrl e arraste para mudar o lugar",
   "overlay.hotkey": "Atalho de teclado: {keys}",
-  "overlay.hide": "Esconder atalho na tela"
+  "overlay.hide": "Esconder atalho na tela",
+  "tray.agent_no_network": "Sem rede local. Conecte o computador ao Wi-Fi ou a um cabo de rede.",
+  "tray.agent_port_busy": "Outro programa está usando a porta do WCam.",
+  "overlay.preview_close": "Fechar prévia flutuante"
 }
