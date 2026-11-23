@@ -40,7 +40,7 @@ Primeira versão estável: daqui em diante, mudança incompatível de contrato o
 ## 2. Agent
 
 - Modo filho: o agente aceita ser iniciado pelo app, sem a bandeja Python e sem abrir navegador, e encerra limpo quando o app pede ou quando o processo pai morre.
-- A bandeja Python (`pystray`) sai do produto; o desenvolvimento usa o console no navegador. Dependência removida se nada mais usar.
+- A bandeja Python (`pystray`) sai do produto; o desenvolvimento usa o console no navegador. Dependência removida se nada mais usar. O Pillow, que hoje entra só como dependência do `pystray`, passa a ser dependência direta, porque a tira de miniaturas da biblioteca de vídeo (`video/filmstrip.py`, v0.9.0) usa ele; já está no pacote, sem dependência nova no produto.
 - Empacotamento com PyInstaller em pasta, com `web/dist`, `locales` e o FFmpeg do PyAV; caminhos por variável quando instalado.
 - Nada muda no contrato do celular.
 
