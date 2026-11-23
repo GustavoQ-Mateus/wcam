@@ -54,7 +54,7 @@ Primeira versão estável: daqui em diante, mudança incompatível de contrato o
 - Um arquivo `.exe` nas Releases do GitHub. Um único pedido de administrador para: copiar o app, o agente e a DLL da câmera para `%ProgramFiles%\WCam`; registrar a câmera "WCam" (ADR 0011); criar a regra de firewall só para a porta 8443, só no perfil de rede privada e só para a sub-rede local (CA-4); atalho no menu Iniciar.
 - Nada de script ou PowerShell para o usuário final.
 - Desinstalar remove o app, a câmera, a regra de firewall e o início com o Windows, e pergunta se apaga também os dados do usuário (`%LOCALAPPDATA%\wcam`: certificado, banco, vídeos da biblioteca).
-- Assinatura de código, se não atrasar a versão: o orquestrador pede o programa gratuito da SignPath Foundation para projetos open source no começo da versão; aprovado a tempo, o instalador e os executáveis são assinados no GitHub Actions. Sem aprovação, a versão sai sem assinatura, o guia explica o aviso do SmartScreen e a assinatura vira a 1.0.1.
+- Sem assinatura de código (decisão do usuário em 2026-11-23; fica no backlog D3); o guia explica o aviso do SmartScreen.
 
 ## 5. Documentação
 
@@ -83,7 +83,7 @@ Chaves novas antes do código: itens novos da bandeja (iniciar com o Windows, ag
 
 ## Fora do escopo
 
-- WinGet (backlog D4). Assinatura só como descrito na §4.
+- Assinatura de código e WinGet (backlog D3 e D4).
 - Microsserviços e mensageria com broker: o WCam é um app local de um usuário, e os processos que existem (app, agente, decodificação, câmera) já conversam por HTTP local, fila e memória compartilhada; broker ou serviços separados não resolveriam problema real (decisão registrada a pedido do usuário em 2026-11-23).
 - Zoom e enquadramento (v1.1.0), persistência de preferências (v1.2.0), robustez de reconexão (v1.3.0), polimento do front (v1.4.0), engenharia e observabilidade (v1.5.0).
 - Linux e macOS.

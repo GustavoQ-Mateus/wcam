@@ -35,7 +35,7 @@ Skills para o atalho na tela e a janela: `impeccable` (`shape` antes, `audit` e 
 2. App (§1): uma instância só; agente como processo filho com saúde por `GET /api/health`, nova tentativa com limite, encerramento junto; bandeja com os controles de hoje e "Iniciar com o Windows"; janela WebView2 do console com tamanho e posição lembrados.
 3. Atalho na tela (§1.1): ícone preso na borda escolhida (Ctrl para arrastar), painel pelo Ctrl com o mouse e por atalho global, prévia flutuante arrastável e redimensionável, exclusão de captura, estado sem depender só de cor.
 4. Prioridade do agente: acima do normal, sem EcoQoS, MMCSS de captura nas threads de decodificação e entrega (o agent expõe o que for preciso); medida em reunião.
-5. Instalador (§4) em `installer`: um pedido de administrador, registro da câmera, regra de firewall só 8443, rede privada e sub-rede local, desinstalação completa com a pergunta dos dados. Assinatura só se a SignPath aprovar a tempo (eu cuido do pedido com o usuário).
+5. Instalador (§4) em `installer`: um pedido de administrador, registro da câmera, regra de firewall só 8443, rede privada e sub-rede local, desinstalação completa com a pergunta dos dados. Sem assinatura de código nesta versão.
 6. Testes xUnit da spec. `version` 1.0.0.
 
 ## Sessão agent
