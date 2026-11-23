@@ -55,3 +55,12 @@ Skills para o atalho na tela e a janela: `impeccable` (`shape` antes, `audit` e 
 ## Fechamento
 
 Relatórios em `docs/relatorio-v1.0.0-app.md`, `docs/relatorio-v1.0.0-agent.md` e `docs/relatorio-v1.0.0-web.md`, com cada CA tocado, o que foi medido e o que não foi verificado. Verificação completa do CLAUDE.md antes. PR de cada branch de sessão para `feature/windows-app`. O usuário confere o visual; avisem só quando terminar ou quando precisarem dele.
+
+## Adendo de 2026-11-23 (levantamento da sessão web)
+
+- Nada no console precisa ser escondido dentro do app: não há "abrir em nova aba", e o link para o `/dev` fica (é útil e só de leitura). Por isso não há sinal do app para o web nem mudança de contrato; a §3 da spec fica só com a prévia, se a ADR pedir.
+- Para a sessão app, na WebView2:
+  - liberar a câmera (`PermissionRequested`) só para a origem `http://127.0.0.1:8080`;
+  - manter downloads (CSV e PNG) e `<input type=file>` funcionando;
+  - `IsZoomControlEnabled = false`, para o zoom da página não disputar com o Ctrl+roda do editor;
+  - decidir o menu de contexto padrão, as teclas do navegador (F5, Ctrl+P) e as DevTools: desligados no build de Release.
