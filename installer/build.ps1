@@ -1,5 +1,8 @@
-param(
-    [string]$Compiler = (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe')
+﻿param(
+    [string]$Compiler = (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'),
+    [string]$AppSource,
+    [string]$AgentSource,
+    [string]$CameraSource
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,5 +24,9 @@ function Write-Messages([string]$Language) {
 New-Item -ItemType Directory -Force -Path $BuildDirectory | Out-Null
 Write-Messages 'en'
 Write-Messages 'pt-BR'
-& $Compiler (Join-Path $PSScriptRoot 'wcam.iss')
+$defines = @()
+if ($AppSource) { $defines += "/DAppSource=$AppSource" }
+if ($AgentSource) { $defines += "/DAgentSource=$AgentSource" }
+if ($CameraSource) { $defines += "/DCameraSource=$CameraSource" }
+& $Compiler @defines (Join-Path $PSScriptRoot 'wcam.iss')
 if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
